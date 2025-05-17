@@ -50,6 +50,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+.pyc
 
 # Translations
 *.mo
@@ -172,3 +173,8 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+upload/
+# VS Code settings
+
+add_admin.py

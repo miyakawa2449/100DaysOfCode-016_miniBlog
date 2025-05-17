@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ホーム</title>
+</head>
+<body>
+    <h1>記事一覧</h1>
+    {% for article in articles %}
+        <h2>{{ article.title }}</h2>
+        <p>{{ article.body[:100] }}...</p>
+    {% else %}
+        <p>記事がありません。</p>
+    {% endfor %}
+</body>
+</html>
