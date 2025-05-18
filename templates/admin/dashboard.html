@@ -2,12 +2,59 @@
 <html>
 <head>
     <title>管理ダッシュボード</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        .container { display: flex; gap: 20px; }
+        .stats, .recent-posts { border: 1px solid #ccc; padding: 15px; border-radius: 5px; }
+        .stats { flex: 1; }
+        .recent-posts { flex: 2; }
+        h1, h2 { color: #333; }
+        ul { list-style: none; padding: 0; }
+        li { margin-bottom: 8px; }
+        a { text-decoration: none; color: #007bff; }
+        a:hover { text-decoration: underline; }
+        nav a { margin-right: 15px; font-size: 1.1em; }
+    </style>
 </head>
 <body>
     <h1>管理ダッシュボード</h1>
-    <p>ユーザ数: {{ user_count }}</p>
-    <p>記事数: {{ article_count }}</p>
-    <a href="{{ url_for('admin.users') }}">ユーザ管理</a> |
-    <a href="{{ url_for('admin.articles') }}">記事管理</a>
+    <nav>
+        <a href="{{ url_for('admin.dashboard') }}">ダッシュボード</a> |
+        <a href="{{ url_for('admin.users') }}">ユーザ管理</a> |
+        <a href="{{ url_for('admin.articles') }}">記事管理</a> |
+        <a href="{{ url_for('admin.categories') }}">カテゴリ管理</a> |
+        <a href="{{ url_for('admin.comments') }}">コメント管理</a> |
+        <a href="{{ url_for('admin.site_settings') }}">サイト管理</a> |
+        <a href="{{ url_for('logout') }}">ログアウト</a>
+    </nav>
+    <hr>
+
+    <div class="container">
+        <div class="stats">
+            <h2>統計情報</h2>
+            <ul>
+                <li>ユーザ数: {{ user_count }}</li>
+                <li>記事数: {{ article_count }}</li>
+                <li>カテゴリ数: {{ category_count }}</li>
+                <li>コメント数: {{ comment_count }}</li>
+            </ul>
+        </div>
+
+        <div class="recent-posts">
+            <h2>最近の投稿</h2>
+            {% if recent_articles %}
+                <ul>
+                    {% for article in recent_articles %}
+                        <li>
+                            <a href="{{ url_for('admin.edit_article', article_id=article.id) }}">{{ article.title }}</a>
+                            <small>({{ article.created_at.strftime('%Y-%m-%d %H:%M') }})</small>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>まだ投稿がありません。</p>
+            {% endif %}
+        </div>
+    </div>
 </body>
 </html>
