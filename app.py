@@ -1,7 +1,8 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_sqlalchemy import SQLAlchemy
+from models import db, User, Article  # ← ここをmodelsからインポート
 from datetime import datetime
+from admin import admin_bp  # admin.pyからインポート
 import os
 
 app = Flask(__name__)
@@ -10,25 +11,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///miniblog.db'
 app.config['UPLOAD_FOLDER'] = 'uploads/images'
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # 2MB
 
-db = SQLAlchemy(app)
-
-# --- モデル定義 ---
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(255), unique=True, nullable=False)
-    name = db.Column(db.String(100), nullable=False)
-    handle_name = db.Column(db.String(100))
-    password_hash = db.Column(db.String(255), nullable=False)
-    role = db.Column(db.String(20), default='author')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-class Article(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(255), nullable=False)
-    slug = db.Column(db.String(255), unique=True, nullable=False)
-    body = db.Column(db.Text)
-    author_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+db.init_app(app)
 
 # --- ルーティング例 ---
 @app.route('/')
@@ -84,7 +67,10 @@ def allowed_file(filename):
 #   <p>{{ article.body[:100] }}...</p>
 # {% endfor %}
 
+app.register_blueprint(admin_bp)
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(debug=True)
+

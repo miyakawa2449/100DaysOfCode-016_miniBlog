@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>管理ダッシュボード</title>
+</head>
+<body>
+    <h1>管理ダッシュボード</h1>
+    <p>ユーザ数: {{ user_count }}</p>
+    <p>記事数: {{ article_count }}</p>
+    <a href="{{ url_for('admin.users') }}">ユーザ管理</a> |
+    <a href="{{ url_for('admin.articles') }}">記事管理</a>
+</body>
+</html>
