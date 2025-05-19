@@ -1,0 +1,66 @@
+{# filepath: c:\Users\tmiya\projects\100Day_new\016_miniBlog\templates\admin\articles.html #}
+{% extends "admin/layout.html" %}
+
+{% block title %}記事管理{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">記事管理</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('admin.create_article') }}" class="btn btn-sm btn-outline-secondary">
+            新規記事作成
+        </a>
+    </div>
+</div>
+
+{# ... (flashメッセージ表示など) ... #}
+
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>タイトル</th>
+                <th>スラッグ</th>
+                <th>投稿者</th>
+                <th>カテゴリ</th> {# 追加 #}
+                <th>作成日時</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for article in articles_list.items %} {# articles_list は admin.articles ルートから渡される想定 #}
+            <tr>
+                <td>{{ article.id }}</td>
+                <td>{{ article.title }}</td>
+                <td>{{ article.slug }}</td>
+                <td>{{ article.author.name if article.author else 'N/A' }}</td>
+                <td>
+                    {# 記事に紐づくカテゴリ名を表示 #}
+                    {% if article.categories %}
+                        {% for cat in article.categories %}
+                            <span class="badge badge-info mr-1">{{ cat.name }}</span>
+                        {% endfor %}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>{{ article.created_at.strftime('%Y-%m-%d %H:%M') if article.created_at else '-'}}</td>
+                <td>
+                    <a href="{{ url_for('admin.edit_article', article_id=article.id) }}" class="btn btn-sm btn-outline-primary">編集</a>
+                    {# <form action="{{ url_for('admin.delete_article', article_id=article.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">削除</button>
+                    </form> #}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7">記事はありません。</td> {# colspanを修正 #}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# ... (ページネーション) ... #}
+{% endblock %}

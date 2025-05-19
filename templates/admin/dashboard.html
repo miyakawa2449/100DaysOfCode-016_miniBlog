@@ -1,60 +1,149 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>管理ダッシュボード</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { font-family: sans-serif; margin: 20px; }
-        .container { display: flex; gap: 20px; }
-        .stats, .recent-posts { border: 1px solid #ccc; padding: 15px; border-radius: 5px; }
-        .stats { flex: 1; }
-        .recent-posts { flex: 2; }
-        h1, h2 { color: #333; }
-        ul { list-style: none; padding: 0; }
-        li { margin-bottom: 8px; }
-        a { text-decoration: none; color: #007bff; }
-        a:hover { text-decoration: underline; }
-        nav a { margin-right: 15px; font-size: 1.1em; }
+        body { padding-top: 5rem; } /* Navbarの高さを考慮 */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 100; /* Behind the navbar */
+            padding: 48px 0 0; /* Height of navbar */
+            box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+        }
+        .sidebar-sticky {
+            position: relative;
+            top: 0;
+            height: calc(100vh - 48px);
+            padding-top: .5rem;
+            overflow-x: hidden;
+            overflow-y: auto; /* Scrollable contents if viewport is shorter than content. */
+        }
+        .nav-link { padding: .5rem 1rem; }
+        .main-content { margin-left: 220px; /* Same as sidebar width */ padding: 20px; }
     </style>
 </head>
 <body>
-    <h1>管理ダッシュボード</h1>
-    <nav>
-        <a href="{{ url_for('admin.dashboard') }}">ダッシュボード</a> |
-        <a href="{{ url_for('admin.users') }}">ユーザ管理</a> |
-        <a href="{{ url_for('admin.articles') }}">記事管理</a> |
-        <a href="{{ url_for('admin.categories') }}">カテゴリ管理</a> |
-        <a href="{{ url_for('admin.comments') }}">コメント管理</a> |
-        <a href="{{ url_for('admin.site_settings') }}">サイト管理</a> |
-        <a href="{{ url_for('logout') }}">ログアウト</a>
-    </nav>
-    <hr>
-
-    <div class="container">
-        <div class="stats">
-            <h2>統計情報</h2>
-            <ul>
-                <li>ユーザ数: {{ user_count }}</li>
-                <li>記事数: {{ article_count }}</li>
-                <li>カテゴリ数: {{ category_count }}</li>
-                <li>コメント数: {{ comment_count }}</li>
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+        <a class="navbar-brand" href="{{ url_for('admin.dashboard') }}">管理ダッシュボード</a>
+        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarsExampleDefault">
+            <ul class="navbar-nav ml-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('logout') }}">ログアウト</a>
+                </li>
             </ul>
         </div>
+    </nav>
 
-        <div class="recent-posts">
-            <h2>最近の投稿</h2>
-            {% if recent_articles %}
-                <ul>
-                    {% for article in recent_articles %}
-                        <li>
-                            <a href="{{ url_for('admin.edit_article', article_id=article.id) }}">{{ article.title }}</a>
-                            <small>({{ article.created_at.strftime('%Y-%m-%d %H:%M') }})</small>
+    <div class="container-fluid">
+        <div class="row">
+            <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
+                <div class="sidebar-sticky pt-3">
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{{ url_for('admin.dashboard') }}">
+                                ダッシュボード <span class="sr-only">(current)</span>
+                            </a>
                         </li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <p>まだ投稿がありません。</p>
-            {% endif %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.users') }}">
+                                ユーザ管理
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.articles') }}">
+                                記事管理
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.categories') }}">
+                                カテゴリ管理
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.comments') }}">
+                                コメント管理
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('admin.site_settings') }}">
+                                サイト管理
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <main role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4 main-content">
+                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                    <h1 class="h2">ダッシュボード</h1>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <div class="card">
+                            <div class="card-header">
+                                統計情報
+                            </div>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    ユーザ数
+                                    <span class="badge badge-primary badge-pill">{{ user_count }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    記事数
+                                    <span class="badge badge-primary badge-pill">{{ article_count }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    カテゴリ数
+                                    <span class="badge badge-primary badge-pill">{{ category_count }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    コメント数
+                                    <span class="badge badge-primary badge-pill">{{ comment_count }}</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="card">
+                            <div class="card-header">
+                                最近の投稿
+                            </div>
+                            {% if recent_articles %}
+                                <ul class="list-group list-group-flush">
+                                    {% for article in recent_articles %}
+                                        <li class="list-group-item">
+                                            <a href="{{ url_for('admin.edit_article', article_id=article.id) }}">{{ article.title }}</a>
+                                            <small class="text-muted float-right">{{ article.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <div class="card-body">
+                                    <p class="card-text">まだ投稿がありません。</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </main>
         </div>
     </div>
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 </body>
 </html>

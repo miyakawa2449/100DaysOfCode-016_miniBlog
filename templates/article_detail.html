@@ -1,0 +1,46 @@
+{# filepath: c:\Users\tmiya\projects\100Day_new\016_miniBlog\templates\article_detail.html #}
+{% extends "layout.html" %} {# 公開側の共通レイアウトを継承 #}
+
+{% block title %}{{ article.title }}{% endblock %}
+
+{% block head_extra %}
+    <meta name="description" content="{{ article.body | striptags | truncate(160, True) }}">
+    <meta property="og:title" content="{{ article.title }}">
+    <meta property="og:description" content="{{ article.body | striptags | truncate(160, True) }}">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="{{ url_for('article_detail', slug=article.slug, _external=True) }}">
+    {# <meta property="og:image" content="{{ url_for('static', filename=article.og_image_path, _external=True) }}"> #} {# 記事ごとのOGP画像があれば #}
+    <link rel="canonical" href="{{ url_for('article_detail', slug=article.slug, _external=True) }}">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <article>
+                <header class="mb-4">
+                    <h1>{{ article.title }}</h1>
+                    <p class="text-muted">
+                        作成日: {{ article.created_at.strftime('%Y年%m月%d日') }}
+                        {% if article.author %}
+                            | 投稿者: <a href="#">{{ article.author.handle_name or article.author.name }}</a> {# プロフィールページへのリンク #}
+                        {% endif %}
+                        {% if article.categories %}
+                            | カテゴリ:
+                            {% for cat in article.categories %}
+                                <a href="{{ url_for('category_page', slug=cat.slug) }}"><span class="badge badge-info mr-1">{{ cat.name }}</span></a>
+                            {% endfor %}
+                        {% endif %}
+                    </p>
+                </header>
+                
+                <section class="article-body">
+                    {{ article.body | safe }} {# Markdownなどで書かれた本文をHTMLとして表示する場合は safe フィルタが必要 #}
+                </section>
+            </article>
+
+            {# コメント機能などをここに追加する場合 #}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}カテゴリ編集: {{ category.name }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">カテゴリ編集: {{ category.name }}</h1>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for cat_msg, message in messages %}
+            <div class="alert alert-{{ cat_msg }}">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<form method="POST" action="{{ url_for('admin.edit_category', category_id=category.id) }}">
+    <div class="form-group">
+        <label for="name">カテゴリ名</label>
+        <input type="text" class="form-control" id="name" name="name" value="{{ request.form.name or category.name }}" required>
+    </div>
+    <div class="form-group">
+        <label for="slug">スラッグ</label>
+        <input type="text" class="form-control" id="slug" name="slug" value="{{ request.form.slug or category.slug }}" required>
+        <small class="form-text text-muted">URLに使用される半角英数字とハイフン（-）の文字列です。</small>
+    </div>
+    <div class="form-group">
+        <label for="description">説明（任意）</label>
+        <textarea class="form-control" id="description" name="description" rows="3">{{ request.form.description or category.description }}</textarea>
+    </div>
+    <div class="form-group">
+        <label for="parent_id">親カテゴリ（任意）</label>
+        <select class="form-control" id="parent_id" name="parent_id">
+            <option value="">なし</option>
+            {% for cat_opt in parent_categories %}
+            <option value="{{ cat_opt.id }}" 
+                    {% if request.form.parent_id == cat_opt.id|string %}selected
+                    {% elif not request.form.parent_id and category.parent_id == cat_opt.id %}selected
+                    {% endif %}>
+                {{ cat_opt.name }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-group">
+        <label for="ogp_image">OGP画像URL (任意)</label>
+        <input type="text" class="form-control" id="ogp_image" name="ogp_image" value="{{ request.form.ogp_image or category.ogp_image }}">
+        <small class="form-text text-muted">例: /static/images/category_ogp/python.jpg や https://example.com/image.jpg</small>
+    </div>
+    <div class="form-group">
+        <label for="meta_keywords">メタキーワード (任意, カンマ区切り)</label>
+        <input type="text" class="form-control" id="meta_keywords" name="meta_keywords" value="{{ request.form.meta_keywords or category.meta_keywords }}">
+        <small class="form-text text-muted">例: Python,プログラミング,入門</small>
+    </div>
+    <div class="form-group">
+        <label for="canonical_url">正規URL (任意)</label>
+        <input type="url" class="form-control" id="canonical_url" name="canonical_url" value="{{ request.form.canonical_url or category.canonical_url }}">
+        <small class="form-text text-muted">このカテゴリページの正式なURL。通常は自動生成されるため、特別な場合に指定します。</small>
+    </div>
+    <div class="form-group">
+        <label for="json_ld">JSON-LD 構造化データ (任意)</label>
+        <textarea class="form-control" id="json_ld" name="json_ld" rows="5">{{ request.form.json_ld or category.json_ld }}</textarea>
+        <small class="form-text text-muted">SEOのための構造化データをJSON-LD形式で記述します。</small>
+    </div>
+    <div class="form-group">
+        <label for="ext_json">拡張JSONデータ (任意)</label>
+        <textarea class="form-control" id="ext_json" name="ext_json" rows="3">{{ request.form.ext_json or category.ext_json }}</textarea>
+        <small class="form-text text-muted">追加のカスタムデータをJSON形式で保存します。</small>
+    </div>
+    <button type="submit" class="btn btn-primary">更新</button>
+    <a href="{{ url_for('admin.categories') }}" class="btn btn-secondary">キャンセル</a>
+</form>
+{% endblock %}

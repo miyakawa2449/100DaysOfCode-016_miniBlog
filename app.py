@@ -1,19 +1,40 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, redirect, url_for, flash, session, request
+from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, User, Article  # ← ここをmodelsからインポート
-from datetime import datetime
-from admin import admin_bp  # admin.pyからインポート
+from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
 import os
+from datetime import datetime
+from admin import admin_bp
+
+# models.py から db インスタンスとモデルクラスをインポートします
+from models import db, User, Article, Category, Comment
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///miniblog.db'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your_default_secret_key')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///miniblog.db')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads/images'
 app.config['MAX_CONTENT_LENGTH'] = 2 * 1024 * 1024  # 2MB
 
-db.init_app(app)
+migrate = Migrate()  # Migrate インスタンスの作成はここでもOK
 
-# --- ルーティング例 ---
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+login_manager.login_message = "このページにアクセスするにはログインが必要です。"
+login_manager.login_message_category = "info"
+
+# models.py からインポートした db をアプリケーションに登録します
+db.init_app(app)
+# migrate も同様に、インポートした db を使用します
+migrate.init_app(app, db)
+login_manager.init_app(app)
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))  # User.query は models.py からインポートした db に紐づく
+
+app.register_blueprint(admin_bp, url_prefix='/admin')
+
 @app.route('/')
 def home():
     articles = Article.query.order_by(Article.created_at.desc()).all()
@@ -21,22 +42,29 @@ def home():
 
 @app.route('/login/', methods=['GET', 'POST'])
 def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
     if request.method == 'POST':
-        email = request.form['email']
-        pw = request.form['password']
+        email = request.form.get('email')
+        password = request.form.get('password')
         user = User.query.filter_by(email=email).first()
-        if user and check_password_hash(user.password_hash, pw):
+        if user and check_password_hash(user.password_hash, password):
+            login_user(user)
             session['user_id'] = user.id
-            flash('ログインしました')
-            return redirect(url_for('home'))
-        flash('ログイン失敗')
+            flash('ログインしました。', 'success')
+            next_page = request.args.get('next')
+            return redirect(next_page or url_for('home'))
+        else:
+            flash('メールアドレスまたはパスワードが正しくありません。', 'danger')
     return render_template('login.html')
 
 @app.route('/logout/')
+@login_required
 def logout():
+    logout_user()
     session.pop('user_id', None)
-    flash('ログアウトしました')
-    return redirect(url_for('home'))
+    flash('ログアウトしました。', 'info')
+    return redirect(url_for('login'))
 
 @app.route('/admin/article/upload_image/', methods=['POST'])
 def upload_image():
@@ -60,17 +88,25 @@ def upload_image():
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'jpg', 'jpeg', 'png', 'gif'}
 
-# --- テンプレート例（home.html） ---
-# 
-# {% for article in articles %}
-#   <h2><a href="{{ url_for('article_detail', slug=article.slug) }}">{{ article.title }}</a></h2>
-#   <p>{{ article.body[:100] }}...</p>
-# {% endfor %}
+@app.route('/category/<slug>/')
+def category_page(slug):
+    category = Category.query.filter_by(slug=slug).first_or_404()
+    
+    if hasattr(category, 'articles') and category.articles is not None:
+        page = request.args.get('page', 1, type=int)
+        per_page = 10
+        articles_pagination = category.articles.order_by(Article.created_at.desc()).paginate(page=page, per_page=per_page)
+    else:
+        from flask_sqlalchemy.pagination import Pagination
+        articles_pagination = Pagination(query=None, page=1, per_page=per_page, total=0, items=[])
 
-app.register_blueprint(admin_bp)
+    return render_template('category_page.html', category=category, articles_pagination=articles_pagination)
+
+@app.route('/article/<slug>/')
+def article_detail(slug):
+    article = Article.query.filter_by(slug=slug).first_or_404()
+    return render_template('article_detail.html', article=article)
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(debug=True)
 
