@@ -1,21 +1,20 @@
 {% extends "admin/layout.html" %}
 
-{% block title %}カテゴリ編集: {{ category.name }}{% endblock %}
+{% block title %}カテゴリ編集 - {{ category.name }}{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" integrity="sha512-hvNR0F/e2J7zPPfLC9auFe3/SE0yG4aJCOd/qxew74NN7eyiSKjr7xJJMu1Jy2wf7FXITpWS1E/RY8yzuXN7VA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js" integrity="sha512-9KkIqdfN7ipEW6B6k+Aq20PV31bjODg4AA52W+tYtAE0jE0kMx49bjJ3FgvS56wzmyfMUHbQ4Km2b7l9+Y/+Eg==" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">カテゴリ編集: {{ category.name }}</h1>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-        {% for cat_msg, message in messages %}
-            <div class="alert alert-{{ cat_msg }}">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
-{% endwith %}
+{% include "_flash_messages.html" %}
 
-<form method="POST" action="{{ url_for('admin.edit_category', category_id=category.id) }}">
+<form method="POST" action="{{ url_for('admin.edit_category', category_id=category.id) }}" enctype="multipart/form-data">
     <div class="form-group">
         <label for="name">カテゴリ名</label>
         <input type="text" class="form-control" id="name" name="name" value="{{ request.form.name or category.name }}" required>
@@ -49,6 +48,31 @@
         <small class="form-text text-muted">例: /static/images/category_ogp/python.jpg や https://example.com/image.jpg</small>
     </div>
     <div class="form-group">
+        <label for="ogp_image_file">OGP画像 (推奨アスペクト比 1.91:1)</label>
+        <input type="file" class="form-control-file" id="ogp_image_file" name="ogp_image_file" accept="image/jpeg, image/png, image/gif">
+        <small class="form-text text-muted">新しい画像をアップロードすると、既存のOGP画像は上書きされます。</small>
+        
+        {% if category.ogp_image %}
+        <div class="mt-2">
+            <p>現在のOGP画像:</p>
+            <img src="{{ url_for('static', filename=category.ogp_image) }}" alt="現在のOGP画像" style="max-width: 200px; max-height: 200px;">
+        </div>
+        {% endif %}
+
+        <div class="mt-2" id="ogp_image_preview_container" style="display: none; max-width: 500px;">
+            <img id="ogp_image_to_crop" src="#" alt="プレビュー" style="max-width: 100%;">
+        </div>
+    </div>
+
+    <input type="hidden" name="ogp_crop_x" id="ogp_crop_x">
+    <input type="hidden" name="ogp_crop_y" id="ogp_crop_y">
+    <input type="hidden" name="ogp_crop_width" id="ogp_crop_width">
+    <input type="hidden" name="ogp_crop_height" id="ogp_crop_height">
+    <input type="hidden" name="ogp_crop_rotate" id="ogp_crop_rotate">
+    <input type="hidden" name="ogp_crop_scaleX" id="ogp_crop_scaleX">
+    <input type="hidden" name="ogp_crop_scaleY" id="ogp_crop_scaleY">
+
+    <div class="form-group">
         <label for="meta_keywords">メタキーワード (任意, カンマ区切り)</label>
         <input type="text" class="form-control" id="meta_keywords" name="meta_keywords" value="{{ request.form.meta_keywords or category.meta_keywords }}">
         <small class="form-text text-muted">例: Python,プログラミング,入門</small>
@@ -71,4 +95,101 @@
     <button type="submit" class="btn btn-primary">更新</button>
     <a href="{{ url_for('admin.categories') }}" class="btn btn-secondary">キャンセル</a>
 </form>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const imageInput = document.getElementById('ogp_image_file');
+    const imageToCrop = document.getElementById('ogp_image_to_crop');
+    const previewContainer = document.getElementById('ogp_image_preview_container');
+    let cropper; // cropperインスタンスを保持する変数
+
+    // トリミングデータを格納する隠しフィールドの参照
+    const cropX = document.getElementById('ogp_crop_x');
+    const cropY = document.getElementById('ogp_crop_y');
+    const cropWidth = document.getElementById('ogp_crop_width');
+    const cropHeight = document.getElementById('ogp_crop_height');
+    const cropRotate = document.getElementById('ogp_crop_rotate');
+    const cropScaleX = document.getElementById('ogp_crop_scaleX');
+    const cropScaleY = document.getElementById('ogp_crop_scaleY');
+
+    imageInput.addEventListener('change', function (event) {
+        const files = event.target.files;
+        if (files && files.length > 0) {
+            const file = files[0];
+            // FileReaderを使って画像データを読み込む
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                console.log('FileReader onload triggered'); // ★追加
+                imageToCrop.src = e.target.result;
+                previewContainer.style.display = 'block';
+                console.log('Image src set, preview container displayed'); // ★追加
+                console.log('Image width:', imageToCrop.width, 'Image height:', imageToCrop.height); // ★追加 (レンダリング後でないと0かも)
+
+                // 既存のcropperインスタンスがあれば破棄
+                if (cropper) {
+                    cropper.destroy();
+                }
+
+                console.log('Initializing Cropper...'); // ★追加
+                cropper = new Cropper(imageToCrop, {
+                    aspectRatio: 1200 / 630, // OGP推奨アスペクト比 (幅1200px 高さ630px)
+                    viewMode: 1,          // トリミング枠を画像内に制限
+                    autoCropArea: 0.9,    // 初期トリミングエリアのサイズ (画像の90%)
+                    responsive: true,     // ウィンドウリサイズ時にリサイズ
+                    checkCrossOrigin: false, // ローカルファイルの場合に必要になることがある
+                    ready: function () { // Cropper.jsが準備完了したときのイベント
+                        console.log('Cropper is ready.'); // ★追加
+                    },
+                    crop: function(event) {
+                        // トリミングデータを隠しフィールドに設定 (整数に丸める)
+                        cropX.value = Math.round(event.detail.x);
+                        cropY.value = Math.round(event.detail.y);
+                        cropWidth.value = Math.round(event.detail.width);
+                        cropHeight.value = Math.round(event.detail.height);
+                        cropRotate.value = Math.round(event.detail.rotate); // rotateも必要なら
+                        cropScaleX.value = event.detail.scaleX; // scaleも必要なら
+                        cropScaleY.value = event.detail.scaleY;
+                    }
+                });
+                console.log('Cropper instance:', cropper); // ★追加
+            };
+            reader.readAsDataURL(file); // ファイルをData URLとして読み込む
+        } else {
+            // ファイルが選択されなかった場合
+            previewContainer.style.display = 'none';
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+            // 隠しフィールドをクリア
+            cropX.value = '';
+            cropY.value = '';
+            cropWidth.value = '';
+            cropHeight.value = '';
+            cropRotate.value = '';
+            cropScaleX.value = '';
+            cropScaleY.value = '';
+        }
+    });
+
+    // (オプション) フォーム送信時に最終的なトリミングデータを取得して設定する
+    // document.querySelector('form').addEventListener('submit', function(event) {
+    //     if (cropper) {
+    //         const data = cropper.getData(true); // trueで丸められた整数値を取得
+    //         cropX.value = data.x;
+    //         cropY.value = data.y;
+    //         cropWidth.value = data.width;
+    //         cropHeight.value = data.height;
+    //         // 必要であればrotate, scaleX, scaleYも設定
+    //     }
+    //     // もしトリミングが必須で、トリミングデータがない場合に送信を止める場合はここでバリデーション
+    //     // if (!cropWidth.value || !cropHeight.value) {
+    //     //     alert('画像をトリミングしてください。');
+    //     //     event.preventDefault();
+    //     // }
+    // });
+});
+</script>
 {% endblock %}

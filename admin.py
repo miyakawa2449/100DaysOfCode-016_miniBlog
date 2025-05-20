@@ -1,7 +1,10 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, session
+from flask import Blueprint, render_template, redirect, url_for, request, flash, session, current_app
 from models import db, User, Article, Category, Comment  # CategoryとCommentをインポート
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from datetime import datetime
+import os
+from PIL import Image
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -17,6 +20,10 @@ def admin_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
+
+def allowed_file(filename):
+    return '.' in filename and \
+        filename.rsplit('.', 1)[1].lower() in current_app.config['ALLOWED_EXTENSIONS']
 
 # ダッシュボード
 @admin_bp.route('/')
@@ -216,31 +223,65 @@ def edit_category(category_id):
         ext_json = request.form.get('ext_json')
         # --- ここまで ---
 
-        if not name or not slug:
-            flash('カテゴリ名とスラッグは必須です。', 'danger')
-        else:
-            # スラッグの重複チェック（自分自身を除く）
-            existing_category_slug = Category.query.filter(Category.id != category_id, Category.slug == slug).first()
-            existing_category_name = Category.query.filter(Category.id != category_id, Category.name == name).first()
-            if existing_category_slug:
-                flash('そのスラッグは既に使用されています。', 'danger')
-            elif existing_category_name:
-                flash('そのカテゴリ名は既に使用されています。', 'danger')
-            else:
-                category.name = name
-                category.slug = slug
-                category.description = description
-                category.parent_id = int(parent_id) if parent_id else None
-                # --- 追加フィールドの更新 ---
-                category.ogp_image = ogp_image
-                category.meta_keywords = meta_keywords
-                category.canonical_url = canonical_url
-                category.json_ld = json_ld
-                category.ext_json = ext_json
-                # --- ここまで ---
-                db.session.commit()
-                flash('カテゴリが更新されました。', 'success')
-                return redirect(url_for('admin.categories'))
+        category.name = request.form.get('name')
+        category.slug = request.form.get('slug')
+
+        # OGP画像の処理
+        if 'ogp_image_file' in request.files:
+            file = request.files['ogp_image_file']
+            if file and file.filename != '' and allowed_file(file.filename):
+                try:
+                    img = Image.open(file.stream)
+                    
+                    # フロントエンドから送られてくるトリミング座標を取得
+                    crop_x = request.form.get('ogp_crop_x')
+                    crop_y = request.form.get('ogp_crop_y')
+                    crop_width = request.form.get('ogp_crop_width')
+                    crop_height = request.form.get('ogp_crop_height')
+
+                    if crop_x and crop_y and crop_width and crop_height:
+                        x = int(float(crop_x))
+                        y = int(float(crop_y))
+                        width = int(float(crop_width))
+                        height = int(float(crop_height))
+
+                        cropped_img = img.crop((x, y, x + width, y + height))
+                    else:
+                        cropped_img = img
+
+                    original_filename = secure_filename(file.filename)
+                    extension = original_filename.rsplit('.', 1)[1].lower()
+                    filename = f"category_ogp_{category.id}_{int(datetime.utcnow().timestamp())}.{extension}"
+                    
+                    upload_path = current_app.config['CATEGORY_OGP_UPLOAD_FOLDER']
+                    os.makedirs(upload_path, exist_ok=True)
+                    
+                    save_path = os.path.join(upload_path, filename)
+                    
+                    if extension == 'jpg' or extension == 'jpeg':
+                        cropped_img.save(save_path, 'JPEG', quality=85)
+                    elif extension == 'png':
+                        cropped_img.save(save_path, 'PNG', optimize=True)
+                    else:
+                        cropped_img.save(save_path)
+
+                    category.ogp_image = os.path.join('uploads', 'category_ogp', filename).replace('\\', '/')
+                    flash('OGP画像が更新されました。', 'success')
+
+                except Exception as e:
+                    flash(f'OGP画像の処理中にエラーが発生しました: {e}', 'danger')
+                    current_app.logger.error(f"OGP image processing error for category {category.id}: {e}")
+
+            elif file and file.filename != '' and not allowed_file(file.filename):
+                flash('許可されていないファイル形式です。', 'danger')
+        
+        try:
+            db.session.commit()
+            return redirect(url_for('admin.categories'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'カテゴリ更新中にエラーが発生しました: {e}', 'danger')
+            current_app.logger.error(f"Category update error for category {category.id}: {e}")
 
     parent_categories = Category.query.filter(Category.id != category_id).order_by(Category.name).all()
     return render_template('admin/edit_category.html', category=category, parent_categories=parent_categories)
