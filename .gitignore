@@ -178,3 +178,6 @@ upload/
 # VS Code settings
 
 add_admin.py
+
+# 静的ファイル (画像アップロード先などを含む)
+static/

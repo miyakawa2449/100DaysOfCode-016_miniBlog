@@ -60,20 +60,24 @@
 
 ---
 
-## categories（カテゴリ）
+## `categories` table
 
-| カラム名         | 日本語名           | 型           | 制約・備考                  |
-|------------------|--------------------|--------------|-----------------------------|
-| id               | カテゴリID         | INTEGER      | PRIMARY KEY, AUTOINCREMENT  |
-| name             | カテゴリ名         | TEXT         | NOT NULL                    |
-| slug             | スラッグ           | TEXT         | UNIQUE, NOT NULL            |
-| description      | 紹介文             | TEXT         |                             |
-| parent_id        | 親カテゴリID       | INTEGER      | categories.id (FK)          |
-| ogp_image        | OGP画像            | TEXT         |                             |
-| meta_keywords    | メタキーワード     | TEXT         | カンマ区切り,またはJSON     |
-| canonical_url    | カノニカルURL      | TEXT         | NULL可、自動生成が基本      |
-| json_ld          | 構造化データ(JSON-LD) | TEXT      | JSON-LD形式で保存（必要に応じて）|
-| ext_json         | 拡張用JSON         | JSON/TEXT    | 拡張用                      |
+| Column Name     | Data Type        | Constraints              | Description                               |
+|-----------------|------------------|--------------------------|-------------------------------------------|
+| id              | INTEGER          | PRIMARY KEY, AUTOINCREMENT | カテゴリID                               |
+| name            | VARCHAR(100)     | NOT NULL, UNIQUE         | カテゴリ名                               |
+| slug            | VARCHAR(100)     | NOT NULL, UNIQUE         | スラッグ                                 |
+| description     | TEXT             |                          | カテゴリの説明                             |
+| parent_id       | INTEGER          | FOREIGN KEY (categories.id) | 親カテゴリID (自己参照)                  |
+| created_at      | DATETIME         | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 作成日時                               |
+| updated_at      | DATETIME         | NOT NULL, DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | 更新日時                               |
+| meta_title      | VARCHAR(255)     |                          | SEO用メタタイトル                         |
+| meta_description| TEXT             |                          | SEO用メタディスクリプション                   |
+| meta_keywords   | VARCHAR(255)     |                          | SEO用メタキーワード                       |
+| **ogp_image**   | **VARCHAR(255)** |                          | **OGP画像のパス**                         |
+| canonical_url   | VARCHAR(255)     |                          | Canonical URL                             |
+| json_ld         | TEXT             |                          | JSON-LD構造化データ                       |
+| ext_json        | TEXT             |                          | 拡張JSONデータ                            |
 
 ---
 

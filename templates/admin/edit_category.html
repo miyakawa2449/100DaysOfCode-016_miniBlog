@@ -52,15 +52,21 @@
         <input type="file" class="form-control-file" id="ogp_image_file" name="ogp_image_file" accept="image/jpeg, image/png, image/gif">
         <small class="form-text text-muted">新しい画像をアップロードすると、既存のOGP画像は上書きされます。</small>
         
-        {% if category.ogp_image %}
-        <div class="mt-2">
+        {% if category.ogp_image and not request.files.get('ogp_image_file') %}
+        <div class="mt-2" id="current_ogp_image_display">
             <p>現在のOGP画像:</p>
             <img src="{{ url_for('static', filename=category.ogp_image) }}" alt="現在のOGP画像" style="max-width: 200px; max-height: 200px;">
         </div>
         {% endif %}
 
-        <div class="mt-2" id="ogp_image_preview_container" style="display: none; max-width: 500px;">
+        <div class="mt-2" id="ogp_image_preview_container" style="display: none; max-width: 500px; margin-bottom: 10px;">
             <img id="ogp_image_to_crop" src="#" alt="プレビュー" style="max-width: 100%;">
+        </div>
+
+        <button type="button" class="btn btn-info btn-sm mb-2" id="show_crop_preview_button" style="display: none;">トリミング結果をプレビュー</button>
+        <div id="cropped_image_preview_area" class="mt-2" style="display: none;">
+            <p>トリミング後プレビュー:</p>
+            <img id="cropped_image_preview" src="#" alt="トリミング後プレビュー" style="max-width: 300px; border: 1px solid #ccc;">
         </div>
     </div>
 
@@ -103,6 +109,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const imageInput = document.getElementById('ogp_image_file');
     const imageToCrop = document.getElementById('ogp_image_to_crop');
     const previewContainer = document.getElementById('ogp_image_preview_container');
+    const showCropPreviewButton = document.getElementById('show_crop_preview_button');
+    const croppedImagePreviewArea = document.getElementById('cropped_image_preview_area');
+    const croppedImagePreview = document.getElementById('cropped_image_preview');
+    const currentOgpImageDisplay = document.getElementById('current_ogp_image_display'); // 修正
     let cropper; // cropperインスタンスを保持する変数
 
     // トリミングデータを格納する隠しフィールドの参照
@@ -127,6 +137,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 console.log('Image src set, preview container displayed'); // ★追加
                 console.log('Image width:', imageToCrop.width, 'Image height:', imageToCrop.height); // ★追加 (レンダリング後でないと0かも)
 
+                if (currentOgpImageDisplay) { // 修正
+                    currentOgpImageDisplay.style.display = 'none'; // 新しい画像選択時は現在の画像を非表示
+                }
+
                 // 既存のcropperインスタンスがあれば破棄
                 if (cropper) {
                     cropper.destroy();
@@ -141,6 +155,8 @@ document.addEventListener('DOMContentLoaded', function () {
                     checkCrossOrigin: false, // ローカルファイルの場合に必要になることがある
                     ready: function () { // Cropper.jsが準備完了したときのイベント
                         console.log('Cropper is ready.'); // ★追加
+                        showCropPreviewButton.style.display = 'inline-block'; // Cropper準備完了でプレビューボタン表示
+                        croppedImagePreviewArea.style.display = 'none'; // 既存のプレビューは隠す
                     },
                     crop: function(event) {
                         // トリミングデータを隠しフィールドに設定 (整数に丸める)
@@ -159,6 +175,11 @@ document.addEventListener('DOMContentLoaded', function () {
         } else {
             // ファイルが選択されなかった場合
             previewContainer.style.display = 'none';
+            showCropPreviewButton.style.display = 'none';
+            croppedImagePreviewArea.style.display = 'none';
+            if (currentOgpImageDisplay) { // 修正
+                currentOgpImageDisplay.style.display = 'block'; // ファイル選択解除時は現在の画像を表示（もしあれば）
+            }
             if (cropper) {
                 cropper.destroy();
                 cropper = null;
@@ -171,6 +192,26 @@ document.addEventListener('DOMContentLoaded', function () {
             cropRotate.value = '';
             cropScaleX.value = '';
             cropScaleY.value = '';
+        }
+    });
+
+    showCropPreviewButton.addEventListener('click', function () {
+        if (cropper) {
+            const croppedCanvas = cropper.getCroppedCanvas({
+                fillColor: '#fff', // 背景色（透過PNGの場合など）
+                imageSmoothingEnabled: true,
+                imageSmoothingQuality: 'high',
+            });
+
+            if (croppedCanvas) {
+                croppedImagePreview.src = croppedCanvas.toDataURL('image/png'); // または 'image/jpeg'
+                croppedImagePreviewArea.style.display = 'block';
+            } else {
+                alert('トリミング範囲が正しく選択されていません。');
+                croppedImagePreviewArea.style.display = 'none';
+            }
+        } else {
+            alert('まず画像を選択し、トリミング範囲を指定してください。');
         }
     });
 
