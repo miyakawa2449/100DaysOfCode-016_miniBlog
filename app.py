@@ -5,6 +5,7 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, curren
 import os
 from datetime import datetime
 from admin import admin_bp
+import logging  # logging モジュールをインポート
 
 # models.py から db インスタンスとモデルクラスをインポートします
 from models import db, User, Article, Category, Comment
@@ -17,6 +18,22 @@ app.config['UPLOAD_FOLDER'] = 'static/uploads' # staticフォルダ内のuploads
 app.config['CATEGORY_OGP_UPLOAD_FOLDER'] = os.path.join(app.config['UPLOAD_FOLDER'], 'category_ogp')
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+app.debug = True  # デバッグモードを有効にする
+
+# --- ロガー設定を追加 ---
+if app.debug:
+    # 開発モード時は DEBUG レベル以上のログをコンソールに出力
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.DEBUG)
+    app.logger.addHandler(stream_handler)
+    app.logger.setLevel(logging.DEBUG)
+else:
+    # 本番モード時は INFO レベル以上 (必要に応じてファイル出力なども検討)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.INFO)
+    app.logger.addHandler(stream_handler)
+    app.logger.setLevel(logging.INFO)
+# --- ここまで追加 ---
 
 migrate = Migrate()  # Migrate インスタンスの作成はここでもOK
 

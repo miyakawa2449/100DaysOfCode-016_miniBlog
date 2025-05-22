@@ -1,236 +1,223 @@
 {% extends "admin/layout.html" %}
 
-{% block title %}カテゴリ編集 - {{ category.name }}{% endblock %}
+{% block title %}カテゴリ編集 - {{ super() }}{% endblock %}
 
 {% block head_extra %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" integrity="sha512-hvNR0F/e2J7zPPfLC9auFe3/SE0yG4aJCOd/qxew74NN7eyiSKjr7xJJMu1Jy2wf7FXITpWS1E/RY8yzuXN7VA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js" integrity="sha512-9KkIqdfN7ipEW6B6k+Aq20PV31bjODg4AA52W+tYtAE0jE0kMx49bjJ3FgvS56wzmyfMUHbQ4Km2b7l9+Y/+Eg==" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+    {{ super() }}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" integrity="sha512-hvNR0F/e2J7zPPfLC9auFe3/SE0yG4aJCOd/qxew74NN7eyiSKjr7xJJMu1Jy2wf7FXITpWS1E/RY8yzuXN7VA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        /* ... existing style ... */
+    </style>
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">カテゴリ編集: {{ category.name }}</h1>
+<div class="container mt-4">
+    <h2>カテゴリ編集: {{ category.name }}</h2>
+
+    <form method="POST" enctype="multipart/form-data">
+        {{ form.hidden_tag() }}
+
+        <div class="row">
+            <div class="col-md-8">
+                <div class="mb-3">
+                    <label for="name" class="form-label">{{ form.name.label }}</label>
+                    {{ form.name(class="form-control" + (" is-invalid" if form.name.errors else "")) }}
+                    {% if form.name.errors %}
+                        <div class="invalid-feedback">
+                            {% for error in form.name.errors %}{{ error }}{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="slug" class="form-label">{{ form.slug.label }}</label>
+                    {{ form.slug(class="form-control" + (" is-invalid" if form.slug.errors else "")) }}
+                    {% if form.slug.errors %}
+                        <div class="invalid-feedback">
+                            {% for error in form.slug.errors %}{{ error }}{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="description" class="form-label">{{ form.description.label }}</label>
+                    {{ form.description(class="form-control" + (" is-invalid" if form.description.errors else "")) }}
+                    {% if form.description.errors %}
+                        <div class="invalid-feedback">
+                            {% for error in form.description.errors %}{{ error }}{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="parent_id" class="form-label">{{ form.parent_id.label }}</label>
+                    {{ form.parent_id(class="form-control" + (" is-invalid" if form.parent_id.errors else "")) }}
+                    {% if form.parent_id.errors %}
+                        <div class="invalid-feedback">
+                            {% for error in form.parent_id.errors %}{{ error }}{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="mb-3">
+                    <label for="ogp_image_file" class="form-label">{{ form.ogp_image_file.label }}</label>
+                    {{ form.ogp_image_file(class="form-control" + (" is-invalid" if form.ogp_image_file.errors else ""), onchange="previewImage(event)") }}
+                    {% if form.ogp_image_file.errors %}
+                        <div class="invalid-feedback">
+                            {% for error in form.ogp_image_file.errors %}{{ error }}{% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-4">
+                {% if category.ogp_image %}
+                    <div class="mb-3">
+                        <p>現在のOGP画像:</p>
+                        <img id="currentOgpImage" src="{{ url_for('static', filename=category.ogp_image) }}?t={{ range(1, 100000) | random }}" alt="現在のOGP画像" class="img-thumbnail" style="max-width: 100%; height: auto;">
+                        <p><small>{{ category.ogp_image }}</small></p>
+                    </div>
+                {% endif %}
+                <div class="mb-3" id="imagePreviewContainer" style="display: none;">
+                    <p>プレビュー:</p>
+                    <img id="imagePreview" src="#" alt="画像プレビュー" class="img-fluid" style="max-height: 300px;">
+                    <button type="button" id="cropButton" class="btn btn-sm btn-info mt-2" style="display: none;">トリミング適用</button>
+                </div>
+                <div class="mb-3" id="croppedPreviewContainer" style="display: none;">
+                    <p>トリミング後のプレビュー:</p>
+                    <img id="croppedPreviewImage" src="#" alt="トリミング後の画像プレビュー" class="img-fluid" style="max-height: 300px; display: none;">
+                </div>
+            </div>
+        </div>
+
+        {{ form.ogp_crop_x() }}
+        {{ form.ogp_crop_y() }}
+        {{ form.ogp_crop_width() }}
+        {{ form.ogp_crop_height() }}
+        {{ form.ogp_crop_rotate() }}
+        {{ form.ogp_crop_scaleX() }}
+        {{ form.ogp_crop_scaleY() }}
+
+        <hr>
+        <div class="mb-3">
+            <label for="meta_title" class="form-label">{{ form.meta_title.label }}</label>
+            {{ form.meta_title(class="form-control" + (" is-invalid" if form.meta_title.errors else "")) }}
+            {% if form.meta_title.errors %}
+                <div class="invalid-feedback">
+                    {% for error in form.meta_title.errors %}{{ error }}{% endfor %}
+                </div>
+            {% endif %}
+        </div>
+        <div class="mb-3">
+            <label for="meta_keywords" class="form-label">{{ form.meta_keywords.label }}</label>
+            {{ form.meta_keywords(class="form-control" + (" is-invalid" if form.meta_keywords.errors else "")) }}
+            {% if form.meta_keywords.errors %}
+                <div class="invalid-feedback">
+                    {% for error in form.meta_keywords.errors %}{{ error }}{% endfor %}
+                </div>
+            {% endif %}
+        </div>
+        <div class="mb-3">
+            <label for="canonical_url" class="form-label">{{ form.canonical_url.label }}</label>
+            {{ form.canonical_url(class="form-control" + (" is-invalid" if form.canonical_url.errors else "")) }}
+            {% if form.canonical_url.errors %}
+                <div class="invalid-feedback">
+                    {% for error in form.canonical_url.errors %}{{ error }}{% endfor %}
+                </div>
+            {% endif %}
+        </div>
+        <div class="mb-3">
+            <label for="json_ld" class="form-label">{{ form.json_ld.label }}</label>
+            {{ form.json_ld(class="form-control" + (" is-invalid" if form.json_ld.errors else "")) }}
+            {% if form.json_ld.errors %}
+                <div class="invalid-feedback">
+                    {% for error in form.json_ld.errors %}{{ error }}{% endfor %}
+                </div>
+            {% endif %}
+        </div>
+        <div class="mb-3">
+            <label for="ext_json" class="form-label">{{ form.ext_json.label }}</label>
+            {{ form.ext_json(class="form-control" + (" is-invalid" if form.ext_json.errors else "")) }}
+            {% if form.ext_json.errors %}
+                <div class="invalid-feedback">
+                    {% for error in form.ext_json.errors %}{{ error }}{% endfor %}
+                </div>
+            {% endif %}
+        </div>
+
+        <button type="submit" class="btn btn-primary">更新</button>
+        <a href="{{ url_for('admin.categories') }}" class="btn btn-secondary">キャンセル</a>
+    </form>
 </div>
-
-{% include "_flash_messages.html" %}
-
-<form method="POST" action="{{ url_for('admin.edit_category', category_id=category.id) }}" enctype="multipart/form-data">
-    <div class="form-group">
-        <label for="name">カテゴリ名</label>
-        <input type="text" class="form-control" id="name" name="name" value="{{ request.form.name or category.name }}" required>
-    </div>
-    <div class="form-group">
-        <label for="slug">スラッグ</label>
-        <input type="text" class="form-control" id="slug" name="slug" value="{{ request.form.slug or category.slug }}" required>
-        <small class="form-text text-muted">URLに使用される半角英数字とハイフン（-）の文字列です。</small>
-    </div>
-    <div class="form-group">
-        <label for="description">説明（任意）</label>
-        <textarea class="form-control" id="description" name="description" rows="3">{{ request.form.description or category.description }}</textarea>
-    </div>
-    <div class="form-group">
-        <label for="parent_id">親カテゴリ（任意）</label>
-        <select class="form-control" id="parent_id" name="parent_id">
-            <option value="">なし</option>
-            {% for cat_opt in parent_categories %}
-            <option value="{{ cat_opt.id }}" 
-                    {% if request.form.parent_id == cat_opt.id|string %}selected
-                    {% elif not request.form.parent_id and category.parent_id == cat_opt.id %}selected
-                    {% endif %}>
-                {{ cat_opt.name }}
-            </option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="form-group">
-        <label for="ogp_image">OGP画像URL (任意)</label>
-        <input type="text" class="form-control" id="ogp_image" name="ogp_image" value="{{ request.form.ogp_image or category.ogp_image }}">
-        <small class="form-text text-muted">例: /static/images/category_ogp/python.jpg や https://example.com/image.jpg</small>
-    </div>
-    <div class="form-group">
-        <label for="ogp_image_file">OGP画像 (推奨アスペクト比 1.91:1)</label>
-        <input type="file" class="form-control-file" id="ogp_image_file" name="ogp_image_file" accept="image/jpeg, image/png, image/gif">
-        <small class="form-text text-muted">新しい画像をアップロードすると、既存のOGP画像は上書きされます。</small>
-        
-        {% if category.ogp_image and not request.files.get('ogp_image_file') %}
-        <div class="mt-2" id="current_ogp_image_display">
-            <p>現在のOGP画像:</p>
-            <img src="{{ url_for('static', filename=category.ogp_image) }}" alt="現在のOGP画像" style="max-width: 200px; max-height: 200px;">
-        </div>
-        {% endif %}
-
-        <div class="mt-2" id="ogp_image_preview_container" style="display: none; max-width: 500px; margin-bottom: 10px;">
-            <img id="ogp_image_to_crop" src="#" alt="プレビュー" style="max-width: 100%;">
-        </div>
-
-        <button type="button" class="btn btn-info btn-sm mb-2" id="show_crop_preview_button" style="display: none;">トリミング結果をプレビュー</button>
-        <div id="cropped_image_preview_area" class="mt-2" style="display: none;">
-            <p>トリミング後プレビュー:</p>
-            <img id="cropped_image_preview" src="#" alt="トリミング後プレビュー" style="max-width: 300px; border: 1px solid #ccc;">
-        </div>
-    </div>
-
-    <input type="hidden" name="ogp_crop_x" id="ogp_crop_x">
-    <input type="hidden" name="ogp_crop_y" id="ogp_crop_y">
-    <input type="hidden" name="ogp_crop_width" id="ogp_crop_width">
-    <input type="hidden" name="ogp_crop_height" id="ogp_crop_height">
-    <input type="hidden" name="ogp_crop_rotate" id="ogp_crop_rotate">
-    <input type="hidden" name="ogp_crop_scaleX" id="ogp_crop_scaleX">
-    <input type="hidden" name="ogp_crop_scaleY" id="ogp_crop_scaleY">
-
-    <div class="form-group">
-        <label for="meta_keywords">メタキーワード (任意, カンマ区切り)</label>
-        <input type="text" class="form-control" id="meta_keywords" name="meta_keywords" value="{{ request.form.meta_keywords or category.meta_keywords }}">
-        <small class="form-text text-muted">例: Python,プログラミング,入門</small>
-    </div>
-    <div class="form-group">
-        <label for="canonical_url">正規URL (任意)</label>
-        <input type="url" class="form-control" id="canonical_url" name="canonical_url" value="{{ request.form.canonical_url or category.canonical_url }}">
-        <small class="form-text text-muted">このカテゴリページの正式なURL。通常は自動生成されるため、特別な場合に指定します。</small>
-    </div>
-    <div class="form-group">
-        <label for="json_ld">JSON-LD 構造化データ (任意)</label>
-        <textarea class="form-control" id="json_ld" name="json_ld" rows="5">{{ request.form.json_ld or category.json_ld }}</textarea>
-        <small class="form-text text-muted">SEOのための構造化データをJSON-LD形式で記述します。</small>
-    </div>
-    <div class="form-group">
-        <label for="ext_json">拡張JSONデータ (任意)</label>
-        <textarea class="form-control" id="ext_json" name="ext_json" rows="3">{{ request.form.ext_json or category.ext_json }}</textarea>
-        <small class="form-text text-muted">追加のカスタムデータをJSON形式で保存します。</small>
-    </div>
-    <button type="submit" class="btn btn-primary">更新</button>
-    <a href="{{ url_for('admin.categories') }}" class="btn btn-secondary">キャンセル</a>
-</form>
 {% endblock %}
 
 {% block scripts_extra %}
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const imageInput = document.getElementById('ogp_image_file');
-    const imageToCrop = document.getElementById('ogp_image_to_crop');
-    const previewContainer = document.getElementById('ogp_image_preview_container');
-    const showCropPreviewButton = document.getElementById('show_crop_preview_button');
-    const croppedImagePreviewArea = document.getElementById('cropped_image_preview_area');
-    const croppedImagePreview = document.getElementById('cropped_image_preview');
-    const currentOgpImageDisplay = document.getElementById('current_ogp_image_display'); // 修正
-    let cropper; // cropperインスタンスを保持する変数
+    {{ super() }}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js" integrity="sha512-9KkIqdfN7ipEW6B6k+Aq20PV31bjODg4AA52W+tYtAE0jE0kMx49bjJ3FgvS56wzmyfMUHbQ4Km2b7l9+Y/+Eg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script>
+        const imageInput = document.getElementById('ogp_image_file'); // フォームのFileFieldのIDに合わせる
+        const imagePreview = document.getElementById('imagePreview');
+        const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+        const cropButton = document.getElementById('cropButton');
+        const croppedPreviewImage = document.getElementById('croppedPreviewImage');
+        const croppedPreviewContainer = document.getElementById('croppedPreviewContainer');
+        let cropper;
 
-    // トリミングデータを格納する隠しフィールドの参照
-    const cropX = document.getElementById('ogp_crop_x');
-    const cropY = document.getElementById('ogp_crop_y');
-    const cropWidth = document.getElementById('ogp_crop_width');
-    const cropHeight = document.getElementById('ogp_crop_height');
-    const cropRotate = document.getElementById('ogp_crop_rotate');
-    const cropScaleX = document.getElementById('ogp_crop_scaleX');
-    const cropScaleY = document.getElementById('ogp_crop_scaleY');
+        // Hidden fields for crop data
+        const cropXField = document.getElementById('ogp_crop_x');
+        const cropYField = document.getElementById('ogp_crop_y');
+        const cropWidthField = document.getElementById('ogp_crop_width');
+        const cropHeightField = document.getElementById('ogp_crop_height');
+        // 必要であれば rotate, scaleX, scaleY も同様に
+        // const cropRotateField = document.getElementById('ogp_crop_rotate');
+        // const cropScaleXField = document.getElementById('ogp_crop_scaleX');
+        // const cropScaleYField = document.getElementById('ogp_crop_scaleY');
 
-    imageInput.addEventListener('change', function (event) {
-        const files = event.target.files;
-        if (files && files.length > 0) {
-            const file = files[0];
-            // FileReaderを使って画像データを読み込む
+
+        function previewImage(event) { // ★★★ previewImage 関数を定義 ★★★
             const reader = new FileReader();
-            reader.onload = function (e) {
-                console.log('FileReader onload triggered'); // ★追加
-                imageToCrop.src = e.target.result;
-                previewContainer.style.display = 'block';
-                console.log('Image src set, preview container displayed'); // ★追加
-                console.log('Image width:', imageToCrop.width, 'Image height:', imageToCrop.height); // ★追加 (レンダリング後でないと0かも)
+            reader.onload = function(){
+                imagePreview.src = reader.result;
+                imagePreviewContainer.style.display = 'block';
+                cropButton.style.display = 'inline-block';
 
-                if (currentOgpImageDisplay) { // 修正
-                    currentOgpImageDisplay.style.display = 'none'; // 新しい画像選択時は現在の画像を非表示
-                }
-
-                // 既存のcropperインスタンスがあれば破棄
                 if (cropper) {
                     cropper.destroy();
                 }
-
-                console.log('Initializing Cropper...'); // ★追加
-                cropper = new Cropper(imageToCrop, {
-                    aspectRatio: 1200 / 630, // OGP推奨アスペクト比 (幅1200px 高さ630px)
-                    viewMode: 1,          // トリミング枠を画像内に制限
-                    autoCropArea: 0.9,    // 初期トリミングエリアのサイズ (画像の90%)
-                    responsive: true,     // ウィンドウリサイズ時にリサイズ
-                    checkCrossOrigin: false, // ローカルファイルの場合に必要になることがある
-                    ready: function () { // Cropper.jsが準備完了したときのイベント
-                        console.log('Cropper is ready.'); // ★追加
-                        showCropPreviewButton.style.display = 'inline-block'; // Cropper準備完了でプレビューボタン表示
-                        croppedImagePreviewArea.style.display = 'none'; // 既存のプレビューは隠す
-                    },
+                cropper = new Cropper(imagePreview, {
+                    aspectRatio: 1200 / 630, // OGP画像の推奨アスペクト比 (例)
+                    viewMode: 1, // 0, 1, 2, 3
+                    zoomOnWheel: false, // ★★★ マウスホイールズームを無効化 ★★★
                     crop: function(event) {
-                        // トリミングデータを隠しフィールドに設定 (整数に丸める)
-                        cropX.value = Math.round(event.detail.x);
-                        cropY.value = Math.round(event.detail.y);
-                        cropWidth.value = Math.round(event.detail.width);
-                        cropHeight.value = Math.round(event.detail.height);
-                        cropRotate.value = Math.round(event.detail.rotate); // rotateも必要なら
-                        cropScaleX.value = event.detail.scaleX; // scaleも必要なら
-                        cropScaleY.value = event.detail.scaleY;
+                        if (cropXField) cropXField.value = Math.round(event.detail.x);
+                        if (cropYField) cropYField.value = Math.round(event.detail.y);
+                        if (cropWidthField) cropWidthField.value = Math.round(event.detail.width);
+                        if (cropHeightField) cropHeightField.value = Math.round(event.detail.height);
                     }
                 });
-                console.log('Cropper instance:', cropper); // ★追加
             };
-            reader.readAsDataURL(file); // ファイルをData URLとして読み込む
-        } else {
-            // ファイルが選択されなかった場合
-            previewContainer.style.display = 'none';
-            showCropPreviewButton.style.display = 'none';
-            croppedImagePreviewArea.style.display = 'none';
-            if (currentOgpImageDisplay) { // 修正
-                currentOgpImageDisplay.style.display = 'block'; // ファイル選択解除時は現在の画像を表示（もしあれば）
+            if (event.target.files[0]) {
+                reader.readAsDataURL(event.target.files[0]);
             }
-            if (cropper) {
-                cropper.destroy();
-                cropper = null;
-            }
-            // 隠しフィールドをクリア
-            cropX.value = '';
-            cropY.value = '';
-            cropWidth.value = '';
-            cropHeight.value = '';
-            cropRotate.value = '';
-            cropScaleX.value = '';
-            cropScaleY.value = '';
         }
-    });
 
-    showCropPreviewButton.addEventListener('click', function () {
-        if (cropper) {
-            const croppedCanvas = cropper.getCroppedCanvas({
-                fillColor: '#fff', // 背景色（透過PNGの場合など）
-                imageSmoothingEnabled: true,
-                imageSmoothingQuality: 'high',
+        if (imageInput) { // imageInput が存在する場合のみリスナーを設定
+            imageInput.addEventListener('change', previewImage);
+        }
+
+
+        if (cropButton) {
+            cropButton.addEventListener('click', function() {
+                if (cropper) {
+                    // トリミングされた画像データを取得 (Canvasとして)
+                    const canvas = cropper.getCroppedCanvas({
+                        width: 1200, // 目標の幅
+                        height: 630  // 目標の高さ
+                    });
+                    // 例えば、id="croppedPreviewImage" というimgタグに表示
+                    if (croppedPreviewImage) {
+                        croppedPreviewImage.src = canvas.toDataURL();
+                        croppedPreviewImage.style.display = 'block';
+                        croppedPreviewContainer.style.display = 'block';
+                    }
+                    alert('トリミング後のプレビューを表示しました。フォームを送信してください。');
+                }
             });
-
-            if (croppedCanvas) {
-                croppedImagePreview.src = croppedCanvas.toDataURL('image/png'); // または 'image/jpeg'
-                croppedImagePreviewArea.style.display = 'block';
-            } else {
-                alert('トリミング範囲が正しく選択されていません。');
-                croppedImagePreviewArea.style.display = 'none';
-            }
-        } else {
-            alert('まず画像を選択し、トリミング範囲を指定してください。');
         }
-    });
-
-    // (オプション) フォーム送信時に最終的なトリミングデータを取得して設定する
-    // document.querySelector('form').addEventListener('submit', function(event) {
-    //     if (cropper) {
-    //         const data = cropper.getData(true); // trueで丸められた整数値を取得
-    //         cropX.value = data.x;
-    //         cropY.value = data.y;
-    //         cropWidth.value = data.width;
-    //         cropHeight.value = data.height;
-    //         // 必要であればrotate, scaleX, scaleYも設定
-    //     }
-    //     // もしトリミングが必須で、トリミングデータがない場合に送信を止める場合はここでバリデーション
-    //     // if (!cropWidth.value || !cropHeight.value) {
-    //     //     alert('画像をトリミングしてください。');
-    //     //     event.preventDefault();
-    //     // }
-    // });
-});
-</script>
+    </script>
 {% endblock %}

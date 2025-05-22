@@ -5,6 +5,8 @@ from werkzeug.utils import secure_filename
 from datetime import datetime
 import os
 from PIL import Image
+import time
+from forms import CategoryForm # CategoryFormをインポート
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -210,81 +212,141 @@ def create_category():
 @admin_required
 def edit_category(category_id):
     category = Category.query.get_or_404(category_id)
-    if request.method == 'POST':
-        name = request.form.get('name')
-        slug = request.form.get('slug')
-        description = request.form.get('description')
-        parent_id = request.form.get('parent_id')
-        # --- 追加フィールドの取得 ---
-        ogp_image = request.form.get('ogp_image')
-        meta_keywords = request.form.get('meta_keywords')
-        canonical_url = request.form.get('canonical_url')
-        json_ld = request.form.get('json_ld')
-        ext_json = request.form.get('ext_json')
-        # --- ここまで ---
+    form = CategoryForm(obj=category)
+    print(f"--- Request method: {request.method} ---")
+    print(f"--- Initial category.ogp_image: {category.ogp_image} ---")
 
-        category.name = request.form.get('name')
-        category.slug = request.form.get('slug')
+    if request.method == 'POST': # validate_on_submit の前にPOSTかどうか確認
+        print("--- POST request received ---")
+        print(f"--- form.ogp_image_file.data: {form.ogp_image_file.data} ---")
+        print(f"--- form.ogp_crop_x.data: {form.ogp_crop_x.data} ---")
+        # 他のトリミングデータも同様にprint
 
-        # OGP画像の処理
-        if 'ogp_image_file' in request.files:
-            file = request.files['ogp_image_file']
-            if file and file.filename != '' and allowed_file(file.filename):
+        if form.validate_on_submit():
+            print("--- Form IS valid ---")
+            ogp_image_file = form.ogp_image_file.data
+            old_ogp_image_path = category.ogp_image # 更新前のOGP画像パスを保持
+
+            if ogp_image_file:
+                current_app.logger.debug(f"New OGP image file provided: {ogp_image_file.filename}")
                 try:
-                    img = Image.open(file.stream)
+                    timestamp = int(time.time())
+                    filename_base, file_ext = os.path.splitext(secure_filename(ogp_image_file.filename))
+                    new_ogp_filename = f"category_ogp_{category.id}_{timestamp}{file_ext}"
+                    current_app.logger.debug(f"Generated new OGP filename: {new_ogp_filename}")
                     
-                    # フロントエンドから送られてくるトリミング座標を取得
-                    crop_x = request.form.get('ogp_crop_x')
-                    crop_y = request.form.get('ogp_crop_y')
-                    crop_width = request.form.get('ogp_crop_width')
-                    crop_height = request.form.get('ogp_crop_height')
+                    upload_folder = current_app.config['CATEGORY_OGP_UPLOAD_FOLDER'] # ★★★ 修正後 ★★★
+                    current_app.logger.debug(f"Upload folder from config: {upload_folder}")
 
-                    if crop_x and crop_y and crop_width and crop_height:
-                        x = int(float(crop_x))
-                        y = int(float(crop_y))
-                        width = int(float(crop_width))
-                        height = int(float(crop_height))
 
-                        cropped_img = img.crop((x, y, x + width, y + height))
+                    if not os.path.exists(upload_folder):
+                        os.makedirs(upload_folder)
+                        current_app.logger.info(f"Created upload folder: {upload_folder}")
+                    ogp_image_save_path = os.path.join(upload_folder, new_ogp_filename)
+                    current_app.logger.debug(f"OGP image save path: {ogp_image_save_path}")
+
+                    temp_image_path = os.path.join(upload_folder, f"temp_{new_ogp_filename}")
+                    ogp_image_file.save(temp_image_path)
+
+                    img = Image.open(temp_image_path)
+
+                    try:
+                        crop_x_str = form.ogp_crop_x.data
+                        crop_y_str = form.ogp_crop_y.data
+                        crop_width_str = form.ogp_crop_width.data
+                        crop_height_str = form.ogp_crop_height.data
+                        current_app.logger.debug(f"Crop data strings from form: x='{crop_x_str}', y='{crop_y_str}', width='{crop_width_str}', height='{crop_height_str}'")
+
+                        # 文字列から整数への変換を試みる
+                        crop_x = int(crop_x_str) if crop_x_str else None
+                        crop_y = int(crop_y_str) if crop_y_str else None
+                        crop_width = int(crop_width_str) if crop_width_str else None
+                        crop_height = int(crop_height_str) if crop_height_str else None
+
+                    except (ValueError, TypeError) as e:
+                        current_app.logger.warning(f"Could not convert crop data to int: {e}. Setting to None.")
+                        crop_x, crop_y, crop_width, crop_height = None, None, None, None
+
+                    current_app.logger.debug(f"Converted crop data: x={type(crop_x).__name__}:{crop_x}, y={type(crop_y).__name__}:{crop_y}, width={type(crop_width).__name__}:{crop_width}, height={type(crop_height).__name__}:{crop_height}")
+
+                    if crop_x is not None and crop_y is not None and \
+                        crop_width is not None and crop_height is not None and \
+                        crop_width > 0 and crop_height > 0:
+                        current_app.logger.debug("Applying crop to image.")
+                        # Pillow の crop メソッドは (left, upper, right, lower) のタプルを期待する
+                        cropped_img = img.crop((crop_x, crop_y, crop_x + crop_width, crop_y + crop_height))
+                        
+                        # --- ★★★ クロップした画像をリサイズ ★★★ ---
+                        target_width = 1200
+                        target_height = 630
+                        current_app.logger.debug(f"Resizing cropped image to {target_width}x{target_height}")
+                        resized_img = cropped_img.resize((target_width, target_height), Image.Resampling.LANCZOS) # 高画質なリサイズ方法
+                        # --- ★★★ ここまで追加 ★★★ ---
+
+                        resized_img.save(ogp_image_save_path) # リサイズされた画像を保存
+                        category.ogp_image = os.path.join('uploads/category_ogp', new_ogp_filename).replace("\\", "/")
                     else:
-                        cropped_img = img
+                        current_app.logger.warning(f"Crop conditions not met or data invalid after conversion. Saving original image. Crop data: x={crop_x}, y={crop_y}, w={crop_width}, h={crop_height}")
+                        # トリミング条件を満たさない場合、オリジナル画像をリサイズするかどうかを検討
+                        # もしオリジナル画像も特定のサイズにしたい場合は、ここでもリサイズ処理を入れる
+                        # 例: target_width = 1200
+                        #     target_height = 630
+                        #     resized_original_img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                        #     resized_original_img.save(ogp_image_save_path)
+                        # 現状はオリジナルをそのまま保存
+                        img.save(ogp_image_save_path)
+                        category.ogp_image = os.path.join('uploads/category_ogp', new_ogp_filename).replace("\\", "/")
 
-                    original_filename = secure_filename(file.filename)
-                    extension = original_filename.rsplit('.', 1)[1].lower()
-                    filename = f"category_ogp_{category.id}_{int(datetime.utcnow().timestamp())}.{extension}"
-                    
-                    upload_path = current_app.config['CATEGORY_OGP_UPLOAD_FOLDER']
-                    os.makedirs(upload_path, exist_ok=True)
-                    
-                    save_path = os.path.join(upload_path, filename)
-                    
-                    if extension == 'jpg' or extension == 'jpeg':
-                        cropped_img.save(save_path, 'JPEG', quality=85)
-                    elif extension == 'png':
-                        cropped_img.save(save_path, 'PNG', optimize=True)
-                    else:
-                        cropped_img.save(save_path)
+                    if os.path.exists(temp_image_path):
+                        os.remove(temp_image_path)
 
-                    category.ogp_image = os.path.join('uploads', 'category_ogp', filename).replace('\\', '/')
-                    flash('OGP画像が更新されました。', 'success')
-
+                    if old_ogp_image_path and old_ogp_image_path != category.ogp_image:
+                        try:
+                            full_old_path = os.path.join(current_app.static_folder, old_ogp_image_path)
+                            if os.path.exists(full_old_path):
+                                os.remove(full_old_path)
+                                flash(f'古いOGP画像 {old_ogp_image_path} を削除しました。', 'info')
+                        except Exception as e:
+                            current_app.logger.error(f"古いOGP画像の削除に失敗: {e}")
+                            flash(f'古いOGP画像の削除に失敗しました: {old_ogp_image_path}', 'warning')
+                
                 except Exception as e:
-                    flash(f'OGP画像の処理中にエラーが発生しました: {e}', 'danger')
-                    current_app.logger.error(f"OGP image processing error for category {category.id}: {e}")
+                    current_app.logger.error(f"OGP画像のアップロードまたは処理に失敗: {e}")
+                    flash('OGP画像のアップロードまたは処理中にエラーが発生しました。', 'danger')
+            
+            category.name = form.name.data
+            category.slug = form.slug.data
+            category.meta_title = form.meta_title.data
+            category.meta_description = form.meta_description.data
+            category.meta_keywords = form.meta_keywords.data
+            category.canonical_url = form.canonical_url.data
+            category.json_ld = form.json_ld.data
+            category.ext_json = form.ext_json.data
+            
+            try:
+                db.session.commit()
+                flash('カテゴリが正常に更新されました。', 'success')
+                return redirect(url_for('admin.categories'))
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.error(f"カテゴリ更新時のデータベースコミット失敗: {e}")
+                flash('カテゴリの更新中にエラーが発生しました。', 'danger')
+        else:
+            print("--- Form IS NOT valid ---")
+            print(f"--- Form errors: {form.errors} ---") # ★重要: バリデーションエラー内容を確認
 
-            elif file and file.filename != '' and not allowed_file(file.filename):
-                flash('許可されていないファイル形式です。', 'danger')
-        
-        try:
-            db.session.commit()
-            return redirect(url_for('admin.categories'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f'カテゴリ更新中にエラーが発生しました: {e}', 'danger')
-            current_app.logger.error(f"Category update error for category {category.id}: {e}")
+    elif request.method == 'GET':
+        form.name.data = category.name
+        form.slug.data = category.slug
+        form.meta_title.data = form.meta_title.data
+        form.meta_description.data = form.meta_description.data
+        form.meta_keywords.data = form.meta_keywords.data
+        form.canonical_url.data = form.canonical_url.data
+        form.json_ld.data = form.json_ld.data
+        form.ext_json.data = form.ext_json.data
 
-    parent_categories = Category.query.filter(Category.id != category_id).order_by(Category.name).all()
-    return render_template('admin/edit_category.html', category=category, parent_categories=parent_categories)
+    print(f"--- Rendering template with category.ogp_image: {category.ogp_image} ---")
+    return render_template('admin/edit_category.html', form=form, category=category)
 
 @admin_bp.route('/category/delete/<int:category_id>/', methods=['POST']) # 安全のためPOST推奨
 @admin_required

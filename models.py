@@ -31,11 +31,12 @@ class Article(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Article から Category へのリレーションシップ
     categories = db.relationship(
-        'Category', 
+        'Category',
         secondary=article_categories,
-        lazy='dynamic', 
-        backref=db.backref('articles', lazy='dynamic') 
+        lazy='dynamic',
+        back_populates='articles'  # ★ 変更: Category.articles と紐づける
     )
 
 class Category(db.Model):
@@ -45,20 +46,26 @@ class Category(db.Model):
     slug = db.Column(db.String(100), nullable=False, unique=True)
     description = db.Column(db.Text, nullable=True)
     parent_id = db.Column(db.Integer, db.ForeignKey('categories.id'), nullable=True)
-    
-    # --- 追加フィールド ---
-    ogp_image = db.Column(db.String(255), nullable=True)      # OGP画像のパス
-    meta_keywords = db.Column(db.String(255), nullable=True)  # メタキーワード (カンマ区切りなど)
-    canonical_url = db.Column(db.String(255), nullable=True) # 正規URL
-    json_ld = db.Column(db.Text, nullable=True)               # JSON-LD 構造化データ
-    ext_json = db.Column(db.Text, nullable=True)              # 拡張用JSONデータ (用途に応じて)
-    # --- ここまで追加フィールド ---
-    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    parent = db.relationship('Category', remote_side=[id], backref='children', lazy=True)
-    # 'articles' リレーションシップは Article モデルの backref で定義済み
+    meta_title = db.Column(db.String(255), nullable=True)
+    meta_description = db.Column(db.Text, nullable=True)
+    meta_keywords = db.Column(db.String(255), nullable=True)
+    ogp_image = db.Column(db.String(255), nullable=True)
+    canonical_url = db.Column(db.String(255), nullable=True)
+    json_ld = db.Column(db.Text, nullable=True)
+    ext_json = db.Column(db.Text, nullable=True)
+
+    parent = db.relationship('Category', remote_side=[id], backref=db.backref('children', lazy='dynamic'))
+
+    # Category から Article へのリレーションシップ
+    articles = db.relationship(
+        'Article',
+        secondary=article_categories,
+        lazy='dynamic',
+        back_populates='categories' # ★ 変更: Article.categories と紐づける
+    )
 
     def __repr__(self):
         return f'<Category {self.name}>'

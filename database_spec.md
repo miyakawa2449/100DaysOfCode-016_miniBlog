@@ -60,27 +60,6 @@
 
 ---
 
-## `categories` table
-
-| Column Name     | Data Type        | Constraints              | Description                               |
-|-----------------|------------------|--------------------------|-------------------------------------------|
-| id              | INTEGER          | PRIMARY KEY, AUTOINCREMENT | カテゴリID                               |
-| name            | VARCHAR(100)     | NOT NULL, UNIQUE         | カテゴリ名                               |
-| slug            | VARCHAR(100)     | NOT NULL, UNIQUE         | スラッグ                                 |
-| description     | TEXT             |                          | カテゴリの説明                             |
-| parent_id       | INTEGER          | FOREIGN KEY (categories.id) | 親カテゴリID (自己参照)                  |
-| created_at      | DATETIME         | NOT NULL, DEFAULT CURRENT_TIMESTAMP | 作成日時                               |
-| updated_at      | DATETIME         | NOT NULL, DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | 更新日時                               |
-| meta_title      | VARCHAR(255)     |                          | SEO用メタタイトル                         |
-| meta_description| TEXT             |                          | SEO用メタディスクリプション                   |
-| meta_keywords   | VARCHAR(255)     |                          | SEO用メタキーワード                       |
-| **ogp_image**   | **VARCHAR(255)** |                          | **OGP画像のパス**                         |
-| canonical_url   | VARCHAR(255)     |                          | Canonical URL                             |
-| json_ld         | TEXT             |                          | JSON-LD構造化データ                       |
-| ext_json        | TEXT             |                          | 拡張JSONデータ                            |
-
----
-
 ## article_categories（記事-カテゴリ多対多）
 
 | カラム名         | 日本語名           | 型           | 制約・備考                  |
@@ -132,5 +111,30 @@
 - categories（親子関係：parent_idで自己参照）
 - articles 1 --- * comments
 - users 1 --- * comments
+
+---
+
+## 2. テーブル定義
+
+### 2.3. Category (カテゴリ) テーブル
+
+カテゴリ情報を格納するテーブル。
+
+| カラム名             | データ型        | 説明                                                                 | 制約                       | 備考                                                                 |
+|----------------------|-----------------|----------------------------------------------------------------------|----------------------------|----------------------------------------------------------------------|
+| `id`                 | INTEGER         | カテゴリID                                                             | PRIMARY KEY, AUTOINCREMENT |                                                                      |
+| `name`               | VARCHAR(100)    | カテゴリ名                                                             | NOT NULL, UNIQUE           |                                                                      |
+| `slug`               | VARCHAR(100)    | スラッグ (URL用)                                                       | NOT NULL, UNIQUE           |                                                                      |
+| `description`        | TEXT            | カテゴリの説明                                                         |                            |                                                                      |
+| `parent_id`          | INTEGER         | 親カテゴリID (自己参照)                                                | FOREIGN KEY (`Category.id`) | NULL許容 (トップレベルカテゴリの場合)                                    |
+| `created_at`         | DATETIME        | 作成日時                                                               | NOT NULL                   | DEFAULT CURRENT_TIMESTAMP                                            |
+| `updated_at`         | DATETIME        | 更新日時                                                               | NOT NULL                   | DEFAULT CURRENT_TIMESTAMP, ON UPDATE CURRENT_TIMESTAMP                 |
+| `meta_title`         | VARCHAR(255)    | SEO用メタタイトル                                                      |                            | NULL許容                                                               |
+| `meta_description`   | TEXT            | SEO用メタディスクリプション                                              |                            | NULL許容                                                               |
+| `meta_keywords`      | VARCHAR(255)    | SEO用メタキーワード (カンマ区切り)                                       |                            | NULL許容                                                               |
+| `ogp_image`          | VARCHAR(255)    | OGP画像のファイルパス                                                    |                            | NULL許容。例: `uploads/category_ogp/category_ogp_1_timestamp.jpg`    |
+| `canonical_url`      | VARCHAR(255)    | 正規URL                                                                |                            | NULL許容                                                               |
+| `json_ld`            | TEXT            | JSON-LD形式の構造化データ                                                |                            | NULL許容                                                               |
+| `ext_json`           | TEXT            | 外部連携用JSONデータ (汎用)                                            |                            | NULL許容                                                               |
 
 ---
