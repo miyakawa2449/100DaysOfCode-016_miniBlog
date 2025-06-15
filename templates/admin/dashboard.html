@@ -1,149 +1,292 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理ダッシュボード</title>
-    <!-- Bootstrap CSS -->
-    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { padding-top: 5rem; } /* Navbarの高さを考慮 */
-        .sidebar {
-            position: fixed;
-            top: 0;
-            bottom: 0;
-            left: 0;
-            z-index: 100; /* Behind the navbar */
-            padding: 48px 0 0; /* Height of navbar */
-            box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
-        }
-        .sidebar-sticky {
-            position: relative;
-            top: 0;
-            height: calc(100vh - 48px);
-            padding-top: .5rem;
-            overflow-x: hidden;
-            overflow-y: auto; /* Scrollable contents if viewport is shorter than content. */
-        }
-        .nav-link { padding: .5rem 1rem; }
-        .main-content { margin-left: 220px; /* Same as sidebar width */ padding: 20px; }
-    </style>
-</head>
-<body>
-    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
-        <a class="navbar-brand" href="{{ url_for('admin.dashboard') }}">管理ダッシュボード</a>
-        <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarsExampleDefault">
-            <ul class="navbar-nav ml-auto">
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('logout') }}">ログアウト</a>
-                </li>
-            </ul>
+{% extends "admin/layout.html" %}
+
+{% block title %}ダッシュボード{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">📊 ダッシュボード</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+                🔄 更新
+            </button>
         </div>
-    </nav>
+        <button type="button" class="btn btn-sm btn-primary" onclick="window.open('{{ url_for('home') }}', '_blank')">
+            🌐 サイトを表示
+        </button>
+    </div>
+</div>
 
-    <div class="container-fluid">
-        <div class="row">
-            <nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse">
-                <div class="sidebar-sticky pt-3">
-                    <ul class="nav flex-column">
-                        <li class="nav-item">
-                            <a class="nav-link active" href="{{ url_for('admin.dashboard') }}">
-                                ダッシュボード <span class="sr-only">(current)</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('admin.users') }}">
-                                ユーザ管理
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('admin.articles') }}">
-                                記事管理
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('admin.categories') }}">
-                                カテゴリ管理
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('admin.comments') }}">
-                                コメント管理
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('admin.site_settings') }}">
-                                サイト管理
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </nav>
-
-            <main role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4 main-content">
-                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                    <h1 class="h2">ダッシュボード</h1>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <div class="card">
-                            <div class="card-header">
-                                統計情報
-                            </div>
-                            <ul class="list-group list-group-flush">
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    ユーザ数
-                                    <span class="badge badge-primary badge-pill">{{ user_count }}</span>
-                                </li>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    記事数
-                                    <span class="badge badge-primary badge-pill">{{ article_count }}</span>
-                                </li>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    カテゴリ数
-                                    <span class="badge badge-primary badge-pill">{{ category_count }}</span>
-                                </li>
-                                <li class="list-group-item d-flex justify-content-between align-items-center">
-                                    コメント数
-                                    <span class="badge badge-primary badge-pill">{{ comment_count }}</span>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <div class="card">
-                            <div class="card-header">
-                                最近の投稿
-                            </div>
-                            {% if recent_articles %}
-                                <ul class="list-group list-group-flush">
-                                    {% for article in recent_articles %}
-                                        <li class="list-group-item">
-                                            <a href="{{ url_for('admin.edit_article', article_id=article.id) }}">{{ article.title }}</a>
-                                            <small class="text-muted float-right">{{ article.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
-                                        </li>
-                                    {% endfor %}
-                                </ul>
-                            {% else %}
-                                <div class="card-body">
-                                    <p class="card-text">まだ投稿がありません。</p>
-                                </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-            </main>
+<!-- セキュリティ状態の表示 -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="alert {% if current_user.totp_enabled %}alert-success{% else %}alert-warning{% endif %} d-flex align-items-center" role="alert">
+            <div class="flex-shrink-0">
+                {% if current_user.totp_enabled %}
+                    🛡️
+                {% else %}
+                    ⚠️
+                {% endif %}
+            </div>
+            <div class="flex-grow-1 ms-3">
+                {% if current_user.totp_enabled %}
+                    <strong>セキュリティ: 良好</strong> - 2段階認証が有効です
+                    <a href="{{ url_for('totp_disable') }}" class="btn btn-sm btn-outline-success ms-2">設定変更</a>
+                {% else %}
+                    <strong>セキュリティ: 要改善</strong> - 2段階認証を設定することを強く推奨します
+                    <a href="{{ url_for('totp_setup') }}" class="btn btn-sm btn-warning ms-2">今すぐ設定</a>
+                {% endif %}
+            </div>
         </div>
     </div>
+</div>
 
-    <!-- Optional JavaScript -->
-    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.3/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
-</body>
-</html>
+<!-- 統計カード -->
+<div class="row mb-4">
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card text-bg-primary h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">👥 ユーザー</h5>
+                        <h2 class="mb-0">{{ user_count }}</h2>
+                        <small class="text-light">登録済みユーザー</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-users fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-primary border-0">
+                <a href="{{ url_for('admin.users') }}" class="text-white text-decoration-none">
+                    <small>詳細を見る →</small>
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card text-bg-success h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">📰 記事</h5>
+                        <h2 class="mb-0">{{ article_count }}</h2>
+                        <small class="text-light">公開記事数</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-newspaper fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-success border-0">
+                <a href="{{ url_for('admin.articles') }}" class="text-white text-decoration-none">
+                    <small>管理画面へ →</small>
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card text-bg-info h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">🏷️ カテゴリ</h5>
+                        <h2 class="mb-0">{{ category_count }}</h2>
+                        <small class="text-light">登録カテゴリ</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-tags fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-info border-0">
+                <a href="{{ url_for('admin.categories') }}" class="text-white text-decoration-none">
+                    <small>管理画面へ →</small>
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card text-bg-warning h-100">
+            <div class="card-body text-dark">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">💬 コメント</h5>
+                        <h2 class="mb-0">{{ comment_count }}</h2>
+                        <small>投稿コメント</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-comments fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-warning border-0">
+                <a href="{{ url_for('admin.comments') }}" class="text-dark text-decoration-none">
+                    <small>管理画面へ →</small>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- メインコンテンツエリア -->
+<div class="row">
+    <!-- 最近の記事 -->
+    <div class="col-lg-8 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">📝 最近の記事</h5>
+                <a href="{{ url_for('admin.create_article') }}" class="btn btn-sm btn-primary">
+                    ➕ 新規作成
+                </a>
+            </div>
+            <div class="card-body">
+                {% if recent_articles %}
+                    <div class="list-group list-group-flush">
+                        {% for article in recent_articles %}
+                        <div class="list-group-item border-0 px-0">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1">
+                                        <a href="{{ url_for('admin.edit_article', article_id=article.id) }}" class="text-decoration-none">
+                                            {{ article.title }}
+                                        </a>
+                                    </h6>
+                                    <p class="mb-1 text-muted small">
+                                        {{ article.body[:100] if article.body else '' }}{% if article.body and article.body|length > 100 %}...{% endif %}
+                                    </p>
+                                    <small class="text-muted">
+                                        📅 {{ article.created_at.strftime('%Y-%m-%d %H:%M') }}
+                                        {% if article.category %}
+                                            | 🏷️ {{ article.category.name }}
+                                        {% endif %}
+                                    </small>
+                                </div>
+                                <div class="btn-group btn-group-sm ms-2">
+                                    <a href="{{ url_for('admin.edit_article', article_id=article.id) }}" class="btn btn-outline-primary">
+                                        ✏️
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-pen-fancy fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">まだ記事がありません</p>
+                        <a href="{{ url_for('admin.create_article') }}" class="btn btn-primary">
+                            最初の記事を書く
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- クイックアクション -->
+    <div class="col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0">⚡ クイックアクション</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('admin.create_article') }}" class="btn btn-success">
+                        📝 新しい記事を書く
+                    </a>
+                    <a href="{{ url_for('admin.create_category') }}" class="btn btn-info">
+                        🏷️ カテゴリを追加
+                    </a>
+                    <a href="{{ url_for('admin.users') }}" class="btn btn-primary">
+                        👥 ユーザー管理
+                    </a>
+                    {% if not current_user.totp_enabled %}
+                    <a href="{{ url_for('totp_setup') }}" class="btn btn-warning">
+                        🔐 2段階認証設定
+                    </a>
+                    {% endif %}
+                </div>
+                
+                <hr class="my-3">
+                
+                <h6 class="text-muted mb-2">🔗 外部リンク</h6>
+                <div class="d-grid gap-1">
+                    <a href="{{ url_for('home') }}" target="_blank" class="btn btn-outline-secondary btn-sm">
+                        🌐 サイトを表示
+                    </a>
+                    <button type="button" class="btn btn-outline-info btn-sm" onclick="showSystemInfo()">
+                        ℹ️ システム情報
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- システム情報モーダル -->
+<div class="modal fade" id="systemInfoModal" tabindex="-1" aria-labelledby="systemInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="systemInfoModalLabel">ℹ️ システム情報</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <dl class="row">
+                    <dt class="col-sm-4">現在のユーザー:</dt>
+                    <dd class="col-sm-8">{{ current_user.email }}</dd>
+                    
+                    <dt class="col-sm-4">権限レベル:</dt>
+                    <dd class="col-sm-8">
+                        <span class="badge bg-danger">👑 {{ current_user.role|title }}</span>
+                    </dd>
+                    
+                    <dt class="col-sm-4">2段階認証:</dt>
+                    <dd class="col-sm-8">
+                        {% if current_user.totp_enabled %}
+                            <span class="badge bg-success">✅ 有効</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark">⚠️ 無効</span>
+                        {% endif %}
+                    </dd>
+                    
+                    <dt class="col-sm-4">最終ログイン:</dt>
+                    <dd class="col-sm-8">{{ current_user.last_seen.strftime('%Y-%m-%d %H:%M') if current_user.last_seen else 'N/A' }}</dd>
+                </dl>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">閉じる</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+function showSystemInfo() {
+    new bootstrap.Modal(document.getElementById('systemInfoModal')).show();
+}
+
+// ページ読み込み時の歓迎メッセージ
+document.addEventListener('DOMContentLoaded', function() {
+    const now = new Date();
+    const hour = now.getHours();
+    let greeting;
+    
+    if (hour < 12) {
+        greeting = 'おはようございます';
+    } else if (hour < 18) {
+        greeting = 'こんにちは';
+    } else {
+        greeting = 'こんばんは';
+    }
+    
+    console.log(`${greeting}、{{ current_user.email }}さん！管理画面へようこそ。`);
+});
+</script>
+{% endblock %}

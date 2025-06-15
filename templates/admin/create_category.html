@@ -1,69 +1,467 @@
 {% extends "admin/layout.html" %}
 
-{% block title %}新規カテゴリ作成{% endblock %}
+{% block title %}新規カテゴリ作成 - {{ super() }}{% endblock %}
+
+{% block head_extra %}
+    {{ super() }}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" integrity="sha512-hvNR0F/e2J7zPPfLC9auFe3/SE0yG4aJCOd/qxew74NN7eyiSKjr7xJJMu1Jy2wf7FXITpWS1E/RY8yzuXN7VA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        .preview-container {
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            background-color: #f8f9fa;
+        }
+        .cropper-container {
+            max-height: 400px;
+        }
+        .crop-preview {
+            max-width: 100%;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+    </style>
+{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">新規カテゴリ作成</h1>
+    <h1 class="h2">🏷️ 新規カテゴリ作成</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('admin.categories') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>カテゴリ一覧に戻る
+        </a>
+    </div>
 </div>
 
 {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
         {% for category, message in messages %}
-            <div class="alert alert-{{ category }}">{{ message }}</div>
+            <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
         {% endfor %}
     {% endif %}
 {% endwith %}
 
-<form method="POST" action="{{ url_for('admin.create_category') }}">
-    <div class="form-group">
-        <label for="name">カテゴリ名</label>
-        <input type="text" class="form-control" id="name" name="name" value="{{ request.form.name }}" required>
-    </div>
-    <div class="form-group">
-        <label for="slug">スラッグ</label>
-        <input type="text" class="form-control" id="slug" name="slug" value="{{ request.form.slug }}" required>
-        <small class="form-text text-muted">URLに使用される半角英数字とハイフン（-）の文字列です。</small>
-    </div>
-    <div class="form-group">
-        <label for="description">説明（任意）</label>
-        <textarea class="form-control" id="description" name="description" rows="3">{{ request.form.description }}</textarea>
-    </div>
-    <div class="form-group">
-        <label for="parent_id">親カテゴリ（任意）</label>
-        <select class="form-control" id="parent_id" name="parent_id">
-            <option value="">なし</option>
-            {% for cat in parent_categories %}
-            <option value="{{ cat.id }}" {% if request.form.parent_id == cat.id|string %}selected{% endif %}>{{ cat.name }}</option>
-            {% endfor %}
-        </select>
-    </div>
-    <div class="form-group">
-        <label for="ogp_image">OGP画像URL (任意)</label>
-        <input type="text" class="form-control" id="ogp_image" name="ogp_image" value="{{ request.form.ogp_image }}">
-        <small class="form-text text-muted">例: /static/images/category_ogp/python.jpg や https://example.com/image.jpg</small>
-    </div>
-    <div class="form-group">
-        <label for="meta_keywords">メタキーワード (任意, カンマ区切り)</label>
-        <input type="text" class="form-control" id="meta_keywords" name="meta_keywords" value="{{ request.form.meta_keywords }}">
-        <small class="form-text text-muted">例: Python,プログラミング,入門</small>
-    </div>
-    <div class="form-group">
-        <label for="canonical_url">正規URL (任意)</label>
-        <input type="url" class="form-control" id="canonical_url" name="canonical_url" value="{{ request.form.canonical_url }}">
-        <small class="form-text text-muted">このカテゴリページの正式なURL。通常は自動生成されるため、特別な場合に指定します。</small>
-    </div>
-    <div class="form-group">
-        <label for="json_ld">JSON-LD 構造化データ (任意)</label>
-        <textarea class="form-control" id="json_ld" name="json_ld" rows="5">{{ request.form.json_ld }}</textarea>
-        <small class="form-text text-muted">SEOのための構造化データをJSON-LD形式で記述します。</small>
-    </div>
-    <div class="form-group">
-        <label for="ext_json">拡張JSONデータ (任意)</label>
-        <textarea class="form-control" id="ext_json" name="ext_json" rows="3">{{ request.form.ext_json }}</textarea>
-        <small class="form-text text-muted">追加のカスタムデータをJSON形式で保存します。</small>
-    </div>
-    <button type="submit" class="btn btn-primary">作成</button>
-    <a href="{{ url_for('admin.categories') }}" class="btn btn-secondary">キャンセル</a>
-</form>
+<div class="container-fluid">
+    <form method="POST" enctype="multipart/form-data">
+        {{ form.hidden_tag() }}
+
+        <div class="row">
+            <!-- 左カラム：基本情報 -->
+            <div class="col-lg-8">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">📝 基本情報</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="name" class="form-label">
+                                        <i class="fas fa-tag me-1"></i>{{ form.name.label.text }} <span class="text-danger">*</span>
+                                    </label>
+                                    {{ form.name(class="form-control" + (" is-invalid" if form.name.errors else "")) }}
+                                    {% if form.name.errors %}
+                                        <div class="invalid-feedback">
+                                            {% for error in form.name.errors %}{{ error }}{% endfor %}
+                                        </div>
+                                    {% endif %}
+                                    <div class="form-text">
+                                        カテゴリの表示名を入力してください。日本語・英語・数字が使用できます。
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="slug" class="form-label">
+                                        <i class="fas fa-link me-1"></i>{{ form.slug.label.text }}
+                                    </label>
+                                    {{ form.slug(class="form-control" + (" is-invalid" if form.slug.errors else "")) }}
+                                    {% if form.slug.errors %}
+                                        <div class="invalid-feedback">
+                                            {% for error in form.slug.errors %}{{ error }}{% endfor %}
+                                        </div>
+                                    {% endif %}
+                                    <div class="form-text">
+                                        URL に使用される文字列です。空欄の場合、カテゴリ名から自動生成されます。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="description" class="form-label">
+                                <i class="fas fa-file-text me-1"></i>{{ form.description.label.text }}
+                            </label>
+                            {{ form.description(class="form-control" + (" is-invalid" if form.description.errors else "")) }}
+                            {% if form.description.errors %}
+                                <div class="invalid-feedback">
+                                    {% for error in form.description.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                            <div class="form-text">
+                                このカテゴリの内容について簡潔に説明してください。
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="parent_id" class="form-label">
+                                <i class="fas fa-sitemap me-1"></i>{{ form.parent_id.label.text }}
+                            </label>
+                            {{ form.parent_id(class="form-control" + (" is-invalid" if form.parent_id.errors else "")) }}
+                            {% if form.parent_id.errors %}
+                                <div class="invalid-feedback">
+                                    {% for error in form.parent_id.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                            <div class="form-text">
+                                親カテゴリを設定すると、階層構造を作成できます。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SEO・メタデータ設定 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">🔍 SEO・メタデータ設定</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="meta_title" class="form-label">
+                                <i class="fas fa-heading me-1"></i>{{ form.meta_title.label.text }}
+                            </label>
+                            {{ form.meta_title(class="form-control" + (" is-invalid" if form.meta_title.errors else "")) }}
+                            {% if form.meta_title.errors %}
+                                <div class="invalid-feedback">
+                                    {% for error in form.meta_title.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                            <div class="form-text">
+                                検索エンジンに表示されるタイトルです。60文字以内が推奨されます。
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="meta_keywords" class="form-label">
+                                <i class="fas fa-tags me-1"></i>{{ form.meta_keywords.label.text }}
+                            </label>
+                            {{ form.meta_keywords(class="form-control" + (" is-invalid" if form.meta_keywords.errors else "")) }}
+                            {% if form.meta_keywords.errors %}
+                                <div class="invalid-feedback">
+                                    {% for error in form.meta_keywords.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                            <div class="form-text">
+                                カンマ区切りでキーワードを入力してください。（例: テクノロジー, AI, プログラミング）
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="canonical_url" class="form-label">
+                                <i class="fas fa-external-link-alt me-1"></i>{{ form.canonical_url.label.text }}
+                            </label>
+                            {{ form.canonical_url(class="form-control" + (" is-invalid" if form.canonical_url.errors else "")) }}
+                            {% if form.canonical_url.errors %}
+                                <div class="invalid-feedback">
+                                    {% for error in form.canonical_url.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                            <div class="form-text">
+                                canonical URLを指定します。通常は空欄で構いません。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 高度な設定 -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">⚙️ 高度な設定</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="json_ld" class="form-label">
+                                <i class="fas fa-code me-1"></i>{{ form.json_ld.label.text }}
+                            </label>
+                            {{ form.json_ld(class="form-control" + (" is-invalid" if form.json_ld.errors else ""), rows="4") }}
+                            {% if form.json_ld.errors %}
+                                <div class="invalid-feedback">
+                                    {% for error in form.json_ld.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                            <div class="form-text">
+                                構造化データ（JSON-LD）を記述します。上級者向けの設定です。
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="ext_json" class="form-label">
+                                <i class="fas fa-cogs me-1"></i>{{ form.ext_json.label.text }}
+                            </label>
+                            {{ form.ext_json(class="form-control" + (" is-invalid" if form.ext_json.errors else ""), rows="4") }}
+                            {% if form.ext_json.errors %}
+                                <div class="invalid-feedback">
+                                    {% for error in form.ext_json.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                            <div class="form-text">
+                                拡張設定をJSON形式で記述します。カスタマイズ用の設定です。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右カラム：OGP画像設定 -->
+            <div class="col-lg-4">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">🖼️ OGP画像設定</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="ogp_image_file" class="form-label">
+                                <i class="fas fa-image me-1"></i>{{ form.ogp_image_file.label.text }}
+                            </label>
+                            {{ form.ogp_image_file(class="form-control" + (" is-invalid" if form.ogp_image_file.errors else ""), onchange="previewImage(event)") }}
+                            {% if form.ogp_image_file.errors %}
+                                <div class="invalid-feedback">
+                                    {% for error in form.ogp_image_file.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                            <div class="form-text">
+                                SNS でシェアされる際に表示される画像です。推奨サイズ: 1200×630px
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3" id="imagePreviewContainer" style="display: none;">
+                            <p><strong>プレビュー:</strong></p>
+                            <div class="preview-container">
+                                <img id="imagePreview" src="#" alt="画像プレビュー" class="img-fluid" style="max-height: 300px;">
+                            </div>
+                            <button type="button" id="cropButton" class="btn btn-sm btn-info mt-2" style="display: none;">
+                                <i class="fas fa-crop me-1"></i>トリミング適用
+                            </button>
+                        </div>
+                        
+                        <div class="mb-3" id="croppedPreviewContainer" style="display: none;">
+                            <p><strong>トリミング後のプレビュー:</strong></p>
+                            <div class="preview-container">
+                                <img id="croppedPreviewImage" src="#" alt="トリミング後の画像プレビュー" class="crop-preview" style="display: none;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ヘルプ・ガイド -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">💡 作成のヒント</h5>
+                    </div>
+                    <div class="card-body">
+                        <h6>📋 カテゴリ名の付け方</h6>
+                        <ul class="small text-muted">
+                            <li>読者にとって分かりやすい名前にする</li>
+                            <li>重複しない一意な名前にする</li>
+                            <li>適切な長さ（3-20文字程度）にする</li>
+                        </ul>
+
+                        <h6 class="mt-3">🔗 スラッグについて</h6>
+                        <ul class="small text-muted">
+                            <li>URL に使用される文字列</li>
+                            <li>半角英数字とハイフンのみ使用可能</li>
+                            <li>SEO に影響するため慎重に決める</li>
+                        </ul>
+
+                        <h6 class="mt-3">🎨 OGP画像のコツ</h6>
+                        <ul class="small text-muted">
+                            <li>1200×630pxの比率を推奨</li>
+                            <li>文字が読みやすいサイズで配置</li>
+                            <li>ブランドカラーを活用</li>
+                            <li>トリミング機能で最適化</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- 既存カテゴリ参照 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">📊 既存カテゴリ</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="small">
+                            既存のカテゴリと重複しないよう確認してください。
+                        </div>
+                        <div class="mt-2">
+                            <a href="{{ url_for('admin.categories') }}" class="btn btn-sm btn-outline-info" target="_blank">
+                                <i class="fas fa-list me-1"></i>カテゴリ一覧を確認
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 隠しフィールド：トリミングデータ -->
+        {{ form.ogp_crop_x() }}
+        {{ form.ogp_crop_y() }}
+        {{ form.ogp_crop_width() }}
+        {{ form.ogp_crop_height() }}
+        {{ form.ogp_crop_rotate() }}
+        {{ form.ogp_crop_scaleX() }}
+        {{ form.ogp_crop_scaleY() }}
+
+        <!-- 保存ボタン -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="text-muted">
+                                <i class="fas fa-info-circle me-1"></i>
+                                入力内容を確認して、カテゴリを作成してください。
+                            </div>
+                            <div>
+                                <button type="button" class="btn btn-secondary me-2" onclick="history.back()">
+                                    <i class="fas fa-times me-1"></i>キャンセル
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save me-1"></i>カテゴリを作成
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+    {{ super() }}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js" integrity="sha512-9KkIqdfN7ipEW6B6k+Aq20PV31bjODg4AA52W+tYtAE0jE0kMx49bjJ3FgvS56wzmyfMUHbQ4Km2b7l9+Y/+Eg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script>
+        const imageInput = document.getElementById('ogp_image_file');
+        const imagePreview = document.getElementById('imagePreview');
+        const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+        const cropButton = document.getElementById('cropButton');
+        const croppedPreviewImage = document.getElementById('croppedPreviewImage');
+        const croppedPreviewContainer = document.getElementById('croppedPreviewContainer');
+        let cropper;
+
+        // Hidden fields for crop data
+        const cropXField = document.getElementById('ogp_crop_x');
+        const cropYField = document.getElementById('ogp_crop_y');
+        const cropWidthField = document.getElementById('ogp_crop_width');
+        const cropHeightField = document.getElementById('ogp_crop_height');
+
+        function previewImage(event) {
+            const reader = new FileReader();
+            reader.onload = function(){
+                imagePreview.src = reader.result;
+                imagePreviewContainer.style.display = 'block';
+                cropButton.style.display = 'inline-block';
+
+                if (cropper) {
+                    cropper.destroy();
+                }
+                cropper = new Cropper(imagePreview, {
+                    aspectRatio: 1200 / 630, // OGP画像の推奨アスペクト比
+                    viewMode: 1,
+                    zoomOnWheel: false,
+                    crop: function(event) {
+                        if (cropXField) cropXField.value = Math.round(event.detail.x);
+                        if (cropYField) cropYField.value = Math.round(event.detail.y);
+                        if (cropWidthField) cropWidthField.value = Math.round(event.detail.width);
+                        if (cropHeightField) cropHeightField.value = Math.round(event.detail.height);
+                    }
+                });
+            };
+            if (event.target.files[0]) {
+                reader.readAsDataURL(event.target.files[0]);
+            }
+        }
+
+        if (imageInput) {
+            imageInput.addEventListener('change', previewImage);
+        }
+
+        if (cropButton) {
+            cropButton.addEventListener('click', function() {
+                if (cropper) {
+                    const canvas = cropper.getCroppedCanvas({
+                        width: 1200,
+                        height: 630
+                    });
+                    if (croppedPreviewImage) {
+                        croppedPreviewImage.src = canvas.toDataURL();
+                        croppedPreviewImage.style.display = 'block';
+                        croppedPreviewContainer.style.display = 'block';
+                    }
+                    // トリミング適用完了の通知
+                    cropButton.innerHTML = '<i class="fas fa-check me-1"></i>トリミング完了';
+                    cropButton.className = 'btn btn-sm btn-success mt-2';
+                    cropButton.disabled = true;
+                    
+                    // 5秒後にボタンを元に戻す
+                    setTimeout(() => {
+                        cropButton.innerHTML = '<i class="fas fa-crop me-1"></i>トリミング適用';
+                        cropButton.className = 'btn btn-sm btn-info mt-2';
+                        cropButton.disabled = false;
+                    }, 5000);
+                }
+            });
+        }
+
+        // カテゴリ名からスラッグを自動生成
+        document.addEventListener('DOMContentLoaded', function() {
+            const nameInput = document.getElementById('name');
+            const slugInput = document.getElementById('slug');
+            
+            if (nameInput && slugInput) {
+                nameInput.addEventListener('input', function() {
+                    if (!slugInput.value || slugInput.dataset.autoGenerated) {
+                        const slug = generateSlug(this.value);
+                        slugInput.value = slug;
+                        slugInput.dataset.autoGenerated = 'true';
+                    }
+                });
+                
+                slugInput.addEventListener('input', function() {
+                    if (this.value) {
+                        delete this.dataset.autoGenerated;
+                    }
+                });
+            }
+            
+            function generateSlug(text) {
+                return text
+                    .toLowerCase()
+                    .replace(/[^\w\s-]/g, '') // 特殊文字を除去
+                    .replace(/[\s_-]+/g, '-') // スペースやアンダースコアをハイフンに変換
+                    .replace(/^-+|-+$/g, ''); // 先頭末尾のハイフンを除去
+            }
+            
+            // フォーム送信前のバリデーション
+            document.querySelector('form').addEventListener('submit', function(e) {
+                const name = document.getElementById('name').value.trim();
+                if (!name) {
+                    e.preventDefault();
+                    alert('カテゴリ名を入力してください。');
+                    return false;
+                }
+                
+                if (name.length < 2) {
+                    e.preventDefault();
+                    alert('カテゴリ名は2文字以上で入力してください。');
+                    return false;
+                }
+            });
+        });
+    </script>
 {% endblock %}

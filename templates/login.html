@@ -6,10 +6,26 @@
 <body>
     <h1>ログイン</h1>
     <form method="post">
-        <input type="email" name="email" placeholder="メールアドレス" required>
-        <input type="password" name="password" placeholder="パスワード" required>
-        <button type="submit">ログイン</button>
+        {{ form.hidden_tag() }}
+        {{ form.email(placeholder="メールアドレス", required=true, class="form-control") }}
+        {% if form.email.errors %}
+            <div class="invalid-feedback">
+                {% for error in form.email.errors %}{{ error }}{% endfor %}
+            </div>
+        {% endif %}
+        {{ form.password(placeholder="パスワード", required=true, class="form-control") }}
+        {% if form.password.errors %}
+            <div class="invalid-feedback">
+                {% for error in form.password.errors %}{{ error }}{% endfor %}
+            </div>
+        {% endif %}
+        {{ form.submit(class="btn btn-primary") }}
     </form>
+    
+    <div class="text-center mt-3">
+        <a href="{{ url_for('password_reset_request') }}" class="text-muted">パスワードを忘れた場合</a>
+    </div>
+    
     {% with messages = get_flashed_messages() %}
         {% if messages %}
         <ul>

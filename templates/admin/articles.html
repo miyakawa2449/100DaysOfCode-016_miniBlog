@@ -1,66 +1,359 @@
-{# filepath: c:\Users\tmiya\projects\100Day_new\016_miniBlog\templates\admin\articles.html #}
 {% extends "admin/layout.html" %}
 
 {% block title %}記事管理{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">記事管理</h1>
+    <h1 class="h2">📰 記事管理</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
-        <a href="{{ url_for('admin.create_article') }}" class="btn btn-sm btn-outline-secondary">
-            新規記事作成
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+                🔄 更新
+            </button>
+        </div>
+        <a href="{{ url_for('admin.create_article') }}" class="btn btn-sm btn-primary">
+            <i class="fas fa-plus me-1"></i>新規記事作成
         </a>
     </div>
 </div>
 
-{# ... (flashメッセージ表示など) ... #}
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<!-- 検索・フィルター -->
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-search"></i></span>
+            <input type="text" class="form-control" id="searchInput" placeholder="記事タイトル、内容で検索..." onkeyup="filterTable()">
+        </div>
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" id="categoryFilter" onchange="filterTable()">
+            <option value="">すべてのカテゴリ</option>
+            {% for category in categories %}
+                <option value="{{ category.name }}">{{ category.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-3">
+        <form method="POST" action="{{ url_for('admin.bulk_article_action') }}" id="bulkForm">
+            {{ csrf_token() }}
+            <div class="input-group">
+                <select name="action" class="form-select" required>
+                    <option value="">一括操作を選択</option>
+                    <option value="publish">公開</option>
+                    <option value="unpublish">下書きに戻す</option>
+                    <option value="delete">削除</option>
+                </select>
+                <button type="submit" class="btn btn-outline-secondary" onclick="return confirmBulkAction()">
+                    実行
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <div class="table-responsive">
-    <table class="table table-striped table-sm">
-        <thead>
+    <table class="table table-hover" id="articlesTable">
+        <thead class="table-dark">
             <tr>
-                <th>ID</th>
-                <th>タイトル</th>
-                <th>スラッグ</th>
-                <th>投稿者</th>
-                <th>カテゴリ</th> {# 追加 #}
-                <th>作成日時</th>
-                <th>操作</th>
+                <th scope="col">
+                    <input type="checkbox" id="selectAll" onchange="toggleAllCheckboxes()">
+                </th>
+                <th scope="col">ID</th>
+                <th scope="col">📰 タイトル</th>
+                <th scope="col">🏷️ カテゴリ</th>
+                <th scope="col">👤 投稿者</th>
+                <th scope="col">📅 作成日時</th>
+                <th scope="col">📊 状態</th>
+                <th scope="col">🔧 操作</th>
             </tr>
         </thead>
         <tbody>
-            {% for article in articles_list.items %} {# articles_list は admin.articles ルートから渡される想定 #}
+            {% for article in articles %}
             <tr>
-                <td>{{ article.id }}</td>
-                <td>{{ article.title }}</td>
-                <td>{{ article.slug }}</td>
-                <td>{{ article.author.name if article.author else 'N/A' }}</td>
                 <td>
-                    {# 記事に紐づくカテゴリ名を表示 #}
-                    {% if article.categories %}
-                        {% for cat in article.categories %}
-                            <span class="badge badge-info mr-1">{{ cat.name }}</span>
-                        {% endfor %}
+                    <input type="checkbox" name="article_ids" value="{{ article.id }}" form="bulkForm">
+                </td>
+                <td>{{ article.id }}</td>
+                <td>
+                    <div class="d-flex align-items-start">
+                        <div>
+                            <h6 class="mb-1">{{ article.title }}</h6>
+                            <small class="text-muted">
+                                {{ article.body[:100] if article.body else '' }}{% if article.body and article.body|length > 100 %}...{% endif %}
+                            </small>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    {% if article.category %}
+                        <span class="badge bg-primary">{{ article.category.name }}</span>
                     {% else %}
-                        -
+                        <span class="badge bg-secondary">未分類</span>
                     {% endif %}
                 </td>
-                <td>{{ article.created_at.strftime('%Y-%m-%d %H:%M') if article.created_at else '-'}}</td>
                 <td>
-                    <a href="{{ url_for('admin.edit_article', article_id=article.id) }}" class="btn btn-sm btn-outline-primary">編集</a>
-                    {# <form action="{{ url_for('admin.delete_article', article_id=article.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('本当に削除しますか？');">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">削除</button>
-                    </form> #}
+                    <div class="d-flex align-items-center">
+                        <div class="avatar-sm bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px; font-size: 14px;">
+                            {{ article.author.email[0].upper() if article.author else 'U' }}
+                        </div>
+                        <span>{{ article.author.email if article.author else 'Unknown' }}</span>
+                    </div>
+                </td>
+                <td>
+                    <div>
+                        <div>{{ article.created_at.strftime('%Y-%m-%d') }}</div>
+                        <small class="text-muted">{{ article.created_at.strftime('%H:%M') }}</small>
+                    </div>
+                </td>
+                <td>
+                    {% if article.is_published %}
+                        <span class="badge bg-success">✅ 公開</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">📝 下書き</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <a href="{{ url_for('article_detail', slug=article.slug) }}" target="_blank" class="btn btn-outline-info" title="プレビュー">
+                            <i class="fas fa-eye"></i>
+                        </a>
+                        <a href="{{ url_for('admin.edit_article', article_id=article.id) }}" class="btn btn-outline-primary" title="編集">
+                            <i class="fas fa-edit"></i>
+                        </a>
+                        <button type="button" class="btn btn-outline-danger" onclick="confirmDelete({{ article.id }}, '{{ article.title }}')" title="削除">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
                 </td>
             </tr>
             {% else %}
             <tr>
-                <td colspan="7">記事はありません。</td> {# colspanを修正 #}
+                <td colspan="7" class="text-center py-4">
+                    <div>
+                        <i class="fas fa-newspaper fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">記事が見つかりません</p>
+                        <a href="{{ url_for('admin.create_article') }}" class="btn btn-primary">
+                            最初の記事を作成
+                        </a>
+                    </div>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
 
-{# ... (ページネーション) ... #}
+<!-- 統計情報 -->
+<div class="row mt-4">
+    <div class="col-md-3">
+        <div class="card text-bg-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">総記事数</h5>
+                        <h2 class="mb-0">{{ articles|length }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-newspaper fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">公開記事</h5>
+                        <h2 class="mb-0">{{ articles|selectattr('is_published')|list|length }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-check-circle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-warning">
+            <div class="card-body text-dark">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">下書き</h5>
+                        <h2 class="mb-0">{{ articles|rejectattr('is_published')|list|length }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-edit fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-bg-info">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">今月の投稿</h5>
+                        <h2 class="mb-0">0</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-calendar-alt fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 削除確認モーダル -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">🗑️ 記事削除確認</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>以下の記事を削除してもよろしいですか？</p>
+                <div class="alert alert-warning">
+                    <strong>⚠️ 警告:</strong> この操作は取り消せません。
+                </div>
+                <p><strong>記事タイトル:</strong> <span id="deleteArticleTitle"></span></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                <button type="button" class="btn btn-danger" onclick="deleteArticle()">削除実行</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+let deleteArticleId = null;
+
+function confirmDelete(articleId, title) {
+    deleteArticleId = articleId;
+    document.getElementById('deleteArticleTitle').textContent = title;
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+
+function deleteArticle() {
+    if (deleteArticleId) {
+        // フォームを作成して記事削除APIを呼び出し
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/admin/article/delete/' + deleteArticleId + '/';
+        
+        // CSRFトークンを追加
+        const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = csrfToken;
+        form.appendChild(csrfInput);
+        
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function filterTable() {
+    const searchInput = document.getElementById('searchInput').value.toLowerCase();
+    const categoryFilter = document.getElementById('categoryFilter').value;
+    const statusFilter = document.getElementById('statusFilter').value;
+    const table = document.getElementById('articlesTable');
+    const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (row.cells.length < 7) continue; // 空の行をスキップ
+        
+        const title = row.cells[1].textContent.toLowerCase();
+        const category = row.cells[2].textContent;
+        const status = row.cells[5].textContent.includes('公開') ? 'published' : 'draft';
+        
+        let showRow = true;
+        
+        // 検索フィルター
+        if (searchInput && !title.includes(searchInput)) {
+            showRow = false;
+        }
+        
+        // カテゴリフィルター
+        if (categoryFilter && !category.includes(categoryFilter)) {
+            showRow = false;
+        }
+        
+        // ステータスフィルター
+        if (statusFilter && status !== statusFilter) {
+            showRow = false;
+        }
+        
+        row.style.display = showRow ? '' : 'none';
+    }
+}
+
+// ソート機能
+function sortTable(columnIndex) {
+    const table = document.getElementById('articlesTable');
+    const tbody = table.getElementsByTagName('tbody')[0];
+    const rows = Array.from(tbody.getElementsByTagName('tr'));
+    
+    rows.sort((a, b) => {
+        const aText = a.cells[columnIndex].textContent.trim();
+        const bText = b.cells[columnIndex].textContent.trim();
+        return aText.localeCompare(bText);
+    });
+    
+    rows.forEach(row => tbody.appendChild(row));
+}
+
+function toggleAllCheckboxes() {
+    const selectAll = document.getElementById('selectAll');
+    const checkboxes = document.querySelectorAll('input[name="article_ids"]');
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAll.checked;
+    });
+}
+
+function confirmBulkAction() {
+    const checkedBoxes = document.querySelectorAll('input[name="article_ids"]:checked');
+    const action = document.querySelector('select[name="action"]').value;
+    
+    if (checkedBoxes.length === 0) {
+        alert('記事を選択してください。');
+        return false;
+    }
+    
+    if (!action) {
+        alert('操作を選択してください。');
+        return false;
+    }
+    
+    let actionText = '';
+    switch(action) {
+        case 'publish': actionText = '公開'; break;
+        case 'unpublish': actionText = '下書きに戻す'; break;
+        case 'delete': actionText = '削除'; break;
+    }
+    
+    return confirm(`${checkedBoxes.length}件の記事を${actionText}してもよろしいですか？`);
+}
+</script>
 {% endblock %}
