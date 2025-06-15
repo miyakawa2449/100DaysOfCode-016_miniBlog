@@ -1,7 +1,8 @@
 # filepath: c:\Users\tmiya\projects\100Day_new\016_miniBlog\forms.py (または適切な場所)
 from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, SubmitField, FileField, IntegerField, HiddenField
-from wtforms.validators import DataRequired, Optional, URL, Length
+from wtforms import StringField, TextAreaField, SubmitField, FileField, IntegerField, HiddenField, PasswordField
+from wtforms.validators import DataRequired, Optional, URL, Length, Email, ValidationError
+import re
 from wtforms.widgets import HiddenInput
 from flask_wtf.file import FileAllowed
 
@@ -32,3 +33,65 @@ class CategoryForm(FlaskForm):
     ext_json = TextAreaField('拡張JSONデータ', validators=[Optional()])
 
     submit = SubmitField('更新')
+
+class LoginForm(FlaskForm):
+    email = StringField('メールアドレス', validators=[DataRequired(), Email()])
+    password = PasswordField('パスワード', validators=[DataRequired()])
+    submit = SubmitField('ログイン')
+
+class ArticleForm(FlaskForm):
+    title = StringField('タイトル', validators=[DataRequired(), Length(max=255)])
+    slug = StringField('スラッグ', validators=[DataRequired(), Length(max=255)])
+    body = TextAreaField('本文', validators=[Optional()])
+    submit = SubmitField('保存')
+
+def validate_password_strength(password):
+    """パスワード強度チェック"""
+    if len(password) < 8:
+        raise ValidationError('パスワードは8文字以上である必要があります。')
+    if not re.search(r'[A-Z]', password):
+        raise ValidationError('パスワードには大文字を含む必要があります。')
+    if not re.search(r'[a-z]', password):
+        raise ValidationError('パスワードには小文字を含む必要があります。')
+    if not re.search(r'\d', password):
+        raise ValidationError('パスワードには数字を含む必要があります。')
+    if not re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', password):
+        raise ValidationError('パスワードには特殊文字を含む必要があります。')
+
+class UserRegistrationForm(FlaskForm):
+    email = StringField('メールアドレス', validators=[DataRequired(), Email()])
+    name = StringField('氏名', validators=[DataRequired(), Length(max=100)])
+    password = PasswordField('パスワード', validators=[DataRequired()])
+    password_confirm = PasswordField('パスワード確認', validators=[DataRequired()])
+    submit = SubmitField('登録')
+
+    def validate_password(self, field):
+        validate_password_strength(field.data)
+
+    def validate_password_confirm(self, field):
+        if field.data != self.password.data:
+            raise ValidationError('パスワードが一致しません。')
+
+class TOTPVerificationForm(FlaskForm):
+    totp_code = StringField('認証コード', validators=[DataRequired(), Length(min=6, max=6)])
+    submit = SubmitField('認証')
+
+class TOTPSetupForm(FlaskForm):
+    totp_code = StringField('認証コード', validators=[DataRequired(), Length(min=6, max=6)])
+    submit = SubmitField('2段階認証を有効化')
+
+class PasswordResetRequestForm(FlaskForm):
+    email = StringField('メールアドレス', validators=[DataRequired(), Email()])
+    submit = SubmitField('パスワードリセット要求')
+
+class PasswordResetForm(FlaskForm):
+    password = PasswordField('新しいパスワード', validators=[DataRequired()])
+    password_confirm = PasswordField('パスワード確認', validators=[DataRequired()])
+    submit = SubmitField('パスワードを変更')
+
+    def validate_password(self, field):
+        validate_password_strength(field.data)
+
+    def validate_password_confirm(self, field):
+        if field.data != self.password.data:
+            raise ValidationError('パスワードが一致しません。')
