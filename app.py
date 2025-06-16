@@ -18,7 +18,20 @@ from models import db, User, Article, Category, Comment
 # forms.py からフォームクラスをインポート
 from forms import LoginForm, TOTPVerificationForm, TOTPSetupForm, PasswordResetRequestForm, PasswordResetForm
 
+from flask import Flask, send_from_directory
+import time
+
 app = Flask(__name__)
+
+# 開発時のみ：静的ファイルのキャッシュを無効化
+@app.after_request
+def after_request(response):
+    if app.debug:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your_default_secret_key')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///miniblog.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
