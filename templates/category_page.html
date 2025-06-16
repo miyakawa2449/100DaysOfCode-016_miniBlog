@@ -1,96 +1,104 @@
-{# filepath: c:\Users\tmiya\projects\100Day_new\016_miniBlog\templates\category_page.html #}
-{% extends "layout.html" %} {# 公開側の共通レイアウトを継承 (例: layout.html) #}
+{% extends "layout.html" %}
 
-{% block title %}{{ category.name }} - カテゴリ{% endblock %}
+{% block title %}{{ category.name }} - カテゴリ | ミニブログ{% endblock %}
+{% block description %}{{ category.description or (category.name + 'に関する記事一覧') }}{% endblock %}
+{% block keywords %}{{ category.meta_keywords if category.meta_keywords else (category.name + ',カテゴリ,記事') }}{% endblock %}
 
-{# OGP情報などをhead内に追加する場合 #}
-{% block head_extra %}
-    <meta name="description" content="{{ category.description or ('カテゴリ「' + category.name + '」の記事一覧') }}">
-    <meta property="og:title" content="{{ category.name }} - カテゴリ">
-    <meta property="og:description" content="{{ category.description or ('カテゴリ「' + category.name + '」の記事一覧') }}">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="{{ url_for('category_page', slug=category.slug, _external=True) }}">
-    {% if category.ogp_image %}
-    <meta property="og:image" content="{{ category.ogp_image if category.ogp_image.startswith('http') else url_for('static', filename=category.ogp_image, _external=True) }}">
-    {% else %}
-    {# <meta property="og:image" content="{{ url_for('static', filename='images/default_ogp.png', _external=True) }}"> #} {# デフォルトOGP画像 #}
-    {% endif %}
-    {% if category.canonical_url %}
-    <link rel="canonical" href="{{ category.canonical_url }}">
-    {% else %}
-    <link rel="canonical" href="{{ url_for('category_page', slug=category.slug, _external=True) }}">
-    {% endif %}
-    {% if category.meta_keywords %}
-    <meta name="keywords" content="{{ category.meta_keywords }}">
-    {% endif %}
-    {% if category.json_ld %}
-    <script type="application/ld+json">
-        {{ category.json_ld | safe }}
-    </script>
-    {% endif %}
-{% endblock %}
+{% block og_title %}{{ category.name }} - カテゴリ{% endblock %}
+{% block og_description %}{{ category.description or (category.name + 'に関する記事一覧') }}{% endblock %}
+{% block og_image %}{% if category.ogp_image %}{{ url_for('static', filename='uploads/images/' + category.ogp_image, _external=True) }}{% else %}{{ super() }}{% endif %}{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <div class="row">
-        <div class="col-md-12">
-            <header class="mb-4">
-                <h1>カテゴリ: {{ category.name }}</h1>
-                {% if category.description %}
-                    <p class="lead">{{ category.description }}</p>
-                {% endif %}
-            </header>
-
-            {% if articles_pagination and articles_pagination.items %}
-                {% for article in articles_pagination.items %}
-                <article class="mb-4">
-                    <h2><a href="{{ url_for('article_detail', slug=article.slug) }}">{{ article.title }}</a></h2>
-                    <p class="text-muted">
-                        作成日: {{ article.created_at.strftime('%Y年%m月%d日') }}
-                        {% if article.author %} | 投稿者: <a href="#">{{ article.author.handle_name or article.author.name }}</a>{% endif %} {# プロフィールページへのリンクは適宜修正 #}
-                    </p>
-                    <div>
-                        {{ article.body | striptags | truncate(200, True) }} {# 記事本文を一部表示（要約）、striptagsでHTMLタグ除去 #}
-                    </div>
-                    <a href="{{ url_for('article_detail', slug=article.slug) }}" class="btn btn-sm btn-outline-primary mt-2">続きを読む</a>
-                </article>
-                <hr>
-                {% endfor %}
-
-                {# ページネーションコントロール #}
-                {% if articles_pagination.pages > 1 %}
-                <nav aria-label="Page navigation">
-                    <ul class="pagination justify-content-center">
-                        {% if articles_pagination.has_prev %}
-                            <li class="page-item"><a class="page-link" href="{{ url_for('category_page', slug=category.slug, page=articles_pagination.prev_num) }}">前へ</a></li>
-                        {% else %}
-                            <li class="page-item disabled"><span class="page-link">前へ</span></li>
-                        {% endif %}
-
-                        {% for page_num in articles_pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
-                            {% if page_num %}
-                                {% if articles_pagination.page == page_num %}
-                                    <li class="page-item active"><span class="page-link">{{ page_num }}</span></li>
-                                {% else %}
-                                    <li class="page-item"><a class="page-link" href="{{ url_for('category_page', slug=category.slug, page=page_num) }}">{{ page_num }}</a></li>
-                                {% endif %}
-                            {% else %}
-                                <li class="page-item disabled"><span class="page-link">...</span></li>
-                            {% endif %}
-                        {% endfor %}
-
-                        {% if articles_pagination.has_next %}
-                            <li class="page-item"><a class="page-link" href="{{ url_for('category_page', slug=category.slug, page=articles_pagination.next_num) }}">次へ</a></li>
-                        {% else %}
-                            <li class="page-item disabled"><span class="page-link">次へ</span></li>
-                        {% endif %}
-                    </ul>
-                </nav>
-                {% endif %}
-            {% else %}
-                <p>このカテゴリにはまだ記事がありません。</p>
+<div class="row">
+    <div class="col-12">
+        <!-- カテゴリヘッダー -->
+        <header class="text-center text-white mb-5">
+            <h1 class="display-4 fw-bold">{{ category.name }}</h1>
+            {% if category.description %}
+                <p class="lead">{{ category.description }}</p>
             {% endif %}
-        </div>
+        </header>
+
+        <!-- 記事一覧 -->
+        {% if articles_pagination and articles_pagination.items %}
+            <div class="row g-4">
+                {% for article in articles_pagination.items %}
+                <div class="col-lg-6 col-xl-4">
+                    <div class="card article-card" onclick="location.href='{{ url_for('article_detail', slug=article.slug) }}'">
+                        <div class="article-image">
+                            {% if article.featured_image %}
+                                <img src="{{ url_for('static', filename='uploads/images/' + article.featured_image) }}" 
+                                     alt="{{ article.title }}" class="img-fluid w-100 h-100" style="object-fit: cover;">
+                            {% else %}
+                                <i class="bi bi-file-text fs-1"></i>
+                            {% endif %}
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="badge category-badge">{{ category.name }}</span>
+                                <small class="text-muted">
+                                    <i class="bi bi-calendar3 me-1"></i>{{ article.created_at.strftime('%Y年%m月%d日') }}
+                                </small>
+                            </div>
+                            <h5 class="card-title">{{ article.title }}</h5>
+                            <p class="card-text">{{ article.body | striptags | truncate(100, True) }}</p>
+                            <div class="text-muted">
+                                {% if article.author %}
+                                    <i class="bi bi-person me-1"></i>{{ article.author.handle_name or article.author.name }}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- ページネーション -->
+            {% if articles_pagination.pages > 1 %}
+            <nav aria-label="ページネーション" class="mt-5">
+                <ul class="pagination justify-content-center">
+                    {% if articles_pagination.has_prev %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('category_page', slug=category.slug, page=articles_pagination.prev_num) }}">前へ</a>
+                        </li>
+                    {% endif %}
+                    
+                    {% for page_num in articles_pagination.iter_pages() %}
+                        {% if page_num %}
+                            {% if page_num != articles_pagination.page %}
+                                <li class="page-item">
+                                    <a class="page-link" href="{{ url_for('category_page', slug=category.slug, page=page_num) }}">{{ page_num }}</a>
+                                </li>
+                            {% else %}
+                                <li class="page-item active">
+                                    <span class="page-link">{{ page_num }}</span>
+                                </li>
+                            {% endif %}
+                        {% else %}
+                            <li class="page-item disabled">
+                                <span class="page-link">…</span>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if articles_pagination.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="{{ url_for('category_page', slug=category.slug, page=articles_pagination.next_num) }}">次へ</a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+        {% else %}
+            <div class="text-center text-white py-5">
+                <i class="bi bi-folder fs-1 mb-3"></i>
+                <h3>このカテゴリには記事がありません</h3>
+                <p class="lead">{{ category.name }}カテゴリの記事はまだ投稿されていません。</p>
+                <a href="{{ url_for('home') }}" class="btn btn-light">
+                    <i class="bi bi-house-door me-1"></i>ホームに戻る
+                </a>
+            </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

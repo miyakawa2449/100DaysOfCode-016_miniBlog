@@ -1,15 +1,80 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>ホーム</title>
-</head>
-<body>
-    <h1>記事一覧</h1>
-    {% for article in articles %}
-        <h2>{{ article.title }}</h2>
-        <p>{{ article.body[:100] }}...</p>
-    {% else %}
-        <p>記事がありません。</p>
-    {% endfor %}
-</body>
-</html>
+ -->
+{% extends "layout.html" %}
+
+{% block title %}ミニブログ - 最新記事{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <div class="container">
+        <h1 class="hero-title">最新記事</h1>
+        <p class="hero-subtitle">プログラミング、テック、ライフスタイルに関する記事をお届けします</p>
+    </div>
+</div>
+
+<section class="articles-section">
+    <div class="container">
+        {% if articles %}
+            <div class="articles-grid">
+                {% for article in articles %}
+                <article class="article-card" onclick="location.href='{{ url_for('article_detail', slug=article.slug) }}'">
+                    <div class="article-image">
+                        {% if article.featured_image %}
+                            <img src="{{ url_for('static', filename='uploads/images/' + article.featured_image) }}" 
+                                 alt="{{ article.title }}">
+                        {% else %}
+                            <div class="image-placeholder">
+                                <i class="bi bi-file-text"></i>
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="article-content">
+                        <div class="article-meta">
+                            {% if article.category %}
+                                <span class="category-tag">{{ article.category.name }}</span>
+                            {% else %}
+                                <span class="category-tag category-uncategorized">未分類</span>
+                            {% endif %}
+                            <span class="article-date">
+                                <i class="bi bi-calendar3"></i>
+                                {{ article.created_at.strftime('%Y年%m月%d日') }}
+                            </span>
+                        </div>
+                        
+                        <h2 class="article-title">{{ article.title }}</h2>
+                        <p class="article-excerpt">{{ article.body | striptags | truncate(100, True) }}</p>
+                        
+                        <div class="article-footer">
+                            {% if article.author %}
+                                <span class="article-author">
+                                    <i class="bi bi-person"></i>
+                                    {{ article.author.handle_name or article.author.name }}
+                                </span>
+                            {% endif %}
+                            
+                            {% if article.is_published %}
+                                <span class="status-badge status-published">公開</span>
+                            {% else %}
+                                <span class="status-badge status-draft">下書き</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <i class="bi bi-file-text"></i>
+                <h3>記事がありません</h3>
+                <p>まだ記事が投稿されていません。</p>
+                {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('admin.create_article') }}" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i>
+                        最初の記事を作成
+                    </a>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
