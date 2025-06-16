@@ -65,6 +65,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+miniblog/
 
 # IDE
 .vscode/
@@ -82,3 +83,5 @@ Thumbs.db
 # 一時ファイル
 *.tmp
 *.tempminiblog/
+miniblog/
+miniblog/
