@@ -1,5 +1,7 @@
 # ルーティング設計例
 
+**最終更新日: 2025年6月16日**
+
 ## 公開側
 - / : ホーム
 - /login/ : ログイン
@@ -36,3 +38,12 @@
 ## 初期設定
 - /setup/admin/ : 管理者登録
 - /setup/site/ : サイト情報登録
+
+## テスト・デバッグ機能
+- /test/basic/ : 基本機能テスト実行
+- /test/2fa/ : 2段階認証テスト実行
+- /test/admin/ : 管理機能デバッグ実行
+- /test/complete/ : 包括的テスト実行
+- /debug/user_info/ : ユーザ情報デバッグ表示
+- /debug/2fa_status/ : 2FA設定状況確認
+- /debug/db_status/ : データベース状態確認
