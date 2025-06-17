@@ -1,303 +1,49 @@
 {% extends "admin/layout.html" %}
 
 {% block title %}ユーザー編集{% endblock %}
+{% block page_title %}ユーザー編集{% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<li><a href="{{ url_for('admin.users') }}">ユーザー管理</a></li>
+<li>ユーザー編集</li>
+{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">✏️ ユーザー編集</h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <a href="{{ url_for('admin.users') }}" class="btn btn-sm btn-outline-secondary">
-            ⬅️ ユーザー一覧に戻る
-        </a>
-    </div>
-</div>
-
-{% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-        {% for category, message in messages %}
-            <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        {% endfor %}
-    {% endif %}
-{% endwith %}
-
 <div class="row">
     <div class="col-lg-8">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0">👤 ユーザー情報編集</h5>
+                <h5 class="mb-0"><i class="fa fa-user me-2"></i>ユーザー情報編集</h5>
             </div>
             <div class="card-body">
-                <form method="POST">
-                    {{ csrf_token() }}
-                    
-                    <!-- 基本情報 -->
-                    <div class="row">
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="name" class="form-label">
-                                    <i class="fas fa-user me-1"></i>表示名
-                                </label>
-                                <input type="text" class="form-control" id="name" name="name" 
-                                       value="{{ user.name or '' }}" maxlength="100">
-                                <div class="form-text">サイト上で表示される名前です。</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label for="handle_name" class="form-label">
-                                    <i class="fas fa-at me-1"></i>ハンドル名
-                                </label>
-                                <input type="text" class="form-control" id="handle_name" name="handle_name" 
-                                       value="{{ user.handle_name or '' }}" maxlength="50">
-                                <div class="form-text">@マークなしで入力してください。</div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="email" class="form-label">
-                            <i class="fas fa-envelope me-1"></i>メールアドレス
-                        </label>
-                        <input type="email" class="form-control" id="email" name="email" 
-                               value="{{ user.email }}" readonly>
-                        <div class="form-text">メールアドレスは変更できません。</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="role" class="form-label">
-                            <i class="fas fa-shield-alt me-1"></i>権限
-                        </label>
-                        <select class="form-select" id="role" name="role" required>
-                            <option value="user" {{ 'selected' if user.role == 'user' else '' }}>👤 一般ユーザー</option>
-                            <option value="admin" {{ 'selected' if user.role == 'admin' else '' }}>👑 管理者</option>
-                        </select>
-                        {% if user.id == current_user.id %}
-                            <div class="form-text text-warning">
-                                <i class="fas fa-exclamation-triangle me-1"></i>
-                                自分自身の管理者権限は削除できません。
-                            </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="introduction" class="form-label">
-                            <i class="fas fa-info-circle me-1"></i>自己紹介
-                        </label>
-                        <textarea class="form-control" id="introduction" name="introduction" 
-                                  rows="3" maxlength="500">{{ user.introduction or '' }}</textarea>
-                        <div class="form-text">最大500文字まで入力できます。</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="birthplace" class="form-label">
-                            <i class="fas fa-map-marker-alt me-1"></i>出身地
-                        </label>
-                        <input type="text" class="form-control" id="birthplace" name="birthplace" 
-                               value="{{ user.birthplace or '' }}" maxlength="100">
-                    </div>
-                    
-                    <!-- パスワード変更 -->
-                    <hr>
-                    <h6>🔒 パスワード変更</h6>
-                    <div class="mb-3">
-                        <label for="new_password" class="form-label">新しいパスワード</label>
-                        <input type="password" class="form-control" id="new_password" name="new_password" 
-                               minlength="8" maxlength="128">
-                        <div class="form-text">空白の場合はパスワードを変更しません。最低8文字以上で入力してください。</div>
-                    </div>
-                    
-                    <!-- 通知設定 -->
-                    <hr>
-                    <h6>🔔 通知設定</h6>
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="notify_on_publish" 
-                                   name="notify_on_publish" {{ 'checked' if user.notify_on_publish else '' }}>
-                            <label class="form-check-label" for="notify_on_publish">
-                                記事公開時に通知を受け取る
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="notify_on_comment" 
-                                   name="notify_on_comment" {{ 'checked' if user.notify_on_comment else '' }}>
-                            <label class="form-check-label" for="notify_on_comment">
-                                コメント投稿時に通知を受け取る
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <!-- 保存ボタン -->
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                        <a href="{{ url_for('admin.users') }}" class="btn btn-secondary">
-                            キャンセル
-                        </a>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save me-1"></i>保存
-                        </button>
-                    </div>
-                </form>
+                <p class="text-center text-muted">
+                    <i class="fa fa-construction me-2"></i>
+                    ユーザー編集機能は現在開発中です
+                </p>
+                <div class="text-center mt-4">
+                    <a href="{{ url_for('admin.dashboard') }}" class="btn btn-primary">
+                        <i class="fa fa-arrow-left me-1"></i>ダッシュボードに戻る
+                    </a>
+                </div>
             </div>
         </div>
     </div>
     
-    <!-- サイドバー -->
     <div class="col-lg-4">
-        <!-- ユーザー情報 -->
-        <div class="card mb-4">
+        <div class="card">
             <div class="card-header">
-                <h5 class="mb-0">📊 ユーザー統計</h5>
+                <h5 class="mb-0"><i class="fa fa-info-circle me-2"></i>実装予定機能</h5>
             </div>
             <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-6">
-                        <div class="border-end">
-                            <h4 class="mb-1">{{ user.articles|length if user.articles else 0 }}</h4>
-                            <small class="text-muted">投稿記事数</small>
-                        </div>
-                    </div>
-                    <div class="col-6">
-                        <h4 class="mb-1">0</h4>
-                        <small class="text-muted">コメント数</small>
-                    </div>
-                </div>
-                <hr>
-                <div class="small text-muted">
-                    <div><strong>登録日:</strong> {{ user.created_at.strftime('%Y年%m月%d日') if user.created_at else 'N/A' }}</div>
-                    <div><strong>最終更新:</strong> {{ user.updated_at.strftime('%Y年%m月%d日') if user.updated_at else 'N/A' }}</div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- 2段階認証情報 -->
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5 class="mb-0">🔐 セキュリティ情報</h5>
-            </div>
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-center">
-                    <span>2段階認証</span>
-                    {% if user.totp_enabled %}
-                        <span class="badge bg-success">✅ 有効</span>
-                    {% else %}
-                        <span class="badge bg-warning text-dark">⚠️ 無効</span>
-                    {% endif %}
-                </div>
-                <hr>
-                <div class="small text-muted">
-                    セキュリティを向上させるため、2段階認証の設定を推奨します。
-                </div>
-            </div>
-        </div>
-        
-        <!-- 危険な操作 -->
-        {% if user.id != current_user.id %}
-        <div class="card border-danger">
-            <div class="card-header bg-danger text-white">
-                <h5 class="mb-0">⚠️ 危険な操作</h5>
-            </div>
-            <div class="card-body">
-                <div class="d-grid">
-                    <button type="button" class="btn btn-danger" onclick="confirmDeleteUser({{ user.id }}, '{{ user.email }}')">
-                        <i class="fas fa-trash me-1"></i>ユーザーを削除
-                    </button>
-                </div>
-                <div class="small text-muted mt-2">
-                    この操作は取り消せません。ユーザーが投稿した記事やコメントも削除されます。
-                </div>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-</div>
-
-<!-- 削除確認モーダル -->
-<div class="modal fade" id="deleteUserModal" tabindex="-1" aria-labelledby="deleteUserModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="deleteUserModalLabel">🗑️ ユーザー削除確認</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p>以下のユーザーを削除してもよろしいですか？</p>
-                <div class="alert alert-danger">
-                    <strong>⚠️ 警告:</strong> この操作は取り消せません。
-                    <ul class="mb-0 mt-2">
-                        <li>ユーザーアカウントが完全に削除されます</li>
-                        <li>投稿した記事やコメントも削除されます</li>
-                        <li>関連するデータは復元できません</li>
-                    </ul>
-                </div>
-                <p><strong>メールアドレス:</strong> <span id="deleteUserEmail"></span></p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
-                <button type="button" class="btn btn-danger" onclick="deleteUser()">削除実行</button>
+                <ul class="list-unstyled">
+                    <li class="mb-2"><i class="fa fa-check text-success me-2"></i>プロフィール編集</li>
+                    <li class="mb-2"><i class="fa fa-check text-success me-2"></i>パスワード変更</li>
+                    <li class="mb-2"><i class="fa fa-check text-success me-2"></i>権限設定</li>
+                    <li class="mb-2"><i class="fa fa-check text-success me-2"></i>アカウント状態管理</li>
+                </ul>
             </div>
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts_extra %}
-<script>
-let deleteUserId = null;
-
-function confirmDeleteUser(userId, email) {
-    deleteUserId = userId;
-    document.getElementById('deleteUserEmail').textContent = email;
-    new bootstrap.Modal(document.getElementById('deleteUserModal')).show();
-}
-
-function deleteUser() {
-    if (deleteUserId) {
-        // フォームを作成してユーザー削除APIを呼び出し
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = '/admin/user/delete/' + deleteUserId + '/';
-        
-        // CSRFトークンを追加
-        const csrfToken = document.querySelector('input[name="csrf_token"]').value;
-        const csrfInput = document.createElement('input');
-        csrfInput.type = 'hidden';
-        csrfInput.name = 'csrf_token';
-        csrfInput.value = csrfToken;
-        form.appendChild(csrfInput);
-        
-        document.body.appendChild(form);
-        form.submit();
-    }
-}
-
-// 権限変更の警告
-document.getElementById('role').addEventListener('change', function() {
-    const currentUserId = {{ current_user.id }};
-    const editingUserId = {{ user.id }};
-    
-    if (currentUserId === editingUserId && this.value !== 'admin') {
-        alert('自分自身の管理者権限は削除できません。');
-        this.value = 'admin';
-    }
-});
-
-// パスワード強度チェック
-document.getElementById('new_password').addEventListener('input', function() {
-    const password = this.value;
-    const feedback = this.nextElementSibling;
-    
-    if (password.length === 0) {
-        feedback.textContent = '空白の場合はパスワードを変更しません。最低8文字以上で入力してください。';
-        feedback.className = 'form-text';
-    } else if (password.length < 8) {
-        feedback.textContent = 'パスワードは8文字以上で入力してください。';
-        feedback.className = 'form-text text-danger';
-    } else {
-        feedback.textContent = 'パスワードの強度: ' + (password.length >= 12 ? '強' : '中');
-        feedback.className = 'form-text text-success';
-    }
-});
-</script>
 {% endblock %}

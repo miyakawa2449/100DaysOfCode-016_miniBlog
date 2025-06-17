@@ -1,63 +1,363 @@
-{# filepath: c:\Users\tmiya\projects\100Day_new\016_miniBlog\templates\admin\create_article.html #}
 {% extends "admin/layout.html" %}
 
 {% block title %}新規記事作成{% endblock %}
+{% block page_title %}新規記事作成{% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<li><a href="{{ url_for('admin.articles') }}">記事管理</a></li>
+<li>新規作成</li>
+{% endblock %}
+
+{% block head_extra %}
+<!-- TinyMCE Editor -->
+<script src="https://cdn.tiny.cloud/1/no-api-key/tinymce/6/tinymce.min.js" referrerpolicy="origin"></script>
+<style>
+.preview-container {
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    background-color: #f8f9fa;
+    transition: all 0.3s ease;
+}
+
+.preview-container:hover {
+    border-color: var(--primary-color);
+    background-color: #e3f2fd;
+}
+
+.image-preview {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.form-floating label {
+    color: #6c757d;
+}
+
+.required-field::after {
+    content: " *";
+    color: #dc3545;
+}
+
+.debug-info {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 20px;
+    font-family: monospace;
+    font-size: 12px;
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">新規記事作成</h1>
+<!-- デバッグ情報（開発時のみ表示） -->
+{% if config.DEBUG %}
+<div class="debug-info">
+    <strong>フォームフィールド一覧:</strong><br>
+    {% for field in form %}
+        {{ field.name }}: {{ field.__class__.__name__ }}{% if field.label %} ({{ field.label.text }}){% endif %}<br>
+    {% endfor %}
 </div>
+{% endif %}
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-        {% for category, message in messages %}
-            <div class="alert alert-{{ category }}">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
-{% endwith %}
-
-<form method="POST" action="{{ url_for('admin.create_article') }}">
+<form method="POST" enctype="multipart/form-data" data-validate>
     {{ form.hidden_tag() }}
-    <div class="form-group">
-        {{ form.title.label(class="form-label") }}
-        {{ form.title(class="form-control" + (" is-invalid" if form.title.errors else "")) }}
-        {% if form.title.errors %}
-            <div class="invalid-feedback">
-                {% for error in form.title.errors %}{{ error }}{% endfor %}
+    
+    <div class="row">
+        <!-- メインコンテンツ -->
+        <div class="col-lg-8">
+            <!-- 基本情報 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-edit me-2"></i>記事内容</h5>
+                </div>
+                <div class="card-body">
+                    <!-- タイトル -->
+                    <div class="form-floating mb-3">
+                        {{ form.title(class="form-control" + (" is-invalid" if form.title.errors else ""), placeholder="記事のタイトルを入力してください", required=true) }}
+                        <label for="{{ form.title.id }}" class="required-field">{{ form.title.label.text }}</label>
+                        {% if form.title.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.title.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- スラッグ -->
+                    <div class="form-floating mb-3">
+                        {{ form.slug(class="form-control" + (" is-invalid" if form.slug.errors else ""), placeholder="url-slug") }}
+                        <label for="{{ form.slug.id }}" class="required-field">{{ form.slug.label.text }}</label>
+                        {% if form.slug.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.slug.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-text">
+                            <i class="fa fa-info-circle me-1"></i>URLの一部として使用されます（英数字、ハイフンのみ）
+                        </div>
+                    </div>
+                    
+                    <!-- 本文 -->
+                    <div class="mb-3">
+                        <label for="{{ form.body.id }}" class="form-label">{{ form.body.label.text }}</label>
+                        {{ form.body(class="form-control" + (" is-invalid" if form.body.errors else ""), id="editor", placeholder="記事の内容を入力してください...") }}
+                        {% if form.body.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.body.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
-        {% endif %}
-    </div>
-    <div class="form-group">
-        {{ form.slug.label(class="form-label") }}
-        {{ form.slug(class="form-control" + (" is-invalid" if form.slug.errors else "")) }}
-        <small class="form-text text-muted">URLに使用される半角英数字とハイフン（-）の文字列です。</small>
-        {% if form.slug.errors %}
-            <div class="invalid-feedback">
-                {% for error in form.slug.errors %}{{ error }}{% endfor %}
+        </div>
+        
+        <!-- サイドバー -->
+        <div class="col-lg-4">
+            <!-- 公開設定 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-cog me-2"></i>公開設定</h5>
+                </div>
+                <div class="card-body">
+                    <!-- カテゴリ選択（フォーム外フィールド） -->
+                    <div class="mb-3">
+                        <label class="form-label">カテゴリ</label>
+                        <select name="category_id" class="form-select">
+                            <option value="">カテゴリを選択してください</option>
+                            {% if all_categories %}
+                                {% for category in all_categories %}
+                                    <option value="{{ category.id }}">{{ category.name }}</option>
+                                {% endfor %}
+                            {% endif %}
+                        </select>
+                        <div class="form-text">
+                            <i class="fa fa-info-circle me-1"></i>記事のカテゴリを選択してください
+                        </div>
+                    </div>
+                    
+                    <!-- 公開状態（フォーム外フィールド） -->
+                    <div class="form-check mb-3">
+                        <input type="checkbox" name="is_published" class="form-check-input" id="is_published" value="true">
+                        <label class="form-check-label" for="is_published">
+                            記事を公開する
+                        </label>
+                    </div>
+                    
+                    <!-- コメント許可（フォーム外フィールド） -->
+                    <div class="form-check mb-3">
+                        <input type="checkbox" name="allow_comments" class="form-check-input" id="allow_comments" value="true" checked>
+                        <label class="form-check-label" for="allow_comments">
+                            コメントを許可する
+                        </label>
+                    </div>
+                </div>
             </div>
-        {% endif %}
-    </div>
-    <div class="form-group">
-        {{ form.body.label(class="form-label") }}
-        {{ form.body(class="form-control", rows="10") }}
-        {% if form.body.errors %}
-            <div class="invalid-feedback">
-                {% for error in form.body.errors %}{{ error }}{% endfor %}
+            
+            <!-- アイキャッチ画像 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-image me-2"></i>アイキャッチ画像</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">画像ファイル</label>
+                        <input type="file" name="featured_image" class="form-control" accept="image/*" onchange="previewImage(event)">
+                        <div class="form-text">
+                            推奨サイズ: 1200×630px（JPG, PNG形式）
+                        </div>
+                    </div>
+                    
+                    <div id="imagePreviewContainer" class="preview-container" style="display: none;">
+                        <img id="imagePreview" class="image-preview" alt="プレビュー">
+                        <div class="mt-2">
+                            <small class="text-muted">画像プレビュー</small>
+                        </div>
+                    </div>
+                </div>
             </div>
-        {% endif %}
+            
+            <!-- SEO設定 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-search me-2"></i>SEO設定</h5>
+                </div>
+                <div class="card-body">
+                    <div class="form-floating mb-3">
+                        <input type="text" name="meta_title" class="form-control" placeholder="SEO用タイトル">
+                        <label>メタタイトル</label>
+                        <div class="form-text">
+                            <i class="fa fa-info-circle me-1"></i>検索結果に表示されるタイトル
+                        </div>
+                    </div>
+                    
+                    <div class="form-floating mb-3">
+                        <textarea name="meta_description" class="form-control" placeholder="検索エンジン用の説明文" rows="3"></textarea>
+                        <label>メタディスクリプション</label>
+                        <div class="form-text">
+                            <i class="fa fa-info-circle me-1"></i>検索結果に表示される説明文
+                        </div>
+                    </div>
+                    
+                    <div class="form-floating mb-3">
+                        <input type="text" name="meta_keywords" class="form-control" placeholder="キーワード1, キーワード2, キーワード3">
+                        <label>メタキーワード</label>
+                        <div class="form-text">
+                            <i class="fa fa-info-circle me-1"></i>カンマ区切りでキーワードを入力
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 作成のヒント -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-lightbulb me-2"></i>作成のヒント</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled small">
+                        <li class="mb-2"><i class="fa fa-check text-success me-2"></i>タイトルは具体的で分かりやすく</li>
+                        <li class="mb-2"><i class="fa fa-check text-success me-2"></i>スラッグは英語で簡潔に</li>
+                        <li class="mb-2"><i class="fa fa-check text-success me-2"></i>見出しを使って構造化する</li>
+                        <li class="mb-2"><i class="fa fa-check text-success me-2"></i>画像は記事の内容に関連するものを選ぶ</li>
+                        <li class="mb-2"><i class="fa fa-check text-success me-2"></i>SEO設定で検索順位向上</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
     </div>
     
-    {# カテゴリ選択 #}
-    <div class="form-group">
-        <label for="categories">カテゴリ (複数選択可: Ctrl/Cmd + クリック)</label>
-        <select multiple class="form-control" id="categories" name="categories" size="5">
-            {% for category in all_categories %}
-            <option value="{{ category.id }}">{{ category.name }}</option>
-            {% endfor %}
-        </select>
+    <!-- アクションボタン -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="text-muted">
+                            <i class="fa fa-info-circle me-1"></i>
+                            内容を確認して記事を作成してください
+                        </div>
+                        <div>
+                            <a href="{{ url_for('admin.articles') }}" class="btn btn-secondary me-2">
+                                <i class="fa fa-times me-1"></i>キャンセル
+                            </a>
+                            <button type="submit" name="action" value="draft" class="btn btn-warning me-2">
+                                <i class="fa fa-save me-1"></i>下書き保存
+                            </button>
+                            <button type="submit" name="action" value="publish" class="btn btn-primary">
+                                <i class="fa fa-upload me-1"></i>記事を作成
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-
-    {{ form.submit(class="btn btn-primary") }}
-    <a href="{{ url_for('admin.articles') }}" class="btn btn-secondary">キャンセル</a>
 </form>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+// TinyMCE初期化
+tinymce.init({
+    selector: '#editor',
+    height: 400,
+    menubar: false,
+    plugins: [
+        'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+        'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+        'insertdatetime', 'media', 'table', 'help', 'wordcount'
+    ],
+    toolbar: 'undo redo | blocks | bold italic forecolor | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | removeformat | help',
+    content_style: 'body { font-family: -apple-system, BlinkMacSystemFont, San Francisco, Segoe UI, Roboto, Helvetica Neue, sans-serif; font-size: 14px; }',
+    language: 'ja'
+});
+
+// 画像プレビュー
+function previewImage(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const preview = document.getElementById('imagePreview');
+            const container = document.getElementById('imagePreviewContainer');
+            if (preview && container) {
+                preview.src = e.target.result;
+                container.style.display = 'block';
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+// スラッグ自動生成
+document.addEventListener('DOMContentLoaded', function() {
+    const titleField = document.getElementById('{{ form.title.id }}');
+    const slugField = document.getElementById('{{ form.slug.id }}');
+    
+    if (titleField && slugField) {
+        titleField.addEventListener('input', function() {
+            // スラッグが空の場合のみ自動生成
+            if (!slugField.value) {
+                const title = this.value;
+                const slug = title.toLowerCase()
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '') // アクセント除去
+                    .replace(/[^\w\s-]/g, '') // 英数字、スペース、ハイフンのみ
+                    .replace(/[\s_-]+/g, '-') // スペースとアンダースコアをハイフンに
+                    .replace(/^-+|-+$/g, ''); // 先頭末尾のハイフン除去
+                slugField.value = slug;
+            }
+        });
+    }
+});
+
+// フォーム送信前の確認
+document.querySelector('form').addEventListener('submit', function(e) {
+    const title = document.getElementById('{{ form.title.id }}').value.trim();
+    const slug = document.getElementById('{{ form.slug.id }}').value.trim();
+    const body = tinymce.get('editor') ? tinymce.get('editor').getContent() : document.getElementById('{{ form.body.id }}').value;
+    
+    if (!title) {
+        e.preventDefault();
+        alert('タイトルを入力してください。');
+        document.getElementById('{{ form.title.id }}').focus();
+        return false;
+    }
+    
+    if (!slug) {
+        e.preventDefault();
+        alert('スラッグを入力してください。');
+        document.getElementById('{{ form.slug.id }}').focus();
+        return false;
+    }
+    
+    if (!body.trim()) {
+        e.preventDefault();
+        alert('本文を入力してください。');
+        if (tinymce.get('editor')) {
+            tinymce.get('editor').focus();
+        } else {
+            document.getElementById('{{ form.body.id }}').focus();
+        }
+        return false;
+    }
+    
+    // TinyMCEの内容をテキストエリアに同期
+    if (tinymce.get('editor')) {
+        tinymce.triggerSave();
+    }
+});
+
+// スラッグ入力時の文字制限
+document.getElementById('{{ form.slug.id }}').addEventListener('input', function() {
+    // 英数字とハイフンのみ許可
+    this.value = this.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+});
+</script>
 {% endblock %}

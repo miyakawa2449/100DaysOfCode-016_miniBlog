@@ -1,223 +1,292 @@
 {% extends "admin/layout.html" %}
 
-{% block title %}カテゴリ編集 - {{ super() }}{% endblock %}
+{% block title %}カテゴリ編集: {{ category.name }}{% endblock %}
+{% block page_title %}カテゴリ編集{% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<li><a href="{{ url_for('admin.categories') }}">カテゴリ管理</a></li>
+<li>{{ category.name }}</li>
+{% endblock %}
 
 {% block head_extra %}
-    {{ super() }}
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" integrity="sha512-hvNR0F/e2J7zPPfLC9auFe3/SE0yG4aJCOd/qxew74NN7eyiSKjr7xJJMu1Jy2wf7FXITpWS1E/RY8yzuXN7VA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <style>
-        /* ... existing style ... */
-    </style>
+<style>
+.preview-container {
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    background-color: #f8f9fa;
+    transition: all 0.3s ease;
+}
+
+.current-image-preview {
+    border: 2px solid #28a745;
+    border-radius: 8px;
+    padding: 15px;
+    background-color: #f8fff9;
+}
+
+.image-preview {
+    max-width: 100%;
+    max-height: 200px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.required-field::after {
+    content: " *";
+    color: #dc3545;
+}
+
+.slug-preview {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-family: monospace;
+    font-size: 14px;
+    color: #495057;
+}
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <h2>カテゴリ編集: {{ category.name }}</h2>
-
-    <form method="POST" enctype="multipart/form-data">
-        {{ form.hidden_tag() }}
-
-        <div class="row">
-            <div class="col-md-8">
-                <div class="mb-3">
-                    <label for="name" class="form-label">{{ form.name.label }}</label>
-                    {{ form.name(class="form-control" + (" is-invalid" if form.name.errors else "")) }}
-                    {% if form.name.errors %}
-                        <div class="invalid-feedback">
-                            {% for error in form.name.errors %}{{ error }}{% endfor %}
-                        </div>
-                    {% endif %}
+<form method="POST" enctype="multipart/form-data" data-validate>
+    {{ form.hidden_tag() }}
+    
+    <div class="row">
+        <!-- メインコンテンツ -->
+        <div class="col-lg-8">
+            <!-- 基本情報 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-tags me-2"></i>カテゴリ情報</h5>
                 </div>
-                <div class="mb-3">
-                    <label for="slug" class="form-label">{{ form.slug.label }}</label>
-                    {{ form.slug(class="form-control" + (" is-invalid" if form.slug.errors else "")) }}
-                    {% if form.slug.errors %}
-                        <div class="invalid-feedback">
-                            {% for error in form.slug.errors %}{{ error }}{% endfor %}
-                        </div>
-                    {% endif %}
-                </div>
-                <div class="mb-3">
-                    <label for="description" class="form-label">{{ form.description.label }}</label>
-                    {{ form.description(class="form-control" + (" is-invalid" if form.description.errors else "")) }}
-                    {% if form.description.errors %}
-                        <div class="invalid-feedback">
-                            {% for error in form.description.errors %}{{ error }}{% endfor %}
-                        </div>
-                    {% endif %}
-                </div>
-                <div class="mb-3">
-                    <label for="parent_id" class="form-label">{{ form.parent_id.label }}</label>
-                    {{ form.parent_id(class="form-control" + (" is-invalid" if form.parent_id.errors else "")) }}
-                    {% if form.parent_id.errors %}
-                        <div class="invalid-feedback">
-                            {% for error in form.parent_id.errors %}{{ error }}{% endfor %}
-                        </div>
-                    {% endif %}
-                </div>
-                <div class="mb-3">
-                    <label for="ogp_image_file" class="form-label">{{ form.ogp_image_file.label }}</label>
-                    {{ form.ogp_image_file(class="form-control" + (" is-invalid" if form.ogp_image_file.errors else ""), onchange="previewImage(event)") }}
-                    {% if form.ogp_image_file.errors %}
-                        <div class="invalid-feedback">
-                            {% for error in form.ogp_image_file.errors %}{{ error }}{% endfor %}
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="col-md-4">
-                {% if category.ogp_image %}
-                    <div class="mb-3">
-                        <p>現在のOGP画像:</p>
-                        <img id="currentOgpImage" src="{{ url_for('static', filename=category.ogp_image) }}?t={{ range(1, 100000) | random }}" alt="現在のOGP画像" class="img-thumbnail" style="max-width: 100%; height: auto;">
-                        <p><small>{{ category.ogp_image }}</small></p>
+                <div class="card-body">
+                    <!-- カテゴリ名 -->
+                    <div class="form-floating mb-3">
+                        {{ form.name(class="form-control" + (" is-invalid" if form.name.errors else ""), placeholder="カテゴリ名を入力してください", required=true) }}
+                        <label for="{{ form.name.id }}" class="required-field">{{ form.name.label.text }}</label>
+                        {% if form.name.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.name.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
                     </div>
-                {% endif %}
-                <div class="mb-3" id="imagePreviewContainer" style="display: none;">
-                    <p>プレビュー:</p>
-                    <img id="imagePreview" src="#" alt="画像プレビュー" class="img-fluid" style="max-height: 300px;">
-                    <button type="button" id="cropButton" class="btn btn-sm btn-info mt-2" style="display: none;">トリミング適用</button>
-                </div>
-                <div class="mb-3" id="croppedPreviewContainer" style="display: none;">
-                    <p>トリミング後のプレビュー:</p>
-                    <img id="croppedPreviewImage" src="#" alt="トリミング後の画像プレビュー" class="img-fluid" style="max-height: 300px; display: none;">
+                    
+                    <!-- スラッグ -->
+                    {% if form.slug %}
+                    <div class="mb-3">
+                        <label for="{{ form.slug.id }}" class="form-label">{{ form.slug.label.text }}</label>
+                        {{ form.slug(class="form-control" + (" is-invalid" if form.slug.errors else ""), placeholder="category-slug") }}
+                        {% if form.slug.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.slug.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-text">
+                            <i class="fa fa-warning me-1 text-warning"></i>変更すると既存のURLが無効になる可能性があります
+                        </div>
+                        <div class="mt-2">
+                            <small class="text-muted">プレビュー URL: </small>
+                            <div class="slug-preview" id="slugPreview">{{ url_for('home') }}category/{{ category.slug }}</div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- 説明 -->
+                    {% if form.description %}
+                    <div class="form-floating mb-3">
+                        {{ form.description(class="form-control" + (" is-invalid" if form.description.errors else ""), placeholder="カテゴリの説明", rows="4") }}
+                        <label for="{{ form.description.id }}">{{ form.description.label.text }}</label>
+                        {% if form.description.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.description.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    
+                    <!-- 親カテゴリ -->
+                    {% if form.parent_id %}
+                    <div class="mb-3">
+                        <label for="{{ form.parent_id.id }}" class="form-label">{{ form.parent_id.label.text }}</label>
+                        {{ form.parent_id(class="form-select" + (" is-invalid" if form.parent_id.errors else "")) }}
+                        {% if form.parent_id.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.parent_id.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
-
-        {{ form.ogp_crop_x() }}
-        {{ form.ogp_crop_y() }}
-        {{ form.ogp_crop_width() }}
-        {{ form.ogp_crop_height() }}
-        {{ form.ogp_crop_rotate() }}
-        {{ form.ogp_crop_scaleX() }}
-        {{ form.ogp_crop_scaleY() }}
-
-        <hr>
-        <div class="mb-3">
-            <label for="meta_title" class="form-label">{{ form.meta_title.label }}</label>
-            {{ form.meta_title(class="form-control" + (" is-invalid" if form.meta_title.errors else "")) }}
-            {% if form.meta_title.errors %}
-                <div class="invalid-feedback">
-                    {% for error in form.meta_title.errors %}{{ error }}{% endfor %}
+        
+        <!-- サイドバー -->
+        <div class="col-lg-4">
+            <!-- カテゴリ情報 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-info-circle me-2"></i>カテゴリ情報</h5>
                 </div>
-            {% endif %}
-        </div>
-        <div class="mb-3">
-            <label for="meta_keywords" class="form-label">{{ form.meta_keywords.label }}</label>
-            {{ form.meta_keywords(class="form-control" + (" is-invalid" if form.meta_keywords.errors else "")) }}
-            {% if form.meta_keywords.errors %}
-                <div class="invalid-feedback">
-                    {% for error in form.meta_keywords.errors %}{{ error }}{% endfor %}
+                <div class="card-body">
+                    <dl class="row small">
+                        <dt class="col-sm-4">ID:</dt>
+                        <dd class="col-sm-8">{{ category.id }}</dd>
+                        
+                        <dt class="col-sm-4">作成日:</dt>
+                        <dd class="col-sm-8">{{ category.created_at.strftime('%Y-%m-%d %H:%M') if category.created_at else 'N/A' }}</dd>
+                        
+                        <dt class="col-sm-4">記事数:</dt>
+                        <dd class="col-sm-8">
+                            <span class="badge bg-info">{{ category.articles.count() }}</span>
+                        </dd>
+                        
+                        {% if category.parent %}
+                        <dt class="col-sm-4">親カテゴリ:</dt>
+                        <dd class="col-sm-8">{{ category.parent.name }}</dd>
+                        {% endif %}
+                    </dl>
+                    
+                    <div class="mt-3">
+                        <a href="{{ url_for('category_page', slug=category.slug) }}" target="_blank" class="btn btn-outline-info btn-sm">
+                            <i class="fa fa-external-link me-1"></i>カテゴリページを表示
+                        </a>
+                    </div>
                 </div>
-            {% endif %}
-        </div>
-        <div class="mb-3">
-            <label for="canonical_url" class="form-label">{{ form.canonical_url.label }}</label>
-            {{ form.canonical_url(class="form-control" + (" is-invalid" if form.canonical_url.errors else "")) }}
-            {% if form.canonical_url.errors %}
-                <div class="invalid-feedback">
-                    {% for error in form.canonical_url.errors %}{{ error }}{% endfor %}
+            </div>
+            
+            <!-- カテゴリ画像 -->
+            {% if form.ogp_image %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-image me-2"></i>カテゴリ画像</h5>
                 </div>
-            {% endif %}
-        </div>
-        <div class="mb-3">
-            <label for="json_ld" class="form-label">{{ form.json_ld.label }}</label>
-            {{ form.json_ld(class="form-control" + (" is-invalid" if form.json_ld.errors else "")) }}
-            {% if form.json_ld.errors %}
-                <div class="invalid-feedback">
-                    {% for error in form.json_ld.errors %}{{ error }}{% endfor %}
+                <div class="card-body">
+                    <!-- 現在の画像表示 -->
+                    {% if category.ogp_image %}
+                        <div class="mb-3">
+                            <p><strong>現在の画像:</strong></p>
+                            <div class="current-image-preview">
+                                <img src="{{ url_for('static', filename=category.ogp_image) }}?t={{ range(1, 100000) | random }}" 
+                                     alt="現在のカテゴリ画像" 
+                                     class="image-preview">
+                                <div class="mt-2 small text-muted">
+                                    <i class="fa fa-file me-1"></i>{{ category.ogp_image }}
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                    
+                    <div class="mb-3">
+                        <label for="{{ form.ogp_image.id }}" class="form-label">{{ form.ogp_image.label.text }}</label>
+                        {{ form.ogp_image(class="form-control" + (" is-invalid" if form.ogp_image.errors else ""), onchange="previewImage(event)") }}
+                        {% if form.ogp_image.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.ogp_image.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-text">
+                            新しい画像をアップロードする場合のみ選択してください
+                        </div>
+                    </div>
+                    
+                    <div id="imagePreviewContainer" class="preview-container" style="display: none;">
+                        <img id="imagePreview" class="image-preview" alt="プレビュー">
+                        <div class="mt-2">
+                            <small class="text-muted">新しい画像のプレビュー</small>
+                        </div>
+                    </div>
                 </div>
+            </div>
             {% endif %}
-        </div>
-        <div class="mb-3">
-            <label for="ext_json" class="form-label">{{ form.ext_json.label }}</label>
-            {{ form.ext_json(class="form-control" + (" is-invalid" if form.ext_json.errors else "")) }}
-            {% if form.ext_json.errors %}
-                <div class="invalid-feedback">
-                    {% for error in form.ext_json.errors %}{{ error }}{% endfor %}
+            
+            <!-- 編集のヒント -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-lightbulb me-2"></i>編集のヒント</h5>
                 </div>
-            {% endif %}
+                <div class="card-body">
+                    <ul class="list-unstyled small">
+                        <li class="mb-2"><i class="fa fa-exclamation-triangle text-warning me-2"></i>スラッグの変更は慎重に</li>
+                        <li class="mb-2"><i class="fa fa-check text-success me-2"></i>説明文でSEO効果向上</li>
+                        <li class="mb-2"><i class="fa fa-check text-success me-2"></i>定期的に記事数を確認</li>
+                        <li class="mb-2"><i class="fa fa-check text-success me-2"></i>階層構造の見直し</li>
+                    </ul>
+                </div>
+            </div>
         </div>
-
-        <button type="submit" class="btn btn-primary">更新</button>
-        <a href="{{ url_for('admin.categories') }}" class="btn btn-secondary">キャンセル</a>
-    </form>
-</div>
+    </div>
+    
+    <!-- アクションボタン -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="text-muted">
+                            <i class="fa fa-info-circle me-1"></i>
+                            変更内容を確認してカテゴリを更新してください
+                        </div>
+                        <div>
+                            <a href="{{ url_for('admin.categories') }}" class="btn btn-secondary me-2">
+                                <i class="fa fa-times me-1"></i>キャンセル
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fa fa-save me-1"></i>変更を保存
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
 {% endblock %}
 
 {% block scripts_extra %}
-    {{ super() }}
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js" integrity="sha512-9KkIqdfN7ipEW6B6k+Aq20PV31bjODg4AA52W+tYtAE0jE0kMx49bjJ3FgvS56wzmyfMUHbQ4Km2b7l9+Y/+Eg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script>
-        const imageInput = document.getElementById('ogp_image_file'); // フォームのFileFieldのIDに合わせる
-        const imagePreview = document.getElementById('imagePreview');
-        const imagePreviewContainer = document.getElementById('imagePreviewContainer');
-        const cropButton = document.getElementById('cropButton');
-        const croppedPreviewImage = document.getElementById('croppedPreviewImage');
-        const croppedPreviewContainer = document.getElementById('croppedPreviewContainer');
-        let cropper;
+<script>
+// 画像プレビュー
+function previewImage(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const preview = document.getElementById('imagePreview');
+            const container = document.getElementById('imagePreviewContainer');
+            preview.src = e.target.result;
+            container.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    }
+}
 
-        // Hidden fields for crop data
-        const cropXField = document.getElementById('ogp_crop_x');
-        const cropYField = document.getElementById('ogp_crop_y');
-        const cropWidthField = document.getElementById('ogp_crop_width');
-        const cropHeightField = document.getElementById('ogp_crop_height');
-        // 必要であれば rotate, scaleX, scaleY も同様に
-        // const cropRotateField = document.getElementById('ogp_crop_rotate');
-        // const cropScaleXField = document.getElementById('ogp_crop_scaleX');
-        // const cropScaleYField = document.getElementById('ogp_crop_scaleY');
+// スラッグプレビュー更新
+{% if form.slug %}
+function updateSlugPreview() {
+    const slugField = document.getElementById('{{ form.slug.id }}');
+    const preview = document.getElementById('slugPreview');
+    
+    slugField.addEventListener('input', function() {
+        const slug = this.value || '{{ category.slug }}';
+        preview.textContent = '{{ url_for("home") }}category/' + slug;
+    });
+}
 
+updateSlugPreview();
+{% endif %}
 
-        function previewImage(event) { // ★★★ previewImage 関数を定義 ★★★
-            const reader = new FileReader();
-            reader.onload = function(){
-                imagePreview.src = reader.result;
-                imagePreviewContainer.style.display = 'block';
-                cropButton.style.display = 'inline-block';
-
-                if (cropper) {
-                    cropper.destroy();
-                }
-                cropper = new Cropper(imagePreview, {
-                    aspectRatio: 1200 / 630, // OGP画像の推奨アスペクト比 (例)
-                    viewMode: 1, // 0, 1, 2, 3
-                    zoomOnWheel: false, // ★★★ マウスホイールズームを無効化 ★★★
-                    crop: function(event) {
-                        if (cropXField) cropXField.value = Math.round(event.detail.x);
-                        if (cropYField) cropYField.value = Math.round(event.detail.y);
-                        if (cropWidthField) cropWidthField.value = Math.round(event.detail.width);
-                        if (cropHeightField) cropHeightField.value = Math.round(event.detail.height);
-                    }
-                });
-            };
-            if (event.target.files[0]) {
-                reader.readAsDataURL(event.target.files[0]);
-            }
-        }
-
-        if (imageInput) { // imageInput が存在する場合のみリスナーを設定
-            imageInput.addEventListener('change', previewImage);
-        }
-
-
-        if (cropButton) {
-            cropButton.addEventListener('click', function() {
-                if (cropper) {
-                    // トリミングされた画像データを取得 (Canvasとして)
-                    const canvas = cropper.getCroppedCanvas({
-                        width: 1200, // 目標の幅
-                        height: 630  // 目標の高さ
-                    });
-                    // 例えば、id="croppedPreviewImage" というimgタグに表示
-                    if (croppedPreviewImage) {
-                        croppedPreviewImage.src = canvas.toDataURL();
-                        croppedPreviewImage.style.display = 'block';
-                        croppedPreviewContainer.style.display = 'block';
-                    }
-                    alert('トリミング後のプレビューを表示しました。フォームを送信してください。');
-                }
-            });
-        }
-    </script>
+// フォーム送信前の確認
+document.querySelector('form').addEventListener('submit', function(e) {
+    const name = document.getElementById('{{ form.name.id }}').value.trim();
+    
+    if (!name) {
+        e.preventDefault();
+        alert('カテゴリ名を入力してください。');
+        return false;
+    }
+});
+</script>
 {% endblock %}
