@@ -3,313 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}管理画面{% endblock %} - ミニブログ</title>
+    <title>{% block title %}管理画面 - ミニブログ{% endblock %}</title>
+    
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --sidebar-width: 250px;
-            --header-height: 56px;
-        }
-        
-        html, body {
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        body { 
-            padding-top: 0;
-            overflow-x: hidden;
-        }
-        
-        .navbar {
-            height: var(--header-height);
-            z-index: 1030;
-        }
-        
-        .navbar-brand {
-            font-weight: 600;
-            font-size: 1.25rem;
-        }
-        
-        .sidebar {
-            position: fixed;
-            top: var(--header-height);
-            bottom: 0;
-            left: 0;
-            z-index: 1020;
-            width: var(--sidebar-width);
-            background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%);
-            border-right: 1px solid #dee2e6;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-            transform: translateX(0);
-            transition: transform 0.3s ease-in-out;
-        }
-        
-        .sidebar-sticky {
-            position: relative;
-            top: 0;
-            height: calc(100vh - var(--header-height));
-            padding: 1rem 0;
-            overflow-x: hidden;
-            overflow-y: auto;
-        }
-        
-        .sidebar .nav-link {
-            color: #495057;
-            padding: 0.75rem 1.5rem;
-            border-radius: 0;
-            transition: all 0.3s ease;
-            border-left: 3px solid transparent;
-            text-decoration: none;
-        }
-        
-        .sidebar .nav-link:hover {
-            background-color: rgba(0,123,255,0.1);
-            color: #007bff;
-            border-left-color: #007bff;
-        }
-        
-        .sidebar .nav-link.active {
-            background-color: rgba(0,123,255,0.15);
-            color: #007bff;
-            border-left-color: #007bff;
-            font-weight: 600;
-        }
-        
-        .main-content { 
-            margin-left: var(--sidebar-width);
-            margin-top: var(--header-height);
-            padding: 2rem;
-            min-height: calc(100vh - var(--header-height));
-            width: calc(100% - var(--sidebar-width));
-            box-sizing: border-box;
-        }
-        
-        .card {
-            border: none;
-            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-            transition: box-shadow 0.15s ease-in-out;
-        }
-        
-        .card:hover {
-            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-        }
-        
-        .sidebar-heading {
-            font-size: 0.75rem;
-            font-weight: 600;
-            letter-spacing: 0.05em;
-        }
-        
-        /* ドロップダウンメニューの調整 */
-        .dropdown-menu {
-            z-index: 1040;
-        }
-        
-        /* レスポンシブデザイン */
-        @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-            }
-            
-            .sidebar.show {
-                transform: translateX(0);
-            }
-            
-            .main-content {
-                margin-left: 0;
-                width: 100%;
-                padding: 1rem;
-            }
-            
-            .navbar-toggler {
-                border: none;
-                padding: 0.25rem 0.5rem;
-            }
-            
-            .navbar-toggler:focus {
-                box-shadow: none;
-            }
-        }
-        
-        /* モバイル用のオーバーレイ */
-        .sidebar-backdrop {
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: 1010;
-            width: 100vw;
-            height: 100vh;
-            background-color: rgba(0,0,0,0.5);
-            display: none;
-        }
-        
-        .sidebar-backdrop.show {
-            display: block;
-        }
-        
-        /* スクロールバーのスタイル調整 */
-        .sidebar-sticky::-webkit-scrollbar {
-            width: 6px;
-        }
-        
-        .sidebar-sticky::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-        
-        .sidebar-sticky::-webkit-scrollbar-thumb {
-            background: #888;
-            border-radius: 3px;
-        }
-        
-        .sidebar-sticky::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
-    </style>
+    <!-- RDash inspired Admin CSS -->
+    <link href="{{ url_for('static', filename='css/rdash-admin.css') }}" rel="stylesheet">
+    
     {% block head_extra %}{% endblock %}
 </head>
-<body>
-    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
-        <a class="navbar-brand" href="{{ url_for('admin.dashboard') }}">
-            <i class="fas fa-crown me-2"></i>管理ダッシュボード
-        </a>
-        <button class="navbar-toggler d-md-none" type="button" onclick="toggleSidebar()" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="navbar-nav ms-auto">
-            <ul class="navbar-nav">
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="fas fa-user-circle me-1"></i>{{ current_user.email }}
+
+<body class="rdash">
+    <div id="page-wrapper" class="open">
+        <!-- サイドバー -->
+        <div id="sidebar-wrapper">
+            <ul class="sidebar">
+                <!-- サイドバーヘッダー -->
+                <li class="sidebar-main">
+                    <a href="{{ url_for('admin.dashboard') }}">
+                        <i class="fa fa-cogs"></i>
+                        ミニブログ管理
+                        <span id="main-menu-toggle" class="menu-toggle">
+                            <i class="fa fa-angle-double-left"></i>
+                        </span>
                     </a>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item" href="{{ url_for('home') }}" target="_blank">
-                            <i class="fas fa-external-link-alt me-2"></i>サイトを表示
+                </li>
+                
+                <!-- ダッシュボード -->
+                <li class="sidebar-title">
+                    <span>ナビゲーション</span>
+                </li>
+                <li class="sidebar-list {{ 'active' if request.endpoint == 'admin.dashboard' else '' }}">
+                    <a href="{{ url_for('admin.dashboard') }}">
+                        <i class="fa fa-dashboard"></i>
+                        <span class="menu-text">ダッシュボード</span>
+                    </a>
+                </li>
+                
+                <!-- 記事管理 -->
+                <li class="sidebar-list">
+                    <a href="#" class="has-submenu {{ 'active' if 'article' in request.endpoint else '' }}">
+                        <i class="fa fa-file-text"></i>
+                        <span class="menu-text">記事管理</span>
+                        <i class="fa fa-angle-right arrow"></i>
+                    </a>
+                    <ul class="submenu {{ 'show' if 'article' in request.endpoint else '' }}">
+                        <li><a href="{{ url_for('admin.articles') }}" class="{{ 'active' if request.endpoint == 'admin.articles' else '' }}">
+                            <i class="fa fa-list"></i>記事一覧
                         </a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="{{ url_for('totp_setup') }}">
-                            <i class="fas fa-shield-alt me-2"></i>セキュリティ設定
-                        </a></li>
-                        <li><a class="dropdown-item" href="{{ url_for('password_reset_request') }}">
-                            <i class="fas fa-key me-2"></i>パスワード変更
-                        </a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
-                            <i class="fas fa-sign-out-alt me-2"></i>ログアウト
+                        <li><a href="{{ url_for('admin.create_article') }}" class="{{ 'active' if request.endpoint == 'admin.create_article' else '' }}">
+                            <i class="fa fa-plus"></i>新規作成
                         </a></li>
                     </ul>
                 </li>
-            </ul>
-        </div>
-    </nav>
-
-    <!-- サイドバー用バックドロップ -->
-    <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
-    
-    <!-- サイドバー -->
-    <nav id="sidebarMenu" class="sidebar" role="navigation">
-        <div class="sidebar-sticky pt-3">
-            <ul class="nav flex-column">
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'admin.dashboard' %}active{% endif %}" href="{{ url_for('admin.dashboard') }}">
-                                <i class="fas fa-tachometer-alt me-2"></i>ダッシュボード
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'admin.users' or request.endpoint == 'admin.edit_user' %}active{% endif %}" href="{{ url_for('admin.users') }}">
-                                <i class="fas fa-users me-2"></i>ユーザー管理
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'admin.articles' or request.endpoint == 'admin.create_article' or request.endpoint == 'admin.edit_article' %}active{% endif %}" href="{{ url_for('admin.articles') }}">
-                                <i class="fas fa-newspaper me-2"></i>記事管理
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'admin.categories' or request.endpoint == 'admin.create_category' or request.endpoint == 'admin.edit_category' %}active{% endif %}" href="{{ url_for('admin.categories') }}">
-                                <i class="fas fa-tags me-2"></i>カテゴリ管理
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'admin.comments' %}active{% endif %}" href="{{ url_for('admin.comments') }}">
-                                <i class="fas fa-comments me-2"></i>コメント管理
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link {% if request.endpoint == 'admin.site_settings' %}active{% endif %}" href="{{ url_for('admin.site_settings') }}">
-                                <i class="fas fa-cog me-2"></i>サイト管理
-                            </a>
-                        </li>
-                        
-                        <hr class="text-muted">
-                        <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-3 mb-1 text-muted text-uppercase">
-                            <span>セキュリティ</span>
-                        </h6>
-                        <li class="nav-item">
-                            {% if current_user.totp_enabled %}
-                                <a class="nav-link text-success" href="{{ url_for('totp_disable') }}">
-                                    <i class="fas fa-shield-alt me-2"></i>✅ 2段階認証を無効化
-                                </a>
-                            {% else %}
-                                <a class="nav-link text-warning" href="{{ url_for('totp_setup') }}">
-                                    <i class="fas fa-exclamation-triangle me-2"></i>⚠️ 2段階認証を設定
-                                </a>
-                            {% endif %}
-                        </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('password_reset_request') }}">
-                        <i class="fas fa-key me-2"></i>パスワード変更
+                
+                <!-- カテゴリ管理 -->
+                <li class="sidebar-list">
+                    <a href="#" class="has-submenu {{ 'active' if 'categor' in request.endpoint else '' }}">
+                        <i class="fa fa-tags"></i>
+                        <span class="menu-text">カテゴリ管理</span>
+                        <i class="fa fa-angle-right arrow"></i>
+                    </a>
+                    <ul class="submenu {{ 'show' if 'categor' in request.endpoint else '' }}">
+                        <li><a href="{{ url_for('admin.categories') }}" class="{{ 'active' if request.endpoint == 'admin.categories' else '' }}">
+                            <i class="fa fa-list"></i>カテゴリ一覧
+                        </a></li>
+                        <li><a href="{{ url_for('admin.create_category') }}" class="{{ 'active' if request.endpoint == 'admin.create_category' else '' }}">
+                            <i class="fa fa-plus"></i>新規作成
+                        </a></li>
+                    </ul>
+                </li>
+                
+                <!-- コメント管理 -->
+                <li class="sidebar-list {{ 'active' if request.endpoint == 'admin.comments' else '' }}">
+                    <a href="{{ url_for('admin.comments') }}">
+                        <i class="fa fa-comments"></i>
+                        <span class="menu-text">コメント管理</span>
+                    </a>
+                </li>
+                
+                <!-- その他の機能 -->
+                <li class="sidebar-title">
+                    <span>その他</span>
+                </li>
+                <li class="sidebar-list">
+                    <a href="{{ url_for('home') }}" target="_blank">
+                        <i class="fa fa-external-link"></i>
+                        <span class="menu-text">サイトを表示</span>
                     </a>
                 </li>
             </ul>
         </div>
-    </nav>
+        
+        <!-- メインコンテンツエリア -->
+        <div id="content-wrapper">
+            <!-- トップバー -->
+            <div class="page-header">
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1>{% block page_title %}{% endblock %}</h1>
+                        <ol class="breadcrumb">
+                            {% block breadcrumb %}
+                            <li><a href="{{ url_for('admin.dashboard') }}">ホーム</a></li>
+                            {% endblock %}
+                        </ol>
+                    </div>
+                    <div class="header-right">
+                        <div class="header-user-dropdown">
+                            <button class="btn btn-default dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                <i class="fa fa-user"></i>
+                                {{ current_user.name }}
+                                <span class="caret"></span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="{{ url_for('logout') }}">
+                                    <i class="fa fa-sign-out"></i> ログアウト
+                                </a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- フラッシュメッセージ -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show">
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            <!-- ページコンテンツ -->
+            <div class="page-content">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
 
-    <!-- メインコンテンツ -->
-    <main role="main" class="main-content">
-        {% block content %}{% endblock %}
-    </main>
-
-    <!-- Bootstrap JavaScript -->
+    <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <script>
-        // サイドバーのトグル機能
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebarMenu');
-            const backdrop = document.getElementById('sidebarBackdrop');
-            
-            if (window.innerWidth <= 768) {
-                sidebar.classList.toggle('show');
-                backdrop.classList.toggle('show');
-            }
-        }
-        
-        // ウィンドウリサイズ時の処理
-        window.addEventListener('resize', function() {
-            const sidebar = document.getElementById('sidebarMenu');
-            const backdrop = document.getElementById('sidebarBackdrop');
-            
-            if (window.innerWidth > 768) {
-                sidebar.classList.remove('show');
-                backdrop.classList.remove('show');
-            }
-        });
-        
-        // 初期化
-        document.addEventListener('DOMContentLoaded', function() {
-            // ドロップダウンメニューの初期化
-            const dropdownElementList = [].slice.call(document.querySelectorAll('.dropdown-toggle'));
-            const dropdownList = dropdownElementList.map(function (dropdownToggleEl) {
-                return new bootstrap.Dropdown(dropdownToggleEl);
-            });
-        });
-    </script>
+    <!-- RDash Admin JS -->
+    <script src="{{ url_for('static', filename='js/rdash-admin.js') }}"></script>
     
     {% block scripts_extra %}{% endblock %}
 </body>
