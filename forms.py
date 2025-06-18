@@ -17,7 +17,7 @@ class CategoryForm(FlaskForm):
     parent_id = IntegerField('親カテゴリID', validators=[Optional()])
 
     # OGP画像関連
-    ogp_image_file = FileField('OGP画像', validators=[
+    ogp_image = FileField('OGP画像', validators=[
         FileAllowed(['jpg', 'jpeg', 'png', 'gif'], '画像ファイルのみアップロード可能です。')
     ])
     ogp_crop_x = HiddenField('OGP Crop X')
