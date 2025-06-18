@@ -170,8 +170,11 @@
                         <a href="{{ url_for('article_detail', slug=article.slug) }}" target="_blank" class="btn btn-outline-info btn-sm me-2">
                             <i class="fa fa-external-link me-1"></i>記事を表示
                         </a>
-                        <a href="{{ url_for('admin.preview_article', article_id=article.id) }}" target="_blank" class="btn btn-outline-secondary btn-sm">
+                        <a href="{{ url_for('admin.article_preview', article_id=article.id) }}" target="_blank" class="btn btn-outline-secondary btn-sm me-2">
                             <i class="fa fa-eye me-1"></i>プレビュー
+                        </a>
+                        <a href="{{ url_for('admin.edit_article_block_editor', article_id=article.id) }}" class="btn btn-primary btn-sm">
+                            <i class="fa fa-th-list me-1"></i>ブロックエディタで編集
                         </a>
                     </div>
                 </div>

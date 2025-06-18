@@ -30,8 +30,12 @@
                     
                     <div class="article-content">
                         <div class="article-meta">
-                            {% if article.category %}
-                                <span class="category-tag">{{ article.category.name }}</span>
+                            {% if article.categories %}
+                                {% for category in article.categories %}
+                                    <a href="{{ url_for('category_page', slug=category.slug) }}" class="category-tag" onclick="event.stopPropagation();">
+                                        {{ category.name }}
+                                    </a>
+                                {% endfor %}
                             {% else %}
                                 <span class="category-tag category-uncategorized">未分類</span>
                             {% endif %}

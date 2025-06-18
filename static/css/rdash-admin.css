@@ -203,10 +203,11 @@ body.rdash {
 /* ===== Content Wrapper ===== */
 #content-wrapper {
   width: 100%;
-  position: absolute;
+  position: relative;
   padding: 0;
   background: #ecf0f1;
   min-height: 100vh;
+  box-sizing: border-box;
 }
 
 /* ===== Page Header ===== */
@@ -281,6 +282,38 @@ body.rdash {
 .page-content {
   padding: 30px;
   min-height: calc(100vh - var(--header-height));
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* ===== Content Layout Fix ===== */
+.page-content .row {
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.page-content [class*="col-"] {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.page-content .card,
+.page-content .form-control,
+.page-content .table-responsive {
+  max-width: 100%;
+  box-sizing: border-box;
+  word-wrap: break-word;
+}
+
+/* Ensure proper spacing */
+.page-content .container,
+.page-content .container-fluid {
+  padding-left: 0;
+  padding-right: 0;
+  max-width: 100%;
 }
 
 /* ===== Flash Messages ===== */

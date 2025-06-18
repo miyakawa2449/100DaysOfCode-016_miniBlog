@@ -16,11 +16,13 @@
             <a href="{{ url_for('home') }}" class="breadcrumb-link">
                 <i class="bi bi-house-door"></i> ホーム
             </a>
-            {% if article.category %}
-                <span class="breadcrumb-separator">/</span>
-                <a href="{{ url_for('category_page', slug=article.category.slug) }}" class="breadcrumb-link">
-                    {{ article.category.name }}
-                </a>
+            {% if article.categories %}
+                {% for category in article.categories %}
+                    <span class="breadcrumb-separator">/</span>
+                    <a href="{{ url_for('category_page', slug=category.slug) }}" class="breadcrumb-link">
+                        {{ category.name }}
+                    </a>
+                {% endfor %}
             {% endif %}
             <span class="breadcrumb-separator">/</span>
             <span class="breadcrumb-current">{{ article.title }}</span>
@@ -30,11 +32,13 @@
         <article class="article-main">
             <!-- 記事ヘッダー -->
             <header class="article-header">
-                {% if article.category %}
-                    <div class="article-category">
-                        <a href="{{ url_for('category_page', slug=article.category.slug) }}" class="category-link">
-                            {{ article.category.name }}
-                        </a>
+                {% if article.categories %}
+                    <div class="article-categories">
+                        {% for category in article.categories %}
+                            <a href="{{ url_for('category_page', slug=category.slug) }}" class="category-link">
+                                {{ category.name }}
+                            </a>
+                        {% endfor %}
                     </div>
                 {% endif %}
                 
@@ -89,7 +93,23 @@
 
             <!-- 記事本文 -->
             <div class="article-body">
-                {{ article.body | safe }}
+                {% if article.use_block_editor %}
+                    <!-- ブロック型記事 -->
+                    {% set blocks = article.get_visible_blocks() %}
+                    {% if blocks %}
+                        {% for block in blocks %}
+                            {{ render_block_content(block) | safe }}
+                        {% endfor %}
+                    {% else %}
+                        <div class="alert alert-info">
+                            <i class="fa fa-info-circle me-2"></i>
+                            この記事にはまだコンテンツが追加されていません。
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <!-- 従来型記事 -->
+                    {{ article.body | safe }}
+                {% endif %}
             </div>
 
             <!-- 記事フッター -->
@@ -136,11 +156,13 @@
                     <i class="bi bi-arrow-left"></i>
                     記事一覧に戻る
                 </a>
-                {% if article.category %}
-                    <a href="{{ url_for('category_page', slug=article.category.slug) }}" class="btn btn-outline">
-                        <i class="bi bi-tags"></i>
-                        {{ article.category.name }}の記事
-                    </a>
+                {% if article.categories %}
+                    {% for category in article.categories %}
+                        <a href="{{ url_for('category_page', slug=category.slug) }}" class="btn btn-outline">
+                            <i class="bi bi-tags"></i>
+                            {{ category.name }}の記事
+                        </a>
+                    {% endfor %}
                 {% endif %}
             </div>
         </nav>

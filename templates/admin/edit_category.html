@@ -10,6 +10,7 @@
 {% endblock %}
 
 {% block head_extra %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">
 <style>
 .preview-container {
     border: 2px dashed #dee2e6;
@@ -47,6 +48,31 @@
     font-family: monospace;
     font-size: 14px;
     color: #495057;
+}
+
+/* Crop modal size constraints */
+#cropModal .crop-container {
+    position: relative;
+    width: 100%;
+    height: auto;
+    min-height: 300px;
+}
+
+#cropModal .modal-dialog {
+    width: 90vw !important;
+    max-width: 1200px !important;
+    margin: 1rem auto !important;
+}
+
+#cropModal .modal-content {
+    max-height: 90vh !important;
+    overflow: hidden !important;
+}
+
+#cropModal .modal-body {
+    padding: 1rem !important;
+    overflow-y: auto !important;
+    max-height: calc(90vh - 140px) !important;
 }
 </style>
 {% endblock %}
@@ -172,9 +198,13 @@
                             <div class="current-image-preview">
                                 <img src="{{ url_for('static', filename=category.ogp_image) }}?t={{ range(1, 100000) | random }}" 
                                      alt="現在のカテゴリ画像" 
-                                     class="image-preview">
+                                     class="image-preview"
+                                     onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                                 <div class="mt-2 small text-muted">
                                     <i class="fa fa-file me-1"></i>{{ category.ogp_image }}
+                                </div>
+                                <div class="alert alert-warning small mt-2" style="display:none;">
+                                    <i class="fa fa-exclamation-triangle me-1"></i>画像ファイルが見つかりません
                                 </div>
                             </div>
                         </div>
@@ -198,7 +228,98 @@
                         <div class="mt-2">
                             <small class="text-muted">新しい画像のプレビュー</small>
                         </div>
+                        
+                        <!-- クロップボタン -->
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="startCropping()">
+                                <i class="fa fa-crop"></i> 画像をトリミング
+                            </button>
+                        </div>
                     </div>
+                    
+                    <!-- クロップモーダル -->
+                    <div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-xl" style="max-width: 90vw; margin: 1rem auto;">
+                            <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+                                <div class="modal-header" style="flex-shrink: 0;">
+                                    <h5 class="modal-title" id="cropModalLabel">画像トリミング</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body" style="flex: 1; overflow-y: auto; max-height: calc(90vh - 120px);">
+                                    <div class="mb-3">
+                                        <div class="alert alert-info">
+                                            <i class="fa fa-info-circle me-2"></i>
+                                            <strong>トリミング方法:</strong>
+                                            <ul class="mb-0 mt-2">
+                                                <li>選択範囲をドラッグして移動できます</li>
+                                                <li>角や辺をドラッグしてサイズを調整できます</li>
+                                                <li>マウスホイールで拡大・縮小できます</li>
+                                                <li>選択外の部分は半透明で表示されます</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div class="crop-container" style="max-height: 50vh; overflow: hidden; display: flex; justify-content: center; align-items: center;">
+                                        <img id="cropImage" style="max-width: 100%; max-height: 50vh; object-fit: contain;">
+                                    </div>
+                                    <div class="mt-3">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="cropperZoomIn()">
+                                                    <i class="fa fa-search-plus"></i> 拡大
+                                                </button>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="cropperZoomOut()">
+                                                    <i class="fa fa-search-minus"></i> 縮小
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="row mt-2">
+                                            <div class="col-md-6">
+                                                <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="cropperMoveLeft()">
+                                                    <i class="fa fa-arrow-left"></i> 左移動
+                                                </button>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="cropperMoveRight()">
+                                                    <i class="fa fa-arrow-right"></i> 右移動
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="row mt-2">
+                                            <div class="col-md-6">
+                                                <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="cropperMoveUp()">
+                                                    <i class="fa fa-arrow-up"></i> 上移動
+                                                </button>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="cropperMoveDown()">
+                                                    <i class="fa fa-arrow-down"></i> 下移動
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="row mt-2">
+                                            <div class="col-12">
+                                                <button type="button" class="btn btn-outline-warning btn-sm w-100" onclick="cropperReset()">
+                                                    <i class="fa fa-refresh"></i> リセット
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer" style="flex-shrink: 0;">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                                    <button type="button" class="btn btn-primary" onclick="applyCrop()">トリミングを適用</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 隠しフィールド（クロップデータ） -->
+                    {% if form.ogp_crop_x %}{{ form.ogp_crop_x() }}{% else %}<input type="hidden" name="ogp_crop_x" id="ogp_crop_x">{% endif %}
+                    {% if form.ogp_crop_y %}{{ form.ogp_crop_y() }}{% else %}<input type="hidden" name="ogp_crop_y" id="ogp_crop_y">{% endif %}
+                    {% if form.ogp_crop_width %}{{ form.ogp_crop_width() }}{% else %}<input type="hidden" name="ogp_crop_width" id="ogp_crop_width">{% endif %}
+                    {% if form.ogp_crop_height %}{{ form.ogp_crop_height() }}{% else %}<input type="hidden" name="ogp_crop_height" id="ogp_crop_height">{% endif %}
                 </div>
             </div>
             {% endif %}
@@ -247,7 +368,15 @@
 {% endblock %}
 
 {% block scripts_extra %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
 <script>
+let cropper = null;
+
+// ページの読み込み完了を待つ
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Page loaded, Bootstrap available:', typeof bootstrap !== 'undefined');
+    console.log('Cropper available:', typeof Cropper !== 'undefined');
+});
 // 画像プレビュー
 function previewImage(event) {
     const file = event.target.files[0];
@@ -286,6 +415,166 @@ document.querySelector('form').addEventListener('submit', function(e) {
         e.preventDefault();
         alert('カテゴリ名を入力してください。');
         return false;
+    }
+});
+
+// クロップ機能
+function startCropping() {
+    const preview = document.getElementById('imagePreview');
+    const cropImage = document.getElementById('cropImage');
+    
+    if (preview.src) {
+        cropImage.src = preview.src;
+        // Bootstrapがロードされるまで待機
+        if (typeof bootstrap !== 'undefined') {
+            const modal = new bootstrap.Modal(document.getElementById('cropModal'));
+            modal.show();
+        } else {
+            // フォールバック: 直接モーダルを表示
+            const modalElement = document.getElementById('cropModal');
+            modalElement.style.display = 'block';
+            modalElement.classList.add('show');
+            document.body.classList.add('modal-open');
+        }
+        
+        // モーダルが完全に表示された後にCropperを初期化
+        const initCropper = () => {
+            if (cropper) {
+                cropper.destroy();
+            }
+            cropper = new Cropper(cropImage, {
+                aspectRatio: 1200 / 630, // OGP画像のアスペクト比
+                viewMode: 1, // 画像がコンテナを超えないように制限
+                dragMode: 'crop', // ドラッグでクロップボックスを移動
+                autoCropArea: 0.7, // 初期クロップエリアを少し小さく
+                responsive: true,
+                restore: false,
+                checkCrossOrigin: false,
+                checkOrientation: false,
+                modal: true, // マスクを表示（選択外を半透明にする）
+                guides: true, // ガイドラインを表示
+                center: true, // 中央線を表示
+                highlight: true, // ハイライト表示
+                background: true, // グリッド背景を表示
+                autoCrop: true, // 自動でクロップエリアを作成
+                movable: true, // 画像の移動を許可
+                rotatable: false, // 回転は無効化
+                scalable: true, // 拡大縮小を許可
+                zoomable: true, // ズーム機能を有効
+                zoomOnTouch: true, // タッチでズーム
+                zoomOnWheel: true, // マウスホイールでズーム
+                wheelZoomRatio: 0.1,
+                cropBoxMovable: true, // クロップボックスの移動を許可
+                cropBoxResizable: true, // クロップボックスのリサイズを許可
+                toggleDragModeOnDblclick: false, // ダブルクリックでのモード切替を無効化
+                // 最小クロップボックスサイズ
+                minCropBoxWidth: 100,
+                minCropBoxHeight: 52, // 100 * (630/1200) = 52.5
+                ready: function () {
+                    console.log('Cropper ready');
+                }
+            });
+        };
+        
+        // Bootstrap modalイベントかタイムアウトでCropper初期化
+        if (typeof bootstrap !== 'undefined') {
+            document.getElementById('cropModal').addEventListener('shown.bs.modal', initCropper, { once: true });
+        } else {
+            // フォールバック: 少し待ってから初期化
+            setTimeout(initCropper, 300);
+        }
+    }
+}
+
+function applyCrop() {
+    if (cropper) {
+        // getData()メソッドでより正確なクロップデータを取得
+        const cropData = cropper.getData();
+        
+        // クロップデータを隠しフィールドに設定（画像の実際のサイズに対する値）
+        document.getElementById('ogp_crop_x').value = Math.round(cropData.x);
+        document.getElementById('ogp_crop_y').value = Math.round(cropData.y);
+        document.getElementById('ogp_crop_width').value = Math.round(cropData.width);
+        document.getElementById('ogp_crop_height').value = Math.round(cropData.height);
+        
+        console.log('Crop data:', cropData);
+        
+        // クロップされた画像をプレビューに表示
+        const canvas = cropper.getCroppedCanvas({
+            width: 400,
+            height: 210 // 1200:630の比率を維持
+        });
+        
+        document.getElementById('imagePreview').src = canvas.toDataURL();
+        
+        // モーダルを閉じる
+        if (typeof bootstrap !== 'undefined') {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('cropModal'));
+            if (modal) {
+                modal.hide();
+            }
+        } else {
+            // フォールバック
+            const modalElement = document.getElementById('cropModal');
+            modalElement.style.display = 'none';
+            modalElement.classList.remove('show');
+            document.body.classList.remove('modal-open');
+        }
+        
+        // Cropperを破棄
+        cropper.destroy();
+        cropper = null;
+    }
+}
+
+// Cropperコントロール関数群
+function cropperZoomIn() {
+    if (cropper) {
+        cropper.zoom(0.1);
+    }
+}
+
+function cropperZoomOut() {
+    if (cropper) {
+        cropper.zoom(-0.1);
+    }
+}
+
+function cropperMoveLeft() {
+    if (cropper) {
+        cropper.move(-10, 0);
+    }
+}
+
+function cropperMoveRight() {
+    if (cropper) {
+        cropper.move(10, 0);
+    }
+}
+
+function cropperMoveUp() {
+    if (cropper) {
+        cropper.move(0, -10);
+    }
+}
+
+function cropperMoveDown() {
+    if (cropper) {
+        cropper.move(0, 10);
+    }
+}
+
+function cropperReset() {
+    if (cropper) {
+        cropper.reset();
+    }
+}
+
+// モーダルが閉じられた時にCropperを破棄
+document.getElementById('cropModal').addEventListener('hidden.bs.modal', function () {
+    if (cropper) {
+        cropper.destroy();
+        cropper = null;
     }
 });
 </script>
