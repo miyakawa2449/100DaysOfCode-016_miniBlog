@@ -81,6 +81,15 @@ def process_featured_image(image_file, article_id=None):
         
         # 画像処理
         with Image.open(temp_path) as img:
+            # RGBA画像をRGBに変換（JPEG形式のため）
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # 白背景でRGBに変換
+                rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                img = rgb_img
+            elif img.mode not in ('RGB', 'L'):
+                img = img.convert('RGB')
+            
             # リサイズ（アイキャッチ画像の標準サイズ）
             resized_img = img.resize((1200, 675), Image.Resampling.LANCZOS)
             resized_img.save(image_path, format='JPEG', quality=85)
@@ -97,7 +106,7 @@ def process_featured_image(image_file, article_id=None):
         return None
 
 
-def process_ogp_image(image_file, category_id=None):
+def process_ogp_image(image_file, category_id=None, crop_data=None):
     """OGP画像の処理（アップロード、クロップ、リサイズ）"""
     if not image_file:
         return None
@@ -119,6 +128,32 @@ def process_ogp_image(image_file, category_id=None):
         
         # 画像処理
         with Image.open(temp_path) as img:
+            # RGBA画像をRGBに変換（JPEG形式のため）
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # 白背景でRGBに変換
+                rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                img = rgb_img
+            elif img.mode not in ('RGB', 'L'):
+                img = img.convert('RGB')
+            
+            # クロップ処理（指定されている場合）
+            if crop_data and all(k in crop_data for k in ['x', 'y', 'width', 'height']):
+                x = int(float(crop_data['x']))
+                y = int(float(crop_data['y']))
+                width = int(float(crop_data['width']))
+                height = int(float(crop_data['height']))
+                
+                # クロップ範囲が画像サイズ内にあることを確認
+                x = max(0, x)
+                y = max(0, y)
+                width = min(width, img.width - x)
+                height = min(height, img.height - y)
+                
+                if width > 0 and height > 0:
+                    img = img.crop((x, y, x + width, y + height))
+                    current_app.logger.info(f"Image cropped: {x}, {y}, {width}, {height}")
+            
             # リサイズ（OGP画像の標準サイズ）
             resized_img = img.resize((1200, 630), Image.Resampling.LANCZOS)
             resized_img.save(image_path, format='JPEG', quality=85)
