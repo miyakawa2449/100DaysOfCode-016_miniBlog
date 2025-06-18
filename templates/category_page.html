@@ -6,7 +6,7 @@
 
 {% block og_title %}{{ category.name }} - カテゴリ{% endblock %}
 {% block og_description %}{{ category.description or (category.name + 'に関する記事一覧') }}{% endblock %}
-{% block og_image %}{% if category.ogp_image %}{{ url_for('static', filename='uploads/images/' + category.ogp_image, _external=True) }}{% else %}{{ super() }}{% endif %}{% endblock %}
+{% block og_image %}{% if category.ogp_image %}{{ url_for('static', filename=category.ogp_image, _external=True) }}{% else %}{{ super() }}{% endif %}{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -27,7 +27,7 @@
                     <div class="card article-card" onclick="location.href='{{ url_for('article_detail', slug=article.slug) }}'">
                         <div class="article-image">
                             {% if article.featured_image %}
-                                <img src="{{ url_for('static', filename='uploads/images/' + article.featured_image) }}" 
+                                <img src="{{ url_for('static', filename=article.featured_image) }}" 
                                      alt="{{ article.title }}" class="img-fluid w-100 h-100" style="object-fit: cover;">
                             {% else %}
                                 <i class="bi bi-file-text fs-1"></i>
@@ -41,10 +41,19 @@
                                 </small>
                             </div>
                             <h5 class="card-title">{{ article.title }}</h5>
-                            <p class="card-text">{{ article.body | striptags | truncate(100, True) }}</p>
+                            <p class="card-text">
+                                {% if article.summary %}
+                                    {{ article.summary | truncate(100, True) }}
+                                {% else %}
+                                    {{ article.body | striptags | truncate(100, True) }}
+                                {% endif %}
+                            </p>
                             <div class="text-muted">
                                 {% if article.author %}
-                                    <i class="bi bi-person me-1"></i>{{ article.author.handle_name or article.author.name }}
+                                    <i class="bi bi-person me-1"></i>
+                                    <a href="{{ url_for('profile', handle_name=article.author.handle_name or article.author.name) }}" class="author-link text-decoration-none" onclick="event.stopPropagation();">
+                                        {{ article.author.handle_name or article.author.name }}
+                                    </a>
                                 {% endif %}
                             </div>
                         </div>

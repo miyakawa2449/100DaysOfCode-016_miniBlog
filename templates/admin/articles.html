@@ -144,6 +144,21 @@
                                        class="btn btn-outline-primary" title="編集">
                                         <i class="fa fa-edit"></i>
                                     </a>
+                                    {% if article.is_published %}
+                                        <button type="button" 
+                                                class="btn btn-outline-warning" 
+                                                onclick="toggleArticleStatus({{ article.id }}, false)"
+                                                title="下書きに戻す">
+                                            <i class="fa fa-archive"></i>
+                                        </button>
+                                    {% else %}
+                                        <button type="button" 
+                                                class="btn btn-outline-success" 
+                                                onclick="toggleArticleStatus({{ article.id }}, true)"
+                                                title="公開する">
+                                            <i class="fa fa-upload"></i>
+                                        </button>
+                                    {% endif %}
                                     <button type="button" 
                                             class="btn btn-outline-danger" 
                                             onclick="deleteArticle({{ article.id }}, '{{ article.title }}')"
@@ -226,6 +241,35 @@ function deleteArticle(articleId, title) {
         csrfInput.value = csrfToken;
         form.appendChild(csrfInput);
         
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+
+function toggleArticleStatus(articleId, isPublished) {
+    const statusText = isPublished ? '公開' : '下書き';
+    if (confirm(`記事を${statusText}に変更してもよろしいですか？`)) {
+        // フォーム送信で確実にCSRFトークンを送る
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/admin/article/toggle_status/${articleId}/`;
+        
+        // CSRFトークン
+        const csrfToken = document.querySelector('meta[name=csrf-token]').getAttribute('content');
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = csrfToken;
+        form.appendChild(csrfInput);
+        
+        // ステータス
+        const statusInput = document.createElement('input');
+        statusInput.type = 'hidden';
+        statusInput.name = 'is_published';
+        statusInput.value = isPublished ? 'true' : 'false';
+        form.appendChild(statusInput);
+        
+        // 送信
         document.body.appendChild(form);
         form.submit();
     }

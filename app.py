@@ -3,12 +3,12 @@ from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user, login_required
+from flask_login import LoginManager, login_user, logout_user, current_user, login_required
 import os
 from datetime import datetime
 from admin import admin_bp
-import logging  # logging モジュールをインポート
-import bleach  # HTMLサニタイゼーション用
+import logging
+import bleach
 import qrcode
 import io
 import base64
@@ -17,9 +17,6 @@ import base64
 from models import db, User, Article, Category, Comment
 # forms.py からフォームクラスをインポート
 from forms import LoginForm, TOTPVerificationForm, TOTPSetupForm, PasswordResetRequestForm, PasswordResetForm
-
-from flask import Flask, send_from_directory
-import time
 
 app = Flask(__name__)
 
@@ -117,13 +114,34 @@ def inject_csrf_token():
         token = generate_csrf()
         return Markup(f'<input type="hidden" name="csrf_token" value="{token}"/>')
     
-    return dict(csrf_token=csrf_token)
+    def csrf_token_value():
+        return generate_csrf()
+    
+    return dict(csrf_token=csrf_token, csrf_token_value=csrf_token_value)
+
+# カスタムフィルター
+@app.template_filter('nl2br')
+def nl2br(value):
+    """改行をHTMLの<br>タグに変換"""
+    from markupsafe import Markup
+    if value:
+        return Markup(value.replace('\n', '<br>'))
+    return value
+
+@app.template_filter('striptags')
+def striptags(value):
+    """HTMLタグを除去"""
+    import re
+    if value:
+        return re.sub(r'<[^>]*>', '', value)
+    return value
 
 app.register_blueprint(admin_bp, url_prefix='/admin')
 
 @app.route('/')
 def home():
-    articles = Article.query.order_by(Article.created_at.desc()).all()
+    # 公開済み記事のみ表示
+    articles = Article.query.filter_by(is_published=True).order_by(Article.created_at.desc()).all()
     return render_template('home.html', articles=articles)
 
 @app.route('/login/', methods=['GET', 'POST'])
@@ -347,7 +365,8 @@ def category_page(slug):
     if hasattr(category, 'articles') and category.articles is not None:
         page = request.args.get('page', 1, type=int)
         per_page = 10
-        articles_pagination = category.articles.order_by(Article.created_at.desc()).paginate(page=page, per_page=per_page)
+        # 公開済み記事のみ表示
+        articles_pagination = category.articles.filter_by(is_published=True).order_by(Article.created_at.desc()).paginate(page=page, per_page=per_page)
     else:
         from flask_sqlalchemy.pagination import Pagination
         articles_pagination = Pagination(query=None, page=1, per_page=per_page, total=0, items=[])
@@ -357,8 +376,28 @@ def category_page(slug):
 @app.route('/article/<slug>/')
 def article_detail(slug):
     article = Article.query.filter_by(slug=slug).first_or_404()
+    
+    # 下書き記事の場合、管理者のみアクセス可能
+    if not article.is_published:
+        if not current_user.is_authenticated or current_user.role != 'admin':
+            flash('この記事は公開されていません。', 'warning')
+            return redirect(url_for('home'))
+    
     return render_template('article_detail.html', article=article)
 
+@app.route('/profile/<handle_name>/')
+def profile(handle_name):
+    """ユーザープロフィールページ"""
+    user = User.query.filter_by(handle_name=handle_name).first()
+    if not user:
+        # ハンドルネームが見つからない場合、nameで検索
+        user = User.query.filter_by(name=handle_name).first_or_404()
+    
+    # 公開記事のみ取得
+    articles = Article.query.filter_by(author_id=user.id, is_published=True).order_by(Article.created_at.desc()).all()
+    
+    return render_template('profile.html', user=user, articles=articles)
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
 

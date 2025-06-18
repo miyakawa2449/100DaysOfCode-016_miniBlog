@@ -1,49 +1,260 @@
 {% extends "admin/layout.html" %}
 
 {% block title %}ユーザー編集{% endblock %}
-{% block page_title %}ユーザー編集{% endblock %}
-
-{% block breadcrumb %}
-{{ super() }}
-<li><a href="{{ url_for('admin.users') }}">ユーザー管理</a></li>
-<li>ユーザー編集</li>
-{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-lg-8">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="fa fa-user me-2"></i>ユーザー情報編集</h5>
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">✏️ ユーザー編集</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('admin.users') }}" class="btn btn-sm btn-outline-secondary">
+            ← ユーザー一覧に戻る
+        </a>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
-            <div class="card-body">
-                <p class="text-center text-muted">
-                    <i class="fa fa-construction me-2"></i>
-                    ユーザー編集機能は現在開発中です
-                </p>
-                <div class="text-center mt-4">
-                    <a href="{{ url_for('admin.dashboard') }}" class="btn btn-primary">
-                        <i class="fa fa-arrow-left me-1"></i>ダッシュボードに戻る
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<form method="POST">
+    {{ csrf_token() }}
+    <div class="row">
+        <!-- 左側：基本情報 -->
+        <div class="col-lg-8">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">👤 基本情報</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="email" class="form-label">📧 メールアドレス</label>
+                                <input type="email" class="form-control" id="email" name="email" value="{{ user.email }}" readonly>
+                                <div class="form-text">メールアドレスは変更できません</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="role" class="form-label">🛡️ 権限</label>
+                                <select class="form-select" id="role" name="role" {{ 'disabled' if user.id == current_user.id else '' }}>
+                                    <option value="author" {{ 'selected' if user.role == 'author' else '' }}>👤 投稿者</option>
+                                    <option value="admin" {{ 'selected' if user.role == 'admin' else '' }}>👑 管理者</option>
+                                </select>
+                                {% if user.id == current_user.id %}
+                                <div class="form-text text-warning">自分の権限は変更できません</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="name" class="form-label">👤 名前</label>
+                                <input type="text" class="form-control" id="name" name="name" value="{{ user.name }}" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="handle_name" class="form-label">🏷️ ハンドルネーム</label>
+                                <input type="text" class="form-control" id="handle_name" name="handle_name" value="{{ user.handle_name or '' }}" maxlength="100">
+                                <div class="form-text">公開時に表示される名前</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- プロフィール情報 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">📝 プロフィール情報</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="introduction" class="form-label">📄 紹介文</label>
+                        <textarea class="form-control" id="introduction" name="introduction" rows="4" maxlength="250">{{ user.introduction or '' }}</textarea>
+                        <div class="form-text">最大250文字</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="birthplace" class="form-label">🏠 出身地</label>
+                                <input type="text" class="form-control" id="birthplace" name="birthplace" value="{{ user.birthplace or '' }}" maxlength="10">
+                                <div class="form-text">最大10文字</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="birthday" class="form-label">🎂 誕生日</label>
+                                <input type="date" class="form-control" id="birthday" name="birthday" value="{{ user.birthday.strftime('%Y-%m-%d') if user.birthday else '' }}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SNSアカウント -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">🔗 SNSアカウント</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="sns_x" class="form-label">𝕏 X (旧Twitter)</label>
+                                <input type="text" class="form-control" id="sns_x" name="sns_x" value="{{ user.sns_x or '' }}" placeholder="@username">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="sns_facebook" class="form-label">📘 Facebook</label>
+                                <input type="text" class="form-control" id="sns_facebook" name="sns_facebook" value="{{ user.sns_facebook or '' }}" placeholder="username">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="sns_instagram" class="form-label">📷 Instagram</label>
+                                <input type="text" class="form-control" id="sns_instagram" name="sns_instagram" value="{{ user.sns_instagram or '' }}" placeholder="@username">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="sns_threads" class="form-label">🧵 Threads</label>
+                                <input type="text" class="form-control" id="sns_threads" name="sns_threads" value="{{ user.sns_threads or '' }}" placeholder="@username">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="sns_youtube" class="form-label">📺 YouTube</label>
+                                <input type="text" class="form-control" id="sns_youtube" name="sns_youtube" value="{{ user.sns_youtube or '' }}" placeholder="channel-name">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- パスワード変更 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">🔐 パスワード変更</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">新しいパスワード</label>
+                        <input type="password" class="form-control" id="new_password" name="new_password" minlength="8">
+                        <div class="form-text">変更する場合のみ入力してください（8文字以上）</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">パスワード確認</label>
+                        <input type="password" class="form-control" id="confirm_password" name="confirm_password">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右側：設定・統計 -->
+        <div class="col-lg-4">
+            <!-- 通知設定 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">🔔 通知設定</h5>
+                </div>
+                <div class="card-body">
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="notify_on_publish" name="notify_on_publish" {{ 'checked' if user.notify_on_publish else '' }}>
+                        <label class="form-check-label" for="notify_on_publish">
+                            📢 記事公開通知
+                        </label>
+                        <div class="form-text">記事が公開された時に通知を受け取る</div>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="notify_on_comment" name="notify_on_comment" {{ 'checked' if user.notify_on_comment else '' }}>
+                        <label class="form-check-label" for="notify_on_comment">
+                            💬 コメント通知
+                        </label>
+                        <div class="form-text">コメントが投稿された時に通知を受け取る</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ユーザー統計 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">📊 ユーザー統計</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>登録日:</span>
+                        <strong>{{ user.created_at.strftime('%Y年%m月%d日') if user.created_at else 'N/A' }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>投稿記事数:</span>
+                        <strong>{{ user.articles|length }}件</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span>2段階認証:</span>
+                        <strong class="{{ 'text-success' if user.totp_enabled else 'text-warning' }}">
+                            {{ '✅ 有効' if user.totp_enabled else '⚠️ 無効' }}
+                        </strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作ボタン -->
+            <div class="card">
+                <div class="card-body">
+                    <button type="submit" class="btn btn-primary w-100 mb-2">
+                        💾 変更を保存
+                    </button>
+                    <a href="{{ url_for('admin.users') }}" class="btn btn-secondary w-100">
+                        ❌ キャンセル
                     </a>
                 </div>
             </div>
         </div>
     </div>
+</form>
+{% endblock %}
+
+{% block scripts_extra %}
+<script>
+// パスワード確認チェック
+document.getElementById('confirm_password').addEventListener('input', function() {
+    const password = document.getElementById('new_password').value;
+    const confirm = this.value;
     
-    <div class="col-lg-4">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="fa fa-info-circle me-2"></i>実装予定機能</h5>
-            </div>
-            <div class="card-body">
-                <ul class="list-unstyled">
-                    <li class="mb-2"><i class="fa fa-check text-success me-2"></i>プロフィール編集</li>
-                    <li class="mb-2"><i class="fa fa-check text-success me-2"></i>パスワード変更</li>
-                    <li class="mb-2"><i class="fa fa-check text-success me-2"></i>権限設定</li>
-                    <li class="mb-2"><i class="fa fa-check text-success me-2"></i>アカウント状態管理</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-</div>
+    if (password && confirm && password !== confirm) {
+        this.setCustomValidity('パスワードが一致しません');
+    } else {
+        this.setCustomValidity('');
+    }
+});
+
+// 文字数カウンター
+document.getElementById('introduction').addEventListener('input', function() {
+    const maxLength = 250;
+    const currentLength = this.value.length;
+    const formText = this.nextElementSibling;
+    
+    formText.textContent = `${currentLength}/${maxLength}文字`;
+    formText.className = currentLength > maxLength ? 'form-text text-danger' : 'form-text';
+});
+</script>
 {% endblock %}

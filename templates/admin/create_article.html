@@ -103,6 +103,20 @@
                         </div>
                     </div>
                     
+                    <!-- 記事概要 -->
+                    <div class="form-floating mb-3">
+                        {{ form.summary(class="form-control" + (" is-invalid" if form.summary.errors else ""), placeholder="記事の概要を入力してください", rows="3") }}
+                        <label for="{{ form.summary.id }}">{{ form.summary.label.text }}</label>
+                        {% if form.summary.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.summary.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-text">
+                            <i class="fa fa-info-circle me-1"></i>記事の概要・要約（500文字以内）
+                        </div>
+                    </div>
+                    
                     <!-- 本文 -->
                     <div class="mb-3">
                         <label for="{{ form.body.id }}" class="form-label">{{ form.body.label.text }}</label>
@@ -125,35 +139,33 @@
                     <h5 class="mb-0"><i class="fa fa-cog me-2"></i>公開設定</h5>
                 </div>
                 <div class="card-body">
-                    <!-- カテゴリ選択（フォーム外フィールド） -->
+                    <!-- カテゴリ選択 -->
                     <div class="mb-3">
-                        <label class="form-label">カテゴリ</label>
-                        <select name="category_id" class="form-select">
-                            <option value="">カテゴリを選択してください</option>
-                            {% if all_categories %}
-                                {% for category in all_categories %}
-                                    <option value="{{ category.id }}">{{ category.name }}</option>
-                                {% endfor %}
-                            {% endif %}
-                        </select>
+                        <label for="{{ form.category_id.id }}" class="form-label">{{ form.category_id.label.text }}</label>
+                        {{ form.category_id(class="form-select" + (" is-invalid" if form.category_id.errors else "")) }}
+                        {% if form.category_id.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.category_id.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
                         <div class="form-text">
                             <i class="fa fa-info-circle me-1"></i>記事のカテゴリを選択してください
                         </div>
                     </div>
                     
-                    <!-- 公開状態（フォーム外フィールド） -->
+                    <!-- 公開状態 -->
                     <div class="form-check mb-3">
-                        <input type="checkbox" name="is_published" class="form-check-input" id="is_published" value="true">
-                        <label class="form-check-label" for="is_published">
-                            記事を公開する
+                        {{ form.is_published(class="form-check-input") }}
+                        <label class="form-check-label" for="{{ form.is_published.id }}">
+                            {{ form.is_published.label.text }}
                         </label>
                     </div>
                     
-                    <!-- コメント許可（フォーム外フィールド） -->
+                    <!-- コメント許可 -->
                     <div class="form-check mb-3">
-                        <input type="checkbox" name="allow_comments" class="form-check-input" id="allow_comments" value="true" checked>
-                        <label class="form-check-label" for="allow_comments">
-                            コメントを許可する
+                        {{ form.allow_comments(class="form-check-input", checked="checked") }}
+                        <label class="form-check-label" for="{{ form.allow_comments.id }}">
+                            {{ form.allow_comments.label.text }}
                         </label>
                     </div>
                 </div>
@@ -166,10 +178,15 @@
                 </div>
                 <div class="card-body">
                     <div class="mb-3">
-                        <label class="form-label">画像ファイル</label>
-                        <input type="file" name="featured_image" class="form-control" accept="image/*" onchange="previewImage(event)">
+                        <label for="{{ form.featured_image.id }}" class="form-label">{{ form.featured_image.label.text }}</label>
+                        {{ form.featured_image(class="form-control" + (" is-invalid" if form.featured_image.errors else ""), accept="image/*", onchange="previewImage(event)") }}
+                        {% if form.featured_image.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.featured_image.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
                         <div class="form-text">
-                            推奨サイズ: 1200×630px（JPG, PNG形式）
+                            推奨サイズ: 1200×675px（JPG, PNG形式）
                         </div>
                     </div>
                     
@@ -189,24 +206,39 @@
                 </div>
                 <div class="card-body">
                     <div class="form-floating mb-3">
-                        <input type="text" name="meta_title" class="form-control" placeholder="SEO用タイトル">
-                        <label>メタタイトル</label>
+                        {{ form.meta_title(class="form-control" + (" is-invalid" if form.meta_title.errors else ""), placeholder="SEO用タイトル") }}
+                        <label for="{{ form.meta_title.id }}">{{ form.meta_title.label.text }}</label>
+                        {% if form.meta_title.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.meta_title.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
                         <div class="form-text">
                             <i class="fa fa-info-circle me-1"></i>検索結果に表示されるタイトル
                         </div>
                     </div>
                     
                     <div class="form-floating mb-3">
-                        <textarea name="meta_description" class="form-control" placeholder="検索エンジン用の説明文" rows="3"></textarea>
-                        <label>メタディスクリプション</label>
+                        {{ form.meta_description(class="form-control" + (" is-invalid" if form.meta_description.errors else ""), placeholder="検索エンジン用の説明文", rows="3") }}
+                        <label for="{{ form.meta_description.id }}">{{ form.meta_description.label.text }}</label>
+                        {% if form.meta_description.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.meta_description.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
                         <div class="form-text">
                             <i class="fa fa-info-circle me-1"></i>検索結果に表示される説明文
                         </div>
                     </div>
                     
                     <div class="form-floating mb-3">
-                        <input type="text" name="meta_keywords" class="form-control" placeholder="キーワード1, キーワード2, キーワード3">
-                        <label>メタキーワード</label>
+                        {{ form.meta_keywords(class="form-control" + (" is-invalid" if form.meta_keywords.errors else ""), placeholder="キーワード1, キーワード2, キーワード3") }}
+                        <label for="{{ form.meta_keywords.id }}">{{ form.meta_keywords.label.text }}</label>
+                        {% if form.meta_keywords.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.meta_keywords.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
                         <div class="form-text">
                             <i class="fa fa-info-circle me-1"></i>カンマ区切りでキーワードを入力
                         </div>
@@ -246,11 +278,11 @@
                             <a href="{{ url_for('admin.articles') }}" class="btn btn-secondary me-2">
                                 <i class="fa fa-times me-1"></i>キャンセル
                             </a>
-                            <button type="submit" name="action" value="draft" class="btn btn-warning me-2">
+                            <button type="submit" name="action" value="draft" class="btn btn-warning me-2" onclick="setPublishStatus(false)">
                                 <i class="fa fa-save me-1"></i>下書き保存
                             </button>
-                            <button type="submit" name="action" value="publish" class="btn btn-primary">
-                                <i class="fa fa-upload me-1"></i>記事を作成
+                            <button type="submit" name="action" value="publish" class="btn btn-primary" onclick="setPublishStatus(true)">
+                                <i class="fa fa-upload me-1"></i>公開する
                             </button>
                         </div>
                     </div>
@@ -359,5 +391,13 @@ document.getElementById('{{ form.slug.id }}').addEventListener('input', function
     // 英数字とハイフンのみ許可
     this.value = this.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
 });
+
+// 公開状態を設定する関数
+function setPublishStatus(isPublished) {
+    const publishCheckbox = document.getElementById('{{ form.is_published.id }}');
+    if (publishCheckbox) {
+        publishCheckbox.checked = isPublished;
+    }
+}
 </script>
 {% endblock %}

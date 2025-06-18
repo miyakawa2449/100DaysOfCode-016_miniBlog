@@ -19,7 +19,7 @@
                 <article class="article-card" onclick="location.href='{{ url_for('article_detail', slug=article.slug) }}'">
                     <div class="article-image">
                         {% if article.featured_image %}
-                            <img src="{{ url_for('static', filename='uploads/images/' + article.featured_image) }}" 
+                            <img src="{{ url_for('static', filename=article.featured_image) }}" 
                                  alt="{{ article.title }}">
                         {% else %}
                             <div class="image-placeholder">
@@ -42,20 +42,22 @@
                         </div>
                         
                         <h2 class="article-title">{{ article.title }}</h2>
-                        <p class="article-excerpt">{{ article.body | striptags | truncate(100, True) }}</p>
+                        <p class="article-excerpt">
+                            {% if article.summary %}
+                                {{ article.summary | truncate(100, True) }}
+                            {% else %}
+                                {{ article.body | striptags | truncate(100, True) }}
+                            {% endif %}
+                        </p>
                         
                         <div class="article-footer">
                             {% if article.author %}
                                 <span class="article-author">
                                     <i class="bi bi-person"></i>
-                                    {{ article.author.handle_name or article.author.name }}
+                                    <a href="{{ url_for('profile', handle_name=article.author.handle_name or article.author.name) }}" class="author-link" onclick="event.stopPropagation();">
+                                        {{ article.author.handle_name or article.author.name }}
+                                    </a>
                                 </span>
-                            {% endif %}
-                            
-                            {% if article.is_published %}
-                                <span class="status-badge status-published">公開</span>
-                            {% else %}
-                                <span class="status-badge status-draft">下書き</span>
                             {% endif %}
                         </div>
                     </div>

@@ -1,11 +1,15 @@
+"""
+データベースモデル定義
+ミニブログシステムの全データベーステーブル定義
+"""
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
-from flask_login import UserMixin # UserMixin をインポート
+from flask_login import UserMixin
 import pyotp
 import secrets
 from itsdangerous import URLSafeTimedSerializer
 
-db = SQLAlchemy() # ← この行を有効にします (コメントアウトを解除)
+db = SQLAlchemy()
 
 # --- 中間テーブル: Article と Category の多対多関連 ---
 article_categories = db.Table('article_categories',
@@ -37,9 +41,16 @@ class User(db.Model, UserMixin): # UserMixin を継承
     
     # プロフィール情報
     introduction = db.Column(db.Text, nullable=True)  # 紹介文（250文字以内）
-    birthplace = db.Column(db.String(10), nullable=True)  # 出身地
+    birthplace = db.Column(db.String(10), nullable=True)  # 出身地（10文字以内）
     birthday = db.Column(db.Date, nullable=True)  # 誕生日
-    sns_accounts = db.Column(db.Text, nullable=True)  # SNSアカウント（JSON形式）
+    
+    # SNSアカウント情報（個別カラム）
+    sns_x = db.Column(db.String(100), nullable=True)  # X（旧Twitter）
+    sns_facebook = db.Column(db.String(100), nullable=True)  # Facebook
+    sns_instagram = db.Column(db.String(100), nullable=True)  # Instagram
+    sns_threads = db.Column(db.String(100), nullable=True)  # Threads
+    sns_youtube = db.Column(db.String(100), nullable=True)  # YouTube
+    
     ext_json = db.Column(db.Text, nullable=True)  # 拡張用JSON
     
     articles = db.relationship('Article', backref='author', lazy=True) # UserとArticleの1対多
@@ -89,10 +100,28 @@ class Article(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(255), nullable=False)
     slug = db.Column(db.String(255), unique=True, nullable=False)
+    summary = db.Column(db.Text, nullable=True)  # 記事概要
     body = db.Column(db.Text)
     author_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 公開設定
+    is_published = db.Column(db.Boolean, default=False)
+    published_at = db.Column(db.DateTime, nullable=True)
+    allow_comments = db.Column(db.Boolean, default=True)
+    
+    # SEO関連フィールド
+    meta_title = db.Column(db.String(255), nullable=True)
+    meta_description = db.Column(db.Text, nullable=True)
+    meta_keywords = db.Column(db.String(255), nullable=True)
+    canonical_url = db.Column(db.String(255), nullable=True)
+    
+    # 画像関連
+    featured_image = db.Column(db.String(255), nullable=True)  # アイキャッチ画像
+    
+    # 拡張用
+    ext_json = db.Column(db.Text, nullable=True)
 
     # Article から Category へのリレーションシップ
     categories = db.relationship(

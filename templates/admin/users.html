@@ -12,16 +12,6 @@
     </div>
 </div>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-        {% for category, message in messages %}
-            <div class="alert alert-{{ 'danger' if category == 'danger' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        {% endfor %}
-    {% endif %}
-{% endwith %}
 
 <!-- CSRF token for JavaScript operations -->
 {{ csrf_token() }}
@@ -31,7 +21,7 @@
         <thead class="table-dark">
             <tr>
                 <th scope="col">ID</th>
-                <th scope="col">👤 メールアドレス</th>
+                <th scope="col">👤 ユーザー情報</th>
                 <th scope="col">🛡️ 権限</th>
                 <th scope="col">🔐 2段階認証</th>
                 <th scope="col">📅 登録日</th>
@@ -45,9 +35,15 @@
                 <td>
                     <div class="d-flex align-items-center">
                         <div class="avatar-sm bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px; font-size: 14px;">
-                            {{ user.email[0].upper() }}
+                            {{ (user.handle_name or user.name)[0].upper() }}
                         </div>
-                        {{ user.email }}
+                        <div>
+                            <div class="fw-bold">{{ user.handle_name or user.name }}</div>
+                            <small class="text-muted">{{ user.email }}</small>
+                            {% if user.handle_name and user.handle_name != user.name %}
+                            <br><small class="text-muted">{{ user.name }}</small>
+                            {% endif %}
+                        </div>
                     </div>
                 </td>
                 <td>

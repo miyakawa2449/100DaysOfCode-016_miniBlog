@@ -89,8 +89,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // アラートの自動非表示
-    const alerts = document.querySelectorAll('.alert');
+    // アラートの自動非表示（フラッシュメッセージのみ対象）
+    const alerts = document.querySelectorAll('.alert.alert-dismissible');
     alerts.forEach(function(alert) {
         if (!alert.querySelector('.btn-close')) {
             setTimeout(function() {

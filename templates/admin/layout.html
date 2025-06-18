@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token_value() }}">
     <title>{% block title %}管理画面 - ミニブログ{% endblock %}</title>
     
     <!-- Bootstrap CSS -->
@@ -76,12 +77,43 @@
                     </ul>
                 </li>
                 
+                <!-- ユーザ管理 -->
+                <li class="sidebar-list {{ 'active' if 'user' in request.endpoint else '' }}">
+                    <a href="{{ url_for('admin.users') }}">
+                        <i class="fa fa-users"></i>
+                        <span class="menu-text">ユーザ管理</span>
+                    </a>
+                </li>
+                
                 <!-- コメント管理 -->
                 <li class="sidebar-list {{ 'active' if request.endpoint == 'admin.comments' else '' }}">
                     <a href="{{ url_for('admin.comments') }}">
                         <i class="fa fa-comments"></i>
                         <span class="menu-text">コメント管理</span>
                     </a>
+                </li>
+                
+                <!-- セキュリティ -->
+                <li class="sidebar-title">
+                    <span>セキュリティ</span>
+                </li>
+                <li class="sidebar-list">
+                    <a href="#" class="has-submenu">
+                        <i class="fa fa-shield-alt"></i>
+                        <span class="menu-text">2段階認証</span>
+                        <i class="fa fa-angle-right arrow"></i>
+                    </a>
+                    <ul class="submenu">
+                        {% if current_user.totp_enabled %}
+                        <li><a href="{{ url_for('totp_disable') }}">
+                            <i class="fa fa-times text-danger"></i>無効化
+                        </a></li>
+                        {% else %}
+                        <li><a href="{{ url_for('totp_setup') }}">
+                            <i class="fa fa-plus text-success"></i>有効化
+                        </a></li>
+                        {% endif %}
+                    </ul>
                 </li>
                 
                 <!-- その他の機能 -->
@@ -128,18 +160,9 @@
             </div>
             
             <!-- フラッシュメッセージ -->
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    <div class="flash-messages">
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show">
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                                {{ message }}
-                            </div>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            {% endwith %}
+            <div class="flash-messages">
+                {% include '_flash_messages.html' %}
+            </div>
             
             <!-- ページコンテンツ -->
             <div class="page-content">

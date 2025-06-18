@@ -40,6 +40,15 @@
                 
                 <h1 class="article-title">{{ article.title }}</h1>
                 
+                <!-- アイキャッチ画像 -->
+                {% if article.featured_image %}
+                    <div class="article-featured-image">
+                        <img src="{{ url_for('static', filename=article.featured_image) }}" 
+                             alt="{{ article.title }}" 
+                             class="featured-image">
+                    </div>
+                {% endif %}
+                
                 <div class="article-meta">
                     <div class="meta-item">
                         <i class="bi bi-calendar3"></i>
@@ -49,7 +58,9 @@
                     {% if article.author %}
                         <div class="meta-item">
                             <i class="bi bi-person"></i>
-                            <span>{{ article.author.handle_name or article.author.name }}</span>
+                            <a href="{{ url_for('profile', handle_name=article.author.handle_name or article.author.name) }}" class="author-link">
+                                {{ article.author.handle_name or article.author.name }}
+                            </a>
                         </div>
                     {% endif %}
                     
@@ -73,13 +84,7 @@
                     </div>
                 </div>
                 
-                <!-- アイキャッチ画像 -->
-                {% if article.featured_image %}
-                    <div class="featured-image">
-                        <img src="{{ url_for('static', filename='uploads/images/' + article.featured_image) }}" 
-                             alt="{{ article.title }}">
-                    </div>
-                {% endif %}
+                <!-- アイキャッチ画像（重複削除） -->
             </header>
 
             <!-- 記事本文 -->
@@ -100,9 +105,24 @@
                 
                 {% if article.author %}
                     <div class="author-info">
+                        <div class="author-avatar">
+                            <div class="avatar-circle">
+                                {{ (article.author.handle_name or article.author.name)[0].upper() }}
+                            </div>
+                        </div>
                         <div class="author-details">
-                            <h4 class="author-name">{{ article.author.handle_name or article.author.name }}</h4>
+                            <h4 class="author-name">
+                                <a href="{{ url_for('profile', handle_name=article.author.handle_name or article.author.name) }}" class="author-link">
+                                    {{ article.author.handle_name or article.author.name }}
+                                </a>
+                            </h4>
                             <p class="author-role">著者</p>
+                            {% if article.author.introduction %}
+                            <p class="author-bio">{{ article.author.introduction[:100] }}{% if article.author.introduction|length > 100 %}...{% endif %}</p>
+                            {% endif %}
+                            <a href="{{ url_for('profile', handle_name=article.author.handle_name or article.author.name) }}" class="btn btn-sm btn-outline">
+                                プロフィールを見る
+                            </a>
                         </div>
                     </div>
                 {% endif %}

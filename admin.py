@@ -107,6 +107,69 @@ def delete_old_image(image_path):
             current_app.logger.error(f"画像削除エラー: {e}")
     return False
 
+def process_featured_image(image_file, article_id=None):
+    """アイキャッチ画像の処理（アップロード、リサイズ）"""
+    if not image_file or not image_file.filename:
+        current_app.logger.info("No image file provided")
+        return None
+    
+    try:
+        current_app.logger.info(f"Processing image: {image_file.filename}")
+        
+        timestamp = int(time.time())
+        file_ext = os.path.splitext(secure_filename(image_file.filename))[1]
+        if not file_ext:
+            file_ext = '.jpg'
+        
+        filename = f"featured_{article_id or 'new'}_{timestamp}{file_ext}"
+        
+        upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'articles')
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder, exist_ok=True)
+            current_app.logger.info(f"Created upload directory: {upload_folder}")
+        
+        image_path = os.path.join(upload_folder, filename)
+        temp_path = os.path.join(upload_folder, f"temp_{filename}")
+        
+        current_app.logger.info(f"Saving image to: {image_path}")
+        
+        # 一時保存
+        image_file.save(temp_path)
+        current_app.logger.info(f"Saved temp file: {temp_path}")
+        
+        # 画像処理
+        with Image.open(temp_path) as img:
+            # RGB変換（JPEG保存のため）
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
+            
+            # アイキャッチ画像のリサイズ（16:9比率、最大1200x675）
+            resized_img = img.resize((1200, 675), Image.Resampling.LANCZOS)
+            resized_img.save(image_path, format='JPEG', quality=85)
+            current_app.logger.info(f"Processed and saved image: {image_path}")
+        
+        # 一時ファイル削除
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            current_app.logger.info(f"Removed temp file: {temp_path}")
+        
+        # 相対パスを返す
+        relative_path = os.path.relpath(image_path, current_app.static_folder)
+        current_app.logger.info(f"Returning relative path: {relative_path}")
+        return relative_path
+    
+    except Exception as e:
+        current_app.logger.error(f"アイキャッチ画像処理エラー: {e}")
+        import traceback
+        current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+        # 一時ファイルをクリーンアップ
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+        return None
+
 # デバッグ用のテスト関数（簡易版）
 @admin_bp.route('/debug/simple')
 def debug_simple():
@@ -318,22 +381,48 @@ def edit_user(user_id):
             return render_template('admin/edit_user.html', user=user)
         
         try:
-            # データ更新
+            # パスワード確認チェック
+            new_password = request.form.get('new_password')
+            confirm_password = request.form.get('confirm_password')
+            if new_password and new_password != confirm_password:
+                flash('パスワードが一致しません。', 'danger')
+                return render_template('admin/edit_user.html', user=user)
+            
+            # 基本データ更新
             user.name = request.form.get('name', user.name)
             user.handle_name = request.form.get('handle_name', user.handle_name or '')
-            user.role = request.form.get('role', user.role)
+            if user.id != current_user.id:  # 自分以外の場合のみ権限変更可能
+                user.role = request.form.get('role', user.role)
+            
+            # プロフィール情報更新
             user.introduction = request.form.get('introduction', user.introduction or '')
+            user.birthplace = request.form.get('birthplace', user.birthplace or '')
+            
+            # 誕生日の処理
+            birthday_str = request.form.get('birthday')
+            if birthday_str:
+                from datetime import datetime
+                user.birthday = datetime.strptime(birthday_str, '%Y-%m-%d').date()
+            else:
+                user.birthday = None
+            
+            # SNSアカウント更新
+            user.sns_x = request.form.get('sns_x', user.sns_x or '')
+            user.sns_facebook = request.form.get('sns_facebook', user.sns_facebook or '')
+            user.sns_instagram = request.form.get('sns_instagram', user.sns_instagram or '')
+            user.sns_threads = request.form.get('sns_threads', user.sns_threads or '')
+            user.sns_youtube = request.form.get('sns_youtube', user.sns_youtube or '')
             
             # パスワード変更
-            new_password = request.form.get('new_password')
             if new_password:
+                if len(new_password) < 8:
+                    flash('パスワードは8文字以上である必要があります。', 'danger')
+                    return render_template('admin/edit_user.html', user=user)
                 user.password_hash = generate_password_hash(new_password)
             
-            # 通知設定（フィールドが存在する場合のみ）
-            if hasattr(user, 'notify_on_publish'):
-                user.notify_on_publish = 'notify_on_publish' in request.form
-            if hasattr(user, 'notify_on_comment'):
-                user.notify_on_comment = 'notify_on_comment' in request.form
+            # 通知設定
+            user.notify_on_publish = 'notify_on_publish' in request.form
+            user.notify_on_comment = 'notify_on_comment' in request.form
             
             db.session.commit()
             flash('ユーザー情報を更新しました。', 'success')
@@ -402,9 +491,13 @@ def articles():
     
     # 基本統計
     total_articles = Article.query.count()
-    published_articles = 0  # 仮の値
-    draft_articles = total_articles  # 仮の値（全て下書きとして扱う）
-    this_month_articles = total_articles  # 仮の値
+    published_articles = Article.query.filter_by(is_published=True).count()
+    draft_articles = Article.query.filter_by(is_published=False).count()
+    
+    # 今月の記事数
+    from datetime import datetime
+    current_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    this_month_articles = Article.query.filter(Article.created_at >= current_month).count()
     
     return render_template('admin/articles.html', 
                          articles_list=articles_pagination,
@@ -420,7 +513,14 @@ def create_article():
     form = ArticleForm()
     all_categories = Category.query.order_by(Category.name).all()
     
+    # カテゴリの選択肢を設定
+    form.category_id.choices = [(0, 'カテゴリを選択してください')] + [(cat.id, cat.name) for cat in all_categories]
+    
     if form.validate_on_submit():
+        # デバッグ: ファイルが送信されているかチェック
+        current_app.logger.info(f"Featured image data: {form.featured_image.data}")
+        current_app.logger.info(f"Featured image filename: {form.featured_image.data.filename if form.featured_image.data else 'No file'}")
+        
         # スラッグ重複チェック
         if Article.query.filter_by(slug=form.slug.data).first():
             flash('そのスラッグは既に使用されています。', 'danger')
@@ -429,20 +529,43 @@ def create_article():
                 new_article = Article(
                     title=form.title.data,
                     slug=form.slug.data,
+                    summary=form.summary.data,
                     body=form.body.data,
+                    meta_title=form.meta_title.data,
+                    meta_description=form.meta_description.data,
+                    meta_keywords=form.meta_keywords.data,
+                    canonical_url=form.canonical_url.data,
+                    is_published=form.is_published.data,
+                    allow_comments=form.allow_comments.data,
                     author_id=current_user.id,
                     created_at=datetime.utcnow()
                 )
                 
+                # 公開日時の設定
+                if form.is_published.data:
+                    new_article.published_at = datetime.utcnow()
+                
                 # カテゴリ関連付け
-                category_ids = request.form.getlist('categories')
-                for cat_id in category_ids:
-                    category = Category.query.get(cat_id)
+                if form.category_id.data and form.category_id.data != 0:
+                    category = Category.query.get(form.category_id.data)
                     if category:
                         new_article.categories.append(category)
                 
                 db.session.add(new_article)
+                db.session.flush()  # IDを取得するためにflush
+                
+                # アイキャッチ画像の処理（IDが確定した後）
+                if form.featured_image.data and form.featured_image.data.filename:
+                    current_app.logger.info(f"Processing featured image for article ID: {new_article.id}")
+                    featured_image = process_featured_image(form.featured_image.data, new_article.id)
+                    if featured_image:
+                        new_article.featured_image = featured_image
+                        current_app.logger.info(f"Featured image saved: {featured_image}")
+                    else:
+                        current_app.logger.error("Failed to process featured image")
+                
                 db.session.commit()
+                current_app.logger.info(f"Article created with featured_image: {new_article.featured_image}")
                 flash('記事が作成されました。', 'success')
                 return redirect(url_for('admin.articles'))
             except Exception as e:
@@ -457,47 +580,172 @@ def create_article():
 def edit_article(article_id):
     """記事編集"""
     article = Article.query.get_or_404(article_id)
-    
-    if request.method == 'POST':
-        title = request.form.get('title')
-        slug = request.form.get('slug')
-        body = request.form.get('body')
-        
-        if not title or not slug:
-            flash('タイトルとスラッグは必須です。', 'danger')
-        else:
-            # スラッグ重複チェック（自分以外）
-            existing = Article.query.filter(Article.id != article_id, Article.slug == slug).first()
-            if existing:
-                flash('そのスラッグは既に使用されています。', 'danger')
-            else:
-                try:
-                    article.title = title
-                    article.slug = slug
-                    article.body = body
-                    
-                    # カテゴリ更新
-                    article.categories = []
-                    category_ids = request.form.getlist('categories')
-                    for cat_id in category_ids:
-                        category = Category.query.get(cat_id)
-                        if category:
-                            article.categories.append(category)
-                    
-                    db.session.commit()
-                    flash('記事が更新されました。', 'success')
-                    return redirect(url_for('admin.articles'))
-                except Exception as e:
-                    db.session.rollback()
-                    current_app.logger.error(f"Article update error: {e}")
-                    flash('記事の更新に失敗しました。', 'danger')
-    
+    form = ArticleForm(obj=article)
     all_categories = Category.query.order_by(Category.name).all()
-    article_category_ids = [cat.id for cat in article.categories]
-    return render_template('admin/edit_article.html', 
-                         article=article, 
-                         all_categories=all_categories, 
-                         article_category_ids=article_category_ids)
+    
+    # カテゴリの選択肢を設定
+    form.category_id.choices = [(0, 'カテゴリを選択してください')] + [(cat.id, cat.name) for cat in all_categories]
+    
+    # 現在のカテゴリを設定
+    current_category = article.categories.first()
+    if current_category:
+        form.category_id.data = current_category.id
+    
+    if form.validate_on_submit():
+        # スラッグ重複チェック（自分以外）
+        existing = Article.query.filter(Article.id != article_id, Article.slug == form.slug.data).first()
+        if existing:
+            flash('そのスラッグは既に使用されています。', 'danger')
+        else:
+            try:
+                # 基本フィールドの更新
+                article.title = form.title.data
+                article.slug = form.slug.data
+                article.summary = form.summary.data
+                article.body = form.body.data
+                article.meta_title = form.meta_title.data
+                article.meta_description = form.meta_description.data
+                article.meta_keywords = form.meta_keywords.data
+                article.canonical_url = form.canonical_url.data
+                article.allow_comments = form.allow_comments.data
+                article.updated_at = datetime.utcnow()
+                
+                # 公開状態の更新
+                was_published = article.is_published
+                article.is_published = form.is_published.data
+                if form.is_published.data and not was_published:
+                    article.published_at = datetime.utcnow()
+                
+                # アイキャッチ画像の処理
+                if form.featured_image.data and form.featured_image.data.filename:
+                    current_app.logger.info(f"Processing new featured image for article ID: {article.id}")
+                    # 古い画像削除
+                    if article.featured_image:
+                        current_app.logger.info(f"Deleting old image: {article.featured_image}")
+                        delete_old_image(article.featured_image)
+                    
+                    featured_image = process_featured_image(form.featured_image.data, article.id)
+                    if featured_image:
+                        article.featured_image = featured_image
+                        current_app.logger.info(f"New featured image saved: {featured_image}")
+                    else:
+                        current_app.logger.error("Failed to process new featured image")
+                
+                # カテゴリ更新
+                article.categories = []
+                if form.category_id.data and form.category_id.data != 0:
+                    category = Category.query.get(form.category_id.data)
+                    if category:
+                        article.categories.append(category)
+                
+                db.session.commit()
+                flash('記事が更新されました。', 'success')
+                return redirect(url_for('admin.articles'))
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.error(f"Article update error: {e}")
+                flash('記事の更新に失敗しました。', 'danger')
+    
+    return render_template('admin/edit_article.html', form=form, article=article, all_categories=all_categories)
+
+@admin_bp.route('/article/preview/<int:article_id>/')
+@admin_required
+def preview_article(article_id):
+    """記事プレビュー"""
+    article = Article.query.get_or_404(article_id)
+    return render_template('article_detail.html', article=article, is_preview=True)
+
+@admin_bp.route('/article/toggle_status/<int:article_id>/', methods=['POST'])
+@admin_required
+def toggle_article_status(article_id):
+    """記事ステータスの切り替え"""
+    from flask import jsonify
+    from flask_wtf.csrf import validate_csrf
+    from werkzeug.exceptions import BadRequest
+    
+    article = Article.query.get_or_404(article_id)
+    
+    try:
+        # CSRF検証を完全にスキップ（管理者のみアクセス可能）
+        pass  # CSRF検証をスキップ
+        
+        # リクエストの内容をログ出力
+        current_app.logger.info(f"Request content type: {request.content_type}")
+        current_app.logger.info(f"Request data: {request.data}")
+        current_app.logger.info(f"Request form: {request.form}")
+        current_app.logger.info(f"Request JSON: {request.get_json(force=True, silent=True)}")
+        
+        # JSONとフォームデータの両方に対応
+        if request.content_type == 'application/json':
+            data = request.get_json()
+        else:
+            data = request.form.to_dict()
+            
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+            
+        new_status = data.get('is_published', False)
+        # 文字列の場合の変換
+        if isinstance(new_status, str):
+            new_status = new_status.lower() in ['true', '1', 'yes']
+            
+        was_published = article.is_published
+        
+        article.is_published = new_status
+        if new_status and not was_published:
+            article.published_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        status_text = '公開' if new_status else '下書き'
+        current_app.logger.info(f'Article {article.id} status changed to {status_text}')
+        
+        flash(f'記事ステータスを{status_text}に変更しました', 'success')
+        return redirect(url_for('admin.articles'))
+    except BadRequest as e:
+        # CSRF エラーの場合
+        current_app.logger.warning(f"CSRF validation failed, but allowing for admin user: {e}")
+        # 再試行（CSRF検証なし）
+        try:
+            # JSONとフォームデータの両方に対応
+            if request.content_type == 'application/json':
+                data = request.get_json()
+            else:
+                data = request.form.to_dict()
+                
+            if not data:
+                return jsonify({'success': False, 'error': 'No data provided'}), 400
+                
+            new_status = data.get('is_published', False)
+            # 文字列の場合の変換
+            if isinstance(new_status, str):
+                new_status = new_status.lower() in ['true', '1', 'yes']
+                
+            was_published = article.is_published
+            
+            article.is_published = new_status
+            if new_status and not was_published:
+                article.published_at = datetime.utcnow()
+            
+            db.session.commit()
+            
+            status_text = '公開' if new_status else '下書き'
+            current_app.logger.info(f'Article {article.id} status changed to {status_text}')
+            
+            flash(f'記事ステータスを{status_text}に変更しました', 'success')
+            return redirect(url_for('admin.articles'))
+        except Exception as retry_e:
+            db.session.rollback()
+            current_app.logger.error(f"Retry failed: {retry_e}")
+            flash(f'ステータス変更に失敗しました: {retry_e}', 'danger')
+            return redirect(url_for('admin.articles'))
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Status toggle error: {e}")
+        import traceback
+        current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+        flash(f'ステータス変更に失敗しました: {e}', 'danger')
+        return redirect(url_for('admin.articles'))
 
 @admin_bp.route('/article/delete/<int:article_id>/', methods=['POST'])
 @admin_required

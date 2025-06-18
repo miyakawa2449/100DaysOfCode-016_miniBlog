@@ -1,6 +1,10 @@
 # filepath: c:\Users\tmiya\projects\100Day_new\016_miniBlog\forms.py (または適切な場所)
+"""
+フォーム定義
+ユーザー入力フォームとバリデーション定義
+"""
 from flask_wtf import FlaskForm
-from wtforms import StringField, TextAreaField, SubmitField, FileField, IntegerField, HiddenField, PasswordField
+from wtforms import StringField, TextAreaField, SubmitField, FileField, IntegerField, HiddenField, PasswordField, BooleanField, SelectField
 from wtforms.validators import DataRequired, Optional, URL, Length, Email, ValidationError
 import re
 from wtforms.widgets import HiddenInput
@@ -42,7 +46,25 @@ class LoginForm(FlaskForm):
 class ArticleForm(FlaskForm):
     title = StringField('タイトル', validators=[DataRequired(), Length(max=255)])
     slug = StringField('スラッグ', validators=[DataRequired(), Length(max=255)])
+    summary = TextAreaField('記事概要', validators=[Optional(), Length(max=500)])
     body = TextAreaField('本文', validators=[Optional()])
+    
+    # SEO関連フィールド
+    meta_title = StringField('メタタイトル', validators=[Optional(), Length(max=255)])
+    meta_description = TextAreaField('メタディスクリプション', validators=[Optional(), Length(max=300)])
+    meta_keywords = StringField('メタキーワード', validators=[Optional(), Length(max=255)])
+    canonical_url = StringField('正規URL', validators=[Optional(), URL(), Length(max=255)])
+    
+    # 画像アップロード
+    featured_image = FileField('アイキャッチ画像', validators=[
+        FileAllowed(['jpg', 'jpeg', 'png', 'gif'], '画像ファイルのみアップロード可能です。')
+    ])
+    
+    # 公開設定
+    category_id = SelectField('カテゴリ', coerce=int, validators=[Optional()])
+    is_published = BooleanField('公開する', validators=[Optional()])
+    allow_comments = BooleanField('コメントを許可', validators=[Optional()])
+    
     submit = SubmitField('保存')
 
 def validate_password_strength(password):

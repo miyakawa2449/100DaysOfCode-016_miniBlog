@@ -125,6 +125,41 @@
     
     <!-- サイドバー -->
     <div class="col-md-4">
+        <!-- セキュリティ状態 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fa fa-shield-alt me-2"></i>セキュリティ状態</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span>2段階認証</span>
+                    {% if current_user.totp_enabled %}
+                        <span class="badge bg-success">✅ 有効</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">⚠️ 無効</span>
+                    {% endif %}
+                </div>
+                
+                {% if current_user.totp_enabled %}
+                    <div class="alert alert-success small">
+                        <i class="fa fa-check-circle me-1"></i>
+                        アカウントは2段階認証で保護されています
+                    </div>
+                    <a href="{{ url_for('totp_disable') }}" class="btn btn-outline-danger btn-sm w-100">
+                        <i class="fa fa-times me-1"></i>2段階認証を無効化
+                    </a>
+                {% else %}
+                    <div class="alert alert-warning small">
+                        <i class="fa fa-exclamation-triangle me-1"></i>
+                        セキュリティ向上のため、2段階認証の有効化をお勧めします
+                    </div>
+                    <a href="{{ url_for('totp_setup') }}" class="btn btn-success btn-sm w-100">
+                        <i class="fa fa-shield-alt me-1"></i>2段階認証を有効化
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+
         <!-- クイックアクション -->
         <div class="card mb-4">
             <div class="card-header">
