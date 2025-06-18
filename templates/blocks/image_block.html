@@ -1,0 +1,22 @@
+<!-- 画像ブロックテンプレート (1:1比率700px) -->
+<div class="article-block image-block" data-block-id="{{ block.id }}" data-block-type="image">
+    {% if block.title %}
+    <h3 class="block-title">{{ block.title }}</h3>
+    {% endif %}
+    
+    <div class="block-content">
+        {% if block.image_path %}
+            <figure class="block-image-figure">
+                <img src="{{ url_for('static', filename=block.image_path) }}" 
+                     alt="{{ block.image_alt_text or 'ブロック画像' }}"
+                     class="block-image img-fluid"
+                     loading="lazy">
+                {% if block.image_caption %}
+                <figcaption class="block-image-caption">{{ block.image_caption }}</figcaption>
+                {% endif %}
+            </figure>
+        {% else %}
+            <div class="text-muted">画像が設定されていません</div>
+        {% endif %}
+    </div>
+</div>

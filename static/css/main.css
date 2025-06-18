@@ -851,3 +851,214 @@ body {
         padding: 1.5rem 1rem;
     }
 }
+
+/* ===== ブロック型記事表示 ===== */
+.article-block {
+    margin-bottom: 30px;
+    padding: 20px 0;
+}
+
+.article-block:last-child {
+    margin-bottom: 0;
+}
+
+.block-title {
+    font-size: 1.2em;
+    font-weight: 600;
+    margin-bottom: 15px;
+    color: var(--gray-800);
+}
+
+/* テキストブロック */
+.text-block .block-content {
+    line-height: 1.7;
+}
+
+.text-block p {
+    margin-bottom: 1rem;
+}
+
+/* 画像ブロック (1:1比率) */
+.image-block .block-content {
+    text-align: center;
+    margin: 25px 0;
+}
+
+.block-image-figure {
+    margin: 0;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    display: inline-block;
+    max-width: 100%;
+}
+
+.block-image-figure .block-image {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1/1;
+    object-fit: cover;
+    display: block;
+    max-width: 700px;
+}
+
+.block-image-caption {
+    padding: 12px;
+    background: var(--gray-100);
+    font-size: 0.9em;
+    color: var(--gray-500);
+    text-align: center;
+    margin: 0;
+}
+
+/* SNS埋込ブロック */
+.sns-embed-container {
+    margin: 20px 0;
+    text-align: center;
+}
+
+.sns-embed-fallback {
+    padding: 20px;
+    background: var(--gray-100);
+    border-radius: var(--border-radius);
+    text-align: center;
+}
+
+/* 外部記事カード */
+.external-article-card {
+    border: 1px solid var(--gray-300);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    transition: var(--transition);
+    background: var(--white);
+    box-shadow: var(--shadow-sm);
+}
+
+.external-article-card:hover {
+    box-shadow: var(--shadow);
+    transform: translateY(-2px);
+}
+
+.external-article-link {
+    display: flex;
+    text-decoration: none;
+    color: inherit;
+}
+
+.external-article-link:hover {
+    text-decoration: none;
+    color: inherit;
+}
+
+.external-article-image {
+    flex: 0 0 120px;
+    width: 120px;
+    height: 120px;
+    overflow: hidden;
+    background: var(--gray-100);
+}
+
+.external-article-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.external-article-info {
+    flex: 1;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.external-article-title {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin-bottom: 8px;
+    line-height: 1.4;
+    color: var(--gray-800);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.external-article-description {
+    font-size: 0.9em;
+    color: var(--gray-500);
+    line-height: 1.4;
+    margin-bottom: 10px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.external-article-meta {
+    font-size: 0.8em;
+    color: var(--gray-500);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.external-article-site {
+    font-weight: 500;
+    color: var(--primary-color);
+}
+
+/* アイキャッチ画像ブロック（16:9比率） */
+.featured-image-block .block-content {
+    margin: 30px 0;
+}
+
+.featured-image-figure {
+    margin: 0;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+}
+
+.featured-image-figure .featured-image {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16/9;
+    object-fit: cover;
+    display: block;
+}
+
+.featured-image-caption {
+    padding: 15px;
+    background: var(--gray-100);
+    font-size: 0.9em;
+    color: var(--gray-700);
+    text-align: center;
+    margin: 0;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+    .external-article-link {
+        flex-direction: column;
+    }
+    
+    .external-article-image {
+        width: 100%;
+        height: 200px;
+        flex: none;
+    }
+    
+    .external-article-info {
+        padding: 12px;
+    }
+    
+    .article-block {
+        padding: 15px 0;
+        margin-bottom: 20px;
+    }
+    
+    .featured-image-block .block-content {
+        margin: 20px 0;
+    }
+}

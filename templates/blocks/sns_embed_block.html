@@ -1,0 +1,29 @@
+<!-- SNS埋込ブロックテンプレート -->
+<div class="article-block sns-embed-block" data-block-id="{{ block.id }}" data-block-type="sns_embed">
+    {% if block.title %}
+    <h3 class="block-title">{{ block.title }}</h3>
+    {% endif %}
+    
+    <div class="block-content">
+        {% if block.embed_html %}
+            <div class="sns-embed-container sns-{{ block.embed_platform or 'unknown' }}">
+                {{ block.embed_html | safe }}
+            </div>
+        {% elif block.embed_url %}
+            <div class="sns-embed-fallback">
+                <a href="{{ block.embed_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary">
+                    <i class="fa fa-external-link me-2"></i>
+                    {% if block.embed_platform == 'twitter' %}X (Twitter)で見る
+                    {% elif block.embed_platform == 'facebook' %}Facebookで見る
+                    {% elif block.embed_platform == 'instagram' %}Instagramで見る
+                    {% elif block.embed_platform == 'threads' %}Threadsで見る
+                    {% elif block.embed_platform == 'youtube' %}YouTubeで見る
+                    {% else %}SNS投稿を見る
+                    {% endif %}
+                </a>
+            </div>
+        {% else %}
+            <div class="text-muted">SNS投稿URLが設定されていません</div>
+        {% endif %}
+    </div>
+</div>

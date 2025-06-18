@@ -1,0 +1,39 @@
+<!-- 外部記事埋込ブロックテンプレート (OGPカード) -->
+<div class="article-block external-article-block" data-block-id="{{ block.id }}" data-block-type="external_article">
+    {% if block.title %}
+    <h3 class="block-title">{{ block.title }}</h3>
+    {% endif %}
+    
+    <div class="block-content">
+        {% if block.ogp_url %}
+            <div class="external-article-card">
+                <a href="{{ block.ogp_url }}" target="_blank" rel="noopener noreferrer" class="external-article-link">
+                    {% if block.ogp_image %}
+                    <div class="external-article-image">
+                        <img src="{{ block.ogp_image }}" alt="{{ block.ogp_title or '外部記事' }}" class="img-fluid" loading="lazy">
+                    </div>
+                    {% endif %}
+                    
+                    <div class="external-article-info">
+                        {% if block.ogp_title %}
+                        <h4 class="external-article-title">{{ block.ogp_title }}</h4>
+                        {% endif %}
+                        
+                        {% if block.ogp_description %}
+                        <p class="external-article-description">{{ block.ogp_description | truncate(150) }}</p>
+                        {% endif %}
+                        
+                        <div class="external-article-meta">
+                            {% if block.ogp_site_name %}
+                            <span class="external-article-site">{{ block.ogp_site_name }}</span>
+                            {% endif %}
+                            <i class="fa fa-external-link ms-2"></i>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        {% else %}
+            <div class="text-muted">外部記事URLが設定されていません</div>
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,370 @@
+<!-- ブロック編集フォームテンプレート -->
+<form id="blockEditForm" enctype="multipart/form-data">
+    <input type="hidden" name="block_id" value="{{ block.id }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    
+    <!-- ブロック共通フィールド -->
+    <div class="mb-3">
+        <label for="block_title" class="form-label">ブロックタイトル</label>
+        <input type="text" class="form-control" id="block_title" name="title" value="{{ (block.title or '') | e }}" placeholder="ブロックタイトル（オプション）">
+    </div>
+    
+    <!-- ブロックタイプ別フィールド -->
+    {% if block.block_type.type_name == 'text' %}
+        <div class="mb-3">
+            <label for="block_content" class="form-label">テキスト内容 (Markdown対応)</label>
+            <textarea class="form-control" id="block_content" name="content" rows="8" placeholder="Markdown形式でテキストを入力してください">{{ (block.content or '') | e }}</textarea>
+            <div class="form-text">
+                <i class="fa fa-info-circle me-1"></i>
+                Markdown記法が使用できます（**太字**、*斜体*、# 見出し など）
+            </div>
+        </div>
+    
+    {% elif block.block_type.type_name == 'image' or block.block_type.type_name == 'featured_image' %}
+        <!-- 現在の画像表示 -->
+        {% if block.image_path %}
+        <div class="mb-3">
+            <label class="form-label">現在の画像</label>
+            <div class="current-image-preview">
+                <img src="{{ url_for('static', filename=block.image_path) }}" alt="{{ block.image_alt_text or 'ブロック画像' }}" class="img-fluid" style="max-height: 200px;">
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="mb-3">
+            <label for="image_file" class="form-label">
+                {% if block.block_type.type_name == 'featured_image' %}
+                    アイキャッチ画像 (16:9比率、800px)
+                {% else %}
+                    画像ファイル (1:1比率、700px)
+                {% endif %}
+            </label>
+            <input type="file" class="form-control" id="image_file" name="image_file" accept="image/*" onchange="previewBlockImage(event)">
+            <div class="form-text">JPG、PNG、GIF形式をサポート</div>
+        </div>
+        
+        <div id="imagePreviewContainer" style="display: none;">
+            <div class="mb-3">
+                <label class="form-label">画像プレビュー</label>
+                <div class="image-preview-wrapper">
+                    <img id="imagePreview" class="img-fluid" style="max-height: 300px;">
+                </div>
+                <button type="button" class="btn btn-primary btn-sm mt-2" onclick="startImageCropping()">
+                    <i class="fa fa-crop me-1"></i>画像をトリミング
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm mt-2 ms-2" id="cropConfirmBtn" onclick="confirmCrop()" style="display: none;">
+                    <i class="fa fa-check me-1"></i>トリミング確定
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm mt-2 ms-2" id="cropCancelBtn" onclick="cancelCrop()" style="display: none;">
+                    <i class="fa fa-times me-1"></i>キャンセル
+                </button>
+            </div>
+        </div>
+        
+        <!-- 画像メタデータ -->
+        <div class="mb-3">
+            <label for="image_alt_text" class="form-label">代替テキスト</label>
+            <input type="text" class="form-control" id="image_alt_text" name="image_alt_text" value="{{ (block.image_alt_text or '') | e }}" placeholder="画像の説明文">
+        </div>
+        
+        <div class="mb-3">
+            <label for="image_caption" class="form-label">画像キャプション</label>
+            <textarea class="form-control" id="image_caption" name="image_caption" rows="2" placeholder="画像の説明やキャプション">{{ (block.image_caption or '') | e }}</textarea>
+        </div>
+        
+        <!-- トリミング用隠しフィールド -->
+        <input type="hidden" id="crop_x" name="crop_x" value="">
+        <input type="hidden" id="crop_y" name="crop_y" value="">
+        <input type="hidden" id="crop_width" name="crop_width" value="">
+        <input type="hidden" id="crop_height" name="crop_height" value="">
+    
+    {% elif block.block_type.type_name == 'sns_embed' %}
+        <div class="mb-3">
+            <label for="embed_url" class="form-label">SNS投稿URL</label>
+            <input type="url" class="form-control" id="embed_url" name="embed_url" value="{{ block.embed_url or '' }}" placeholder="https://twitter.com/user/status/123456789" required>
+            <div class="form-text">
+                対応プラットフォーム: X (Twitter)、Facebook、Instagram、Threads、YouTube
+            </div>
+        </div>
+        
+        {% if block.embed_platform %}
+        <div class="mb-3">
+            <div class="alert alert-info">
+                <i class="fa fa-info-circle me-2"></i>
+                検出されたプラットフォーム: <strong>{{ block.embed_platform }}</strong>
+            </div>
+        </div>
+        {% endif %}
+    
+    {% elif block.block_type.type_name == 'external_article' %}
+        <div class="mb-3">
+            <label for="external_url" class="form-label">外部記事URL</label>
+            <div class="input-group">
+                <input type="url" class="form-control" id="external_url" name="external_url" value="{{ block.ogp_url or '' }}" placeholder="https://example.com/article" required>
+                <button type="button" class="btn btn-outline-primary" onclick="fetchOGPPreview()">
+                    <i class="fa fa-refresh me-1"></i>OGP取得
+                </button>
+            </div>
+            <div class="form-text">
+                URLを入力してOGP取得ボタンを押すと自動でOGP情報を取得します
+            </div>
+        </div>
+        
+        <!-- OGPプレビュー -->
+        <div id="ogpPreview" class="mb-3" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <small class="text-muted">OGPプレビュー</small>
+                </div>
+                <div class="card-body">
+                    <div id="ogpPreviewContent">
+                        <!-- OGP情報がここに表示される -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- OGP情報（手動編集可能） -->
+        <div class="mb-3">
+            <label for="ogp_title" class="form-label">記事タイトル</label>
+            <input type="text" class="form-control" id="ogp_title" name="ogp_title" value="{{ block.ogp_title or '' }}" placeholder="自動取得されたタイトル（手動編集可）">
+        </div>
+        
+        <div class="mb-3">
+            <label for="ogp_description" class="form-label">記事説明</label>
+            <textarea class="form-control" id="ogp_description" name="ogp_description" rows="3" placeholder="自動取得された説明文（手動編集可）">{{ block.ogp_description or '' }}</textarea>
+        </div>
+        
+        <div class="mb-3">
+            <label for="ogp_site_name" class="form-label">サイト名</label>
+            <input type="text" class="form-control" id="ogp_site_name" name="ogp_site_name" value="{{ block.ogp_site_name or '' }}" placeholder="自動取得されたサイト名（手動編集可）">
+        </div>
+    {% endif %}
+    
+    <!-- ブロック共通設定 -->
+    <div class="mb-3">
+        <label for="css_classes" class="form-label">追加CSSクラス</label>
+        <input type="text" class="form-control" id="css_classes" name="css_classes" value="{{ block.css_classes or '' }}" placeholder="カスタムCSSクラス（スペース区切り）">
+        <div class="form-text">
+            表示のカスタマイズ用（上級者向け）
+        </div>
+    </div>
+    
+    <!-- フォームボタン -->
+    <div class="d-flex justify-content-end gap-2">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+        <button type="button" class="btn btn-primary" onclick="saveBlock()">
+            <i class="fa fa-save me-1"></i>保存
+        </button>
+    </div>
+</form>
+
+<script>
+function previewBlockImage(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const preview = document.getElementById('imagePreview');
+            const container = document.getElementById('imagePreviewContainer');
+            preview.src = e.target.result;
+            container.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+let cropper = null;
+
+function startImageCropping() {
+    const preview = document.getElementById('imagePreview');
+    if (!preview || !preview.src) {
+        alert('まず画像を選択してください');
+        return;
+    }
+    
+    // トリミングモードに切り替え
+    const confirmBtn = document.getElementById('cropConfirmBtn');
+    const cancelBtn = document.getElementById('cropCancelBtn');
+    
+    if (confirmBtn) confirmBtn.style.display = 'inline-block';
+    if (cancelBtn) cancelBtn.style.display = 'inline-block';
+    
+    // Cropper.jsを初期化
+    if (typeof Cropper !== 'undefined') {
+        // ブロックタイプに応じたアスペクト比を設定
+        const blockType = getBlockType();
+        let aspectRatio = 1; // デフォルトは1:1
+        
+        if (blockType === 'featured_image') {
+            aspectRatio = 16 / 9; // 16:9比率
+        } else if (blockType === 'image') {
+            aspectRatio = 1; // 1:1比率
+        }
+        
+        cropper = new Cropper(preview, {
+            aspectRatio: aspectRatio,
+            viewMode: 1,
+            autoCropArea: 0.8,
+            responsive: true,
+            restore: false,
+            guides: true,
+            center: true,
+            highlight: false,
+            cropBoxMovable: true,
+            cropBoxResizable: true,
+            toggleDragModeOnDblclick: false
+        });
+    } else {
+        alert('画像トリミング機能の読み込みに失敗しました');
+    }
+}
+
+function confirmCrop() {
+    if (!cropper) {
+        alert('トリミングが開始されていません');
+        return;
+    }
+    
+    // トリミング情報を取得
+    const cropData = cropper.getData();
+    
+    // 隠しフィールドに値を設定
+    document.getElementById('crop_x').value = Math.round(cropData.x);
+    document.getElementById('crop_y').value = Math.round(cropData.y);
+    document.getElementById('crop_width').value = Math.round(cropData.width);
+    document.getElementById('crop_height').value = Math.round(cropData.height);
+    
+    // トリミングモードを終了
+    cancelCrop();
+    
+    console.log('Crop data set:', {
+        x: Math.round(cropData.x),
+        y: Math.round(cropData.y),
+        width: Math.round(cropData.width),
+        height: Math.round(cropData.height)
+    });
+}
+
+function cancelCrop() {
+    if (cropper) {
+        cropper.destroy();
+        cropper = null;
+    }
+    
+    // ボタンを隠す
+    const confirmBtn = document.getElementById('cropConfirmBtn');
+    const cancelBtn = document.getElementById('cropCancelBtn');
+    
+    if (confirmBtn) confirmBtn.style.display = 'none';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+}
+
+function getBlockType() {
+    // ブロックタイプを取得（フォームの context から）
+    const form = document.getElementById('blockEditForm');
+    if (form) {
+        const blockId = document.querySelector('input[name="block_id"]').value;
+        // ここでブロックタイプを判定するロジックを実装
+        // 簡易的にURLやタイトルから判定
+        const title = document.querySelector('input[name="title"]').value;
+        if (title && title.includes('アイキャッチ')) {
+            return 'featured_image';
+        }
+    }
+    return 'image'; // デフォルト
+}
+
+function fetchOGPPreview() {
+    const urlInput = document.getElementById('external_url');
+    const url = urlInput.value.trim();
+    
+    if (!url) {
+        alert('URLを入力してください');
+        return;
+    }
+    
+    if (!isValidURL(url)) {
+        alert('有効なURLを入力してください');
+        return;
+    }
+    
+    // ローディング表示
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i>取得中...';
+    button.disabled = true;
+    
+    // サーバーサイドのOGP取得APIを呼び出し
+    fetch('/admin/api/fetch-ogp', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+        },
+        body: JSON.stringify({ url: url })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            displayOGPPreview(data.ogp_data);
+            fillOGPFields(data.ogp_data);
+        } else {
+            alert('OGP情報の取得に失敗しました: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('OGP fetch error:', error);
+        alert('OGP情報の取得中にエラーが発生しました');
+    })
+    .finally(() => {
+        // ボタンを元に戻す
+        button.innerHTML = originalText;
+        button.disabled = false;
+    });
+}
+
+function displayOGPPreview(ogpData) {
+    const preview = document.getElementById('ogpPreview');
+    const content = document.getElementById('ogpPreviewContent');
+    
+    content.innerHTML = `
+        <h6 class="card-title">${ogpData.title || '(タイトルなし)'}</h6>
+        <p class="card-text text-muted small">${ogpData.description || '(説明なし)'}</p>
+        <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted">${ogpData.site_name || '(サイト名なし)'}</small>
+            <small class="text-success"><i class="fa fa-check me-1"></i>取得完了</small>
+        </div>
+    `;
+    
+    preview.style.display = 'block';
+}
+
+function fillOGPFields(ogpData) {
+    // 空欄の場合のみ自動入力
+    const titleField = document.getElementById('ogp_title');
+    const descField = document.getElementById('ogp_description');
+    const siteField = document.getElementById('ogp_site_name');
+    
+    if (titleField && !titleField.value.trim()) {
+        titleField.value = ogpData.title || '';
+    }
+    
+    if (descField && !descField.value.trim()) {
+        descField.value = ogpData.description || '';
+    }
+    
+    if (siteField && !siteField.value.trim()) {
+        siteField.value = ogpData.site_name || '';
+    }
+}
+
+function isValidURL(string) {
+    try {
+        new URL(string);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+</script>

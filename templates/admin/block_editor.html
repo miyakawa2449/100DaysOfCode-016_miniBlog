@@ -1,0 +1,866 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}ブロックエディタ - {{ article.title if article else '新規記事' }}{% endblock %}
+{% block page_title %}{{ '記事編集' if article else '記事作成' }} (ブロック型エディタ){% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<li><a href="{{ url_for('admin.articles') }}">記事管理</a></li>
+<li>{{ '編集: ' + article.title if article else '新規作成' }}</li>
+{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.css">
+<style>
+/* ブロックエディタ専用スタイル */
+.block-editor-container {
+    min-height: 600px;
+    background: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.block-editor-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: #6c757d;
+}
+
+.block-item {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    padding: 15px;
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+.block-item:hover {
+    border-color: #007bff;
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+}
+
+.block-item.sortable-chosen {
+    opacity: 0.5;
+}
+
+.block-item.sortable-ghost {
+    background: #e3f2fd;
+    border: 2px dashed #2196f3;
+}
+
+.block-header {
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.block-type-label {
+    font-size: 12px;
+    background: #007bff;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    margin-right: 10px;
+}
+
+.block-controls {
+    display: flex;
+    gap: 5px;
+}
+
+.block-handle {
+    cursor: move;
+    color: #6c757d;
+    font-size: 18px;
+    margin-right: 10px;
+}
+
+.block-content-preview {
+    margin: 10px 0;
+}
+
+.block-form {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e9ecef;
+}
+
+.add-block-section {
+    position: sticky;
+    top: 20px;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.block-type-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.block-type-btn {
+    padding: 15px 10px;
+    text-align: center;
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    background: white;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    color: #495057;
+}
+
+.block-type-btn:hover {
+    border-color: #007bff;
+    background: #f8f9fa;
+    color: #007bff;
+    text-decoration: none;
+}
+
+.block-type-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+    display: block;
+}
+
+/* プレビュー用スタイル */
+.preview-button {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+}
+
+/* 画像プレビュー */
+.image-preview-container {
+    max-width: 300px;
+    margin: 10px 0;
+}
+
+.image-preview {
+    max-width: 100%;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+    .block-editor-container {
+        padding: 15px;
+    }
+    
+    .block-type-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .preview-button {
+        position: relative;
+        margin-bottom: 20px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<form method="POST" enctype="multipart/form-data" id="blockEditorForm" action="{{ url_for('admin.create_article_block_editor') if not article else url_for('admin.edit_article_block_editor', article_id=article.id) }}">
+    {{ form.hidden_tag() }}
+    
+    <div class="row">
+        <!-- メインエディタエリア -->
+        <div class="col-lg-8">
+            <!-- 記事基本情報 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-edit me-2"></i>記事基本情報</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="form-floating mb-3">
+                                {{ form.title(class="form-control", placeholder="記事タイトル", required=true) }}
+                                <label for="title">記事タイトル *</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-floating mb-3">
+                                {{ form.slug(class="form-control", placeholder="article-slug") }}
+                                <label for="slug">スラッグ</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-floating mb-3">
+                        {{ form.summary(class="form-control", placeholder="記事の概要を入力してください", rows="3") }}
+                        <label for="summary">記事概要</label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- ブロックエディタ -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fa fa-th-list me-2"></i>記事コンテンツ (ブロック)</h5>
+                    <button type="button" class="btn btn-outline-info btn-sm" onclick="previewArticle()">
+                        <i class="fa fa-eye me-1"></i>プレビュー
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="blockEditor" class="block-editor-container">
+                        {% if blocks %}
+                            {% for block in blocks %}
+                            {% if block.block_type.type_name != 'featured_image' %}
+                            <div class="block-item" data-block-id="{{ block.id }}" data-block-type="{{ block.block_type.type_name }}">
+                                <div class="block-header">
+                                    <div>
+                                        <i class="fa fa-bars block-handle"></i>
+                                        <span class="block-type-label">{{ block.block_type.type_label }}</span>
+                                        <span class="block-title-text">{{ block.title or '無題' }}</span>
+                                    </div>
+                                    <div class="block-controls">
+                                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="editBlock({{ block.id }})">
+                                            <i class="fa fa-edit"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteBlock({{ block.id }})">
+                                            <i class="fa fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div class="block-content-preview">
+                                    {% include 'blocks/' + block.block_type.type_name + '_block.html' %}
+                                </div>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            <div class="block-editor-empty">
+                                <i class="fa fa-plus-circle fa-3x mb-3"></i>
+                                <h5>最初のブロックを追加してください</h5>
+                                <p class="text-muted">右側のパネルからブロックタイプを選択して記事を作成しましょう</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- サイドバー -->
+        <div class="col-lg-4">
+            <!-- ブロック追加パネル -->
+            <div class="add-block-section">
+                <h6><i class="fa fa-plus me-2"></i>ブロックを追加</h6>
+                <div class="block-type-grid">
+                    <a href="#" class="block-type-btn" onclick="addBlock('text')">
+                        <i class="fa fa-font block-type-icon"></i>
+                        <small>テキスト</small>
+                    </a>
+                    <a href="#" class="block-type-btn" onclick="addBlock('image')">
+                        <i class="fa fa-image block-type-icon"></i>
+                        <small>画像</small>
+                    </a>
+                    <a href="#" class="block-type-btn" onclick="addBlock('sns_embed')">
+                        <i class="fa fa-share-alt block-type-icon"></i>
+                        <small>SNS埋込</small>
+                    </a>
+                    <a href="#" class="block-type-btn" onclick="addBlock('external_article')">
+                        <i class="fa fa-external-link block-type-icon"></i>
+                        <small>外部記事</small>
+                    </a>
+                </div>
+            </div>
+            
+            <!-- 公開設定 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fa fa-globe me-2"></i>公開設定</h6>
+                </div>
+                <div class="card-body">
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="is_published_check" name="is_published_check" {{ 'checked' if article and article.is_published else '' }}>
+                        <label class="form-check-label" for="is_published_check">
+                            記事を公開する
+                        </label>
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="allow_comments_check" name="allow_comments_check" {{ 'checked' if article and article.allow_comments else 'checked' }}>
+                        <label class="form-check-label" for="allow_comments_check">
+                            コメントを許可する
+                        </label>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="category_id" class="form-label">カテゴリ</label>
+                        {{ form.category_id(class="form-select") }}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- SEO設定 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fa fa-search me-2"></i>SEO設定</h6>
+                </div>
+                <div class="card-body">
+                    <!-- アイキャッチ画像ブロック -->
+                    {% if article %}
+                    {% set featured_blocks = article.blocks.filter_by(block_type_id=5, is_visible=True).all() %}
+                    <div class="mb-3">
+                        <label class="form-label d-flex justify-content-between align-items-center">
+                            <span><i class="fa fa-image me-2"></i>アイキャッチ画像</span>
+                            {% if not featured_blocks %}
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addFeaturedImageBlock()">
+                                <i class="fa fa-plus me-1"></i>追加
+                            </button>
+                            {% endif %}
+                        </label>
+                        {% if featured_blocks %}
+                        <div class="featured-image-blocks">
+                            {% for block in featured_blocks %}
+                            <div class="featured-block-item p-3 border rounded mb-2">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="featured-block-info">
+                                        {% if block.image_path %}
+                                        <img src="{{ url_for('static', filename=block.image_path) }}" 
+                                             alt="{{ block.image_alt_text or 'アイキャッチ画像' }}" 
+                                             class="featured-thumbnail me-3" 
+                                             style="width: 60px; height: 34px; object-fit: cover; border-radius: 4px;">
+                                        {% endif %}
+                                        <span class="text-muted">{{ block.title or 'アイキャッチ画像' }}</span>
+                                    </div>
+                                    <div class="featured-block-actions">
+                                        <button type="button" class="btn btn-sm btn-outline-primary me-1" onclick="editBlock({{ block.id }})">
+                                            <i class="fa fa-edit"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteBlock({{ block.id }})">
+                                            <i class="fa fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="text-muted text-center p-3 border rounded">
+                            <i class="fa fa-image fa-2x mb-2"></i>
+                            <p class="mb-0">アイキャッチ画像が設定されていません</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    <div class="form-floating mb-3">
+                        {{ form.meta_title(class="form-control", placeholder="メタタイトル") }}
+                        <label for="meta_title">メタタイトル</label>
+                    </div>
+                    
+                    <div class="form-floating mb-3">
+                        {{ form.meta_description(class="form-control", placeholder="メタディスクリプション", rows="3") }}
+                        <label for="meta_description">メタディスクリプション</label>
+                    </div>
+                    
+                    <div class="form-floating mb-3">
+                        {{ form.meta_keywords(class="form-control", placeholder="キーワード1, キーワード2") }}
+                        <label for="meta_keywords">メタキーワード</label>
+                    </div>
+                    
+                    <div class="form-floating">
+                        {{ form.canonical_url(class="form-control", placeholder="https://example.com/canonical-url") }}
+                        <label for="canonical_url">正規URL</label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- アクション -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button type="submit" name="action" value="save_draft" class="btn btn-outline-secondary">
+                            <i class="fa fa-save me-1"></i>下書き保存
+                        </button>
+                        <button type="submit" name="action" value="publish" class="btn btn-primary">
+                            <i class="fa fa-paper-plane me-1"></i>{{ '更新' if article else '公開' }}
+                        </button>
+                    </div>
+                    
+                    {% if article %}
+                    <div class="mt-3 pt-3 border-top">
+                        <a href="{{ url_for('admin.articles') }}" class="btn btn-link text-muted">
+                            <i class="fa fa-arrow-left me-1"></i>記事一覧に戻る
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- ブロック編集モーダル -->
+<div class="modal fade" id="blockEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">ブロック編集</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="blockEditContent">
+                <!-- ブロック編集フォームがここに動的に読み込まれる -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts_extra %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+<script>
+let blockSortable;
+let currentEditingBlock = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    initializeBlockEditor();
+    initializeAutoSlug();
+});
+
+function initializeBlockEditor() {
+    const blockEditor = document.getElementById('blockEditor');
+    
+    // Sortable.jsでドラッグ&ドロップ機能を初期化
+    blockSortable = Sortable.create(blockEditor, {
+        handle: '.block-handle',
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        onEnd: function(evt) {
+            updateBlockOrder();
+        }
+    });
+}
+
+function addBlock(blockType) {
+    console.log('=== addBlock function called ===');
+    console.log('blockType:', blockType);
+    
+    // 新規記事の場合は先に記事を作成する
+    const articleId = '{{ article.id if article else "" }}';
+    console.log('articleId:', articleId);
+    
+    if (!articleId) {
+        // 新規記事の場合は先に記事を保存
+        const titleField = document.getElementById('title');
+        if (!titleField.value.trim()) {
+            alert('ブロックを追加する前に記事タイトルを入力してください。');
+            titleField.focus();
+            return;
+        }
+        
+        // 記事の作成を先に行う
+        createArticleAndAddBlock(blockType);
+        return;
+    }
+    
+    // 既存記事の場合は通常のブロック追加
+    console.log('Sending request to add block...');
+    console.log('URL:', '{{ url_for("admin.add_block") }}');
+    console.log('Data:', {article_id: articleId, block_type: blockType});
+    
+    fetch('{{ url_for("admin.add_block") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            article_id: articleId,
+            block_type: blockType
+        })
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
+        console.log('Response ok:', response.ok);
+        
+        if (!response.ok) {
+            return response.text().then(text => {
+                console.error('Server error response:', text);
+                throw new Error(`HTTP ${response.status}: ${text}`);
+            });
+        }
+        
+        return response.json();
+    })
+    .then(data => {
+        console.log('Response data:', data);
+        if (data.success) {
+            // 新しいブロックをエディタに追加
+            const blockEditor = document.getElementById('blockEditor');
+            const emptyMessage = blockEditor.querySelector('.block-editor-empty');
+            if (emptyMessage) {
+                emptyMessage.remove();
+            }
+            
+            blockEditor.insertAdjacentHTML('beforeend', data.block_html);
+            
+            // 新しく追加されたブロックの編集画面を開く
+            editBlock(data.block_id);
+        } else {
+            alert('ブロックの追加に失敗しました: ' + (data.error || '不明なエラー'));
+        }
+    })
+    .catch(error => {
+        console.error('Error details:', error);
+        alert('ブロックの追加中にエラーが発生しました: ' + error.message);
+    });
+}
+
+function editBlock(blockId) {
+    currentEditingBlock = blockId;
+    
+    // ブロック編集フォームを取得
+    fetch('{{ url_for("admin.edit_block") }}?block_id=' + blockId)
+    .then(response => response.text())
+    .then(html => {
+        document.getElementById('blockEditContent').innerHTML = html;
+        
+        const modal = new bootstrap.Modal(document.getElementById('blockEditModal'));
+        modal.show();
+        
+        // フォーム内のイベントリスナーを初期化
+        initializeBlockForm();
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('ブロック編集画面の読み込みに失敗しました');
+    });
+}
+
+function deleteBlock(blockId) {
+    if (!confirm('このブロックを削除してもよろしいですか？')) {
+        return;
+    }
+    
+    fetch('{{ url_for("admin.delete_block") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            block_id: blockId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // DOMからブロックを削除
+            const blockElement = document.querySelector(`[data-block-id="${blockId}"]`);
+            if (blockElement) {
+                blockElement.remove();
+            }
+            
+            // エディタが空になった場合は空メッセージを表示
+            const blockEditor = document.getElementById('blockEditor');
+            if (blockEditor.children.length === 0) {
+                blockEditor.innerHTML = `
+                    <div class="block-editor-empty">
+                        <i class="fa fa-plus-circle fa-3x mb-3"></i>
+                        <h5>最初のブロックを追加してください</h5>
+                        <p class="text-muted">右側のパネルからブロックタイプを選択して記事を作成しましょう</p>
+                    </div>
+                `;
+            }
+        } else {
+            alert('ブロックの削除に失敗しました: ' + (data.error || '不明なエラー'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('ブロックの削除中にエラーが発生しました');
+    });
+}
+
+function updateBlockOrder() {
+    const blockElements = document.querySelectorAll('.block-item[data-block-id]');
+    const blockIds = Array.from(blockElements).map(el => el.dataset.blockId);
+    
+    fetch('{{ url_for("admin.reorder_blocks") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify({
+            block_ids: blockIds
+        })
+    })
+    .catch(error => {
+        console.error('Block reorder error:', error);
+    });
+}
+
+function updateBlockPreview(blockId, previewHtml) {
+    // プレビューエリアが存在するかチェック
+    let previewArea = document.getElementById('article-preview');
+    if (!previewArea) {
+        // プレビューエリアが存在しない場合は作成
+        createPreviewArea();
+        previewArea = document.getElementById('article-preview');
+    }
+    
+    // 既存のブロックプレビューを更新または追加
+    let blockPreview = previewArea.querySelector(`[data-preview-block-id="${blockId}"]`);
+    if (blockPreview) {
+        blockPreview.innerHTML = previewHtml;
+    } else {
+        // 新しいプレビューブロックを作成
+        const newBlockPreview = document.createElement('div');
+        newBlockPreview.setAttribute('data-preview-block-id', blockId);
+        newBlockPreview.innerHTML = previewHtml;
+        previewArea.appendChild(newBlockPreview);
+    }
+    
+    // プレビューエリアを表示
+    if (previewArea.style.display === 'none') {
+        previewArea.style.display = 'block';
+    }
+}
+
+function createPreviewArea() {
+    const rightColumn = document.querySelector('.col-lg-4');
+    if (rightColumn) {
+        const previewCard = `
+            <div class="card mb-4" id="preview-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fa fa-eye me-2"></i>ブロックプレビュー</h6>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="togglePreview()">
+                        <i class="fa fa-eye-slash" id="preview-toggle-icon"></i>
+                    </button>
+                </div>
+                <div class="card-body" id="article-preview" style="max-height: 500px; overflow-y: auto;">
+                    <div class="text-muted text-center p-3">
+                        <i class="fa fa-eye fa-2x mb-2"></i>
+                        <p>ブロックを保存するとプレビューが表示されます</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 公開設定カードの前に挿入
+        const publishCard = rightColumn.querySelector('.card');
+        if (publishCard) {
+            publishCard.insertAdjacentHTML('beforebegin', previewCard);
+        } else {
+            rightColumn.insertAdjacentHTML('afterbegin', previewCard);
+        }
+    }
+}
+
+function togglePreview() {
+    const previewArea = document.getElementById('article-preview');
+    const toggleIcon = document.getElementById('preview-toggle-icon');
+    
+    if (previewArea.style.display === 'none') {
+        previewArea.style.display = 'block';
+        toggleIcon.className = 'fa fa-eye-slash';
+    } else {
+        previewArea.style.display = 'none';
+        toggleIcon.className = 'fa fa-eye';
+    }
+}
+
+function addFeaturedImageBlock() {
+    if (!confirm('アイキャッチ画像ブロックを追加しますか？')) {
+        return;
+    }
+    
+    const articleId = {{ article.id if article else 'null' }};
+    if (!articleId) {
+        alert('記事が保存されていません。先に記事を保存してください。');
+        return;
+    }
+    
+    fetch('{{ url_for("admin.add_block") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            article_id: articleId,
+            block_type: 'featured_image'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload(); // ページを再読み込みして変更を反映
+        } else {
+            alert('アイキャッチブロックの追加に失敗しました: ' + (data.error || '不明なエラー'));
+        }
+    })
+    .catch(error => {
+        console.error('Featured block add error:', error);
+        alert('アイキャッチブロックの追加中にエラーが発生しました');
+    });
+}
+
+function saveBlock() {
+    const form = document.getElementById('blockEditForm');
+    if (!form) return;
+    
+    const formData = new FormData(form);
+    
+    fetch('{{ url_for("admin.save_block") }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // ブロックの表示を更新
+            const blockElement = document.querySelector(`[data-block-id="${currentEditingBlock}"]`);
+            if (blockElement && data.block_html) {
+                blockElement.outerHTML = data.block_html;
+            }
+            
+            // プレビューエリアを更新
+            if (data.preview_html) {
+                updateBlockPreview(currentEditingBlock, data.preview_html);
+            }
+            
+            // モーダルを閉じる
+            const modal = bootstrap.Modal.getInstance(document.getElementById('blockEditModal'));
+            modal.hide();
+        } else {
+            alert('ブロックの保存に失敗しました: ' + (data.error || '不明なエラー'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('ブロックの保存中にエラーが発生しました');
+    });
+}
+
+function initializeBlockForm() {
+    // ブロック編集フォーム内の特殊な機能を初期化
+    // 画像プレビュー、トリミング機能など
+}
+
+function initializeAutoSlug() {
+    const titleField = document.getElementById('title');
+    const slugField = document.getElementById('slug');
+    
+    if (titleField && slugField) {
+        titleField.addEventListener('input', function() {
+            if (!slugField.value || slugField.dataset.autoGenerated) {
+                const slug = generateSlug(this.value);
+                slugField.value = slug;
+                slugField.dataset.autoGenerated = 'true';
+            }
+        });
+        
+        slugField.addEventListener('input', function() {
+            this.dataset.autoGenerated = 'false';
+        });
+    }
+}
+
+function generateSlug(text) {
+    return text
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[\s_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
+function updateHiddenFields() {
+    // チェックボックスの値を隠しフィールドに反映
+    const isPublishedCheck = document.getElementById('is_published_check');
+    const allowCommentsCheck = document.getElementById('allow_comments_check');
+    
+    // 隠しフィールドがない場合は作成
+    let isPublishedHidden = document.querySelector('input[name="is_published"]');
+    if (!isPublishedHidden) {
+        isPublishedHidden = document.createElement('input');
+        isPublishedHidden.type = 'hidden';
+        isPublishedHidden.name = 'is_published';
+        document.getElementById('blockEditorForm').appendChild(isPublishedHidden);
+    }
+    
+    let allowCommentsHidden = document.querySelector('input[name="allow_comments"]');
+    if (!allowCommentsHidden) {
+        allowCommentsHidden = document.createElement('input');
+        allowCommentsHidden.type = 'hidden';
+        allowCommentsHidden.name = 'allow_comments';
+        document.getElementById('blockEditorForm').appendChild(allowCommentsHidden);
+    }
+    
+    // 値を設定
+    isPublishedHidden.value = isPublishedCheck.checked ? 'true' : 'false';
+    allowCommentsHidden.value = allowCommentsCheck.checked ? 'true' : 'false';
+}
+
+function createArticleAndAddBlock(blockType) {
+    // 新規記事を作成してからブロックを追加
+    const form = document.getElementById('blockEditorForm');
+    
+    // チェックボックスの値を隠しフィールドに反映
+    updateHiddenFields();
+    
+    const formData = new FormData(form);
+    
+    // 下書きとして保存
+    formData.set('action', 'save_draft');
+    
+    // 明示的にURLを指定
+    const actionUrl = '{{ url_for("admin.create_article_block_editor") }}';
+    
+    fetch(actionUrl, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.ok && response.redirected) {
+            // 記事が作成され、編集ページにリダイレクトされた
+            window.location.href = response.url + '?add_block=' + blockType;
+        } else if (response.ok) {
+            // レスポンスは成功だが、リダイレクトされていない（エラーがある可能性）
+            return response.text().then(text => {
+                if (text.includes('danger') || text.includes('error')) {
+                    alert('記事の作成に失敗しました。タイトルなど必要な項目を入力してください。');
+                } else {
+                    // 成功したが何らかの理由でリダイレクトされなかった
+                    location.reload();
+                }
+            });
+        } else {
+            alert('記事の作成に失敗しました。ステータス: ' + response.status);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('記事の作成中にエラーが発生しました: ' + error.message);
+    });
+}
+
+function previewArticle() {
+    // プレビュー機能（別ウィンドウで記事プレビューを表示）
+    const articleId = '{{ article.id if article else "" }}';
+    if (articleId) {
+        window.open('{{ url_for("admin.article_preview", article_id=article.id if article else 0) }}', '_blank');
+    } else {
+        alert('記事を保存してからプレビューしてください');
+    }
+}
+</script>
+{% endblock %}
