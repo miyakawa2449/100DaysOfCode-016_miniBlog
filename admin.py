@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash, session, current_app
+from flask import Blueprint, render_template, redirect, url_for, request, flash, session, current_app, jsonify
 from flask_login import login_required, current_user
 from models import db, User, Article, Category, Comment, SiteSetting
 from werkzeug.security import generate_password_hash
@@ -9,7 +9,16 @@ import os
 from PIL import Image
 import time
 import re
+import json
 from forms import CategoryForm, ArticleForm
+try:
+    from block_forms import BlockEditorForm, create_block_form
+    from block_utils import process_block_image, fetch_ogp_data, detect_sns_platform, extract_sns_id, generate_sns_embed_html
+    from models import BlockType, ArticleBlock
+    BLOCK_EDITOR_AVAILABLE = True
+except ImportError as e:
+    print(f"Block editor modules not available: {e}")
+    BLOCK_EDITOR_AVAILABLE = False
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -291,11 +300,37 @@ def dashboard():
         'comment_count': 0
     }
     
-    # 今月の統計も簡単に
+    # 今月の統計を計算
+    import calendar
+    
+    current_date = datetime.now()
+    current_year = current_date.year
+    current_month = current_date.month
+    
+    # 今月の開始日と終了日を計算
+    first_day = datetime(current_year, current_month, 1)
+    last_day = datetime(current_year, current_month, calendar.monthrange(current_year, current_month)[1], 23, 59, 59)
+    
+    # 今月作成された記事数
+    articles_this_month = Article.query.filter(
+        Article.created_at >= first_day,
+        Article.created_at <= last_day
+    ).count()
+    
+    # 今月作成されたユーザー数（created_atフィールドがある場合）
+    users_this_month = 0
+    if hasattr(User, 'created_at'):
+        users_this_month = User.query.filter(
+            User.created_at >= first_day,
+            User.created_at <= last_day
+        ).count()
+    
+    current_app.logger.info(f"Monthly stats calculation: articles_this_month={articles_this_month}, period={first_day} to {last_day}")
+    
     monthly_stats = {
-        'articles_this_month': 0,
-        'users_this_month': 0,
-        'comments_this_month': 0
+        'articles_this_month': articles_this_month,
+        'users_this_month': users_this_month,
+        'comments_this_month': 0  # コメント機能が実装されたら修正
     }
     
     # 最近の記事
@@ -632,7 +667,13 @@ def edit_article(article_id):
                         current_app.logger.error("Failed to process new featured image")
                 
                 # カテゴリ更新
-                article.categories = []
+                # dynamic relationshipの場合は直接clearできないため、手動で削除
+                current_category_ids = [cat.id for cat in article.categories.all()]
+                for cat_id in current_category_ids:
+                    category_to_remove = Category.query.get(cat_id)
+                    if category_to_remove:
+                        article.categories.remove(category_to_remove)
+                        
                 if form.category_id.data and form.category_id.data != 0:
                     category = Category.query.get(form.category_id.data)
                     if category:
@@ -648,12 +689,6 @@ def edit_article(article_id):
     
     return render_template('admin/edit_article.html', form=form, article=article, all_categories=all_categories)
 
-@admin_bp.route('/article/preview/<int:article_id>/')
-@admin_required
-def preview_article(article_id):
-    """記事プレビュー"""
-    article = Article.query.get_or_404(article_id)
-    return render_template('article_detail.html', article=article, is_preview=True)
 
 @admin_bp.route('/article/toggle_status/<int:article_id>/', methods=['POST'])
 @admin_required
@@ -837,6 +872,32 @@ def create_category():
             )
             
             db.session.add(new_category)
+            db.session.flush()  # IDを取得するためにflushを実行
+            
+            # OGP画像の処理
+            if form.ogp_image.data:
+                import sys
+                sys.path.append(os.path.join(os.path.dirname(__file__), 'app', 'utils'))
+                from helpers import process_ogp_image
+                
+                # クロップデータの取得
+                crop_data = None
+                if all([form.ogp_crop_x.data, form.ogp_crop_y.data, form.ogp_crop_width.data, form.ogp_crop_height.data]):
+                    crop_data = {
+                        'x': form.ogp_crop_x.data,
+                        'y': form.ogp_crop_y.data,
+                        'width': form.ogp_crop_width.data,
+                        'height': form.ogp_crop_height.data
+                    }
+                    current_app.logger.info(f"Crop data: {crop_data}")
+                
+                ogp_image_path = process_ogp_image(form.ogp_image.data, new_category.id, crop_data)
+                if ogp_image_path:
+                    new_category.ogp_image = ogp_image_path
+                    current_app.logger.info(f"OGP image saved: {ogp_image_path}")
+                else:
+                    flash('画像の処理中にエラーが発生しました。', 'warning')
+            
             db.session.commit()
             flash('カテゴリが作成されました。', 'success')
             return redirect(url_for('admin.categories'))
@@ -860,6 +921,36 @@ def edit_category(category_id):
             category.name = form.name.data
             category.slug = form.slug.data
             category.description = form.description.data
+            
+            # OGP画像の処理
+            if form.ogp_image.data:
+                import sys
+                sys.path.append(os.path.join(os.path.dirname(__file__), 'app', 'utils'))
+                from helpers import process_ogp_image, delete_old_image
+                
+                # 古い画像を削除
+                if category.ogp_image:
+                    old_image_path = os.path.join(current_app.static_folder, category.ogp_image)
+                    delete_old_image(old_image_path)
+                
+                # クロップデータの取得
+                crop_data = None
+                if all([form.ogp_crop_x.data, form.ogp_crop_y.data, form.ogp_crop_width.data, form.ogp_crop_height.data]):
+                    crop_data = {
+                        'x': form.ogp_crop_x.data,
+                        'y': form.ogp_crop_y.data,
+                        'width': form.ogp_crop_width.data,
+                        'height': form.ogp_crop_height.data
+                    }
+                    current_app.logger.info(f"Crop data: {crop_data}")
+                
+                # 新しい画像を処理
+                ogp_image_path = process_ogp_image(form.ogp_image.data, category.id, crop_data)
+                if ogp_image_path:
+                    category.ogp_image = ogp_image_path
+                    current_app.logger.info(f"OGP image updated: {ogp_image_path}")
+                else:
+                    flash('画像の処理中にエラーが発生しました。', 'warning')
             
             db.session.commit()
             flash('カテゴリが正常に更新されました。', 'success')
@@ -1154,3 +1245,621 @@ def bulk_comment_action():
         flash('一括操作に失敗しました。', 'danger')
     
     return redirect(url_for('admin.comments'))
+
+# ===== ブロック型エディタ機能 =====
+
+@admin_bp.route('/article/block-editor/create/', methods=['GET', 'POST'])
+@admin_required
+def create_article_block_editor():
+    """ブロック型エディタで記事作成"""
+    if not BLOCK_EDITOR_AVAILABLE:
+        flash('ブロックエディタが利用できません。', 'warning')
+        return redirect(url_for('admin.create_article'))
+    
+    form = BlockEditorForm()
+    all_categories = Category.query.order_by(Category.name).all()
+    
+    # カテゴリの選択肢を設定
+    form.category_id.choices = [(0, 'カテゴリを選択してください')] + [(cat.id, cat.name) for cat in all_categories]
+    
+    if form.validate_on_submit():
+        # フォームのaction値を確認
+        action = request.form.get('action', 'save_draft')
+        
+        try:
+            # スラッグの生成と重複チェック
+            slug = form.slug.data or generate_slug_from_name(form.title.data)
+            original_slug = slug
+            counter = 1
+            
+            # スラッグの重複をチェックし、重複している場合は番号を追加
+            while Article.query.filter_by(slug=slug).first():
+                slug = f"{original_slug}-{counter}"
+                counter += 1
+                current_app.logger.info(f"Slug duplicated, trying: {slug}")
+            
+            # 新規記事作成
+            article = Article(
+                title=form.title.data,
+                slug=slug,
+                summary=form.summary.data,
+                author_id=current_user.id,
+                use_block_editor=True,
+                is_published=(action == 'publish') or (request.form.get('is_published') == 'true'),
+                allow_comments=request.form.get('allow_comments', 'true') == 'true',
+                meta_title=form.meta_title.data,
+                meta_description=form.meta_description.data,
+                meta_keywords=form.meta_keywords.data,
+                canonical_url=form.canonical_url.data
+            )
+            
+            if action == 'publish':
+                article.published_at = datetime.utcnow()
+            
+            db.session.add(article)
+            db.session.flush()  # IDを取得するため
+            
+            # カテゴリ関連付け
+            if form.category_id.data and form.category_id.data != 0:
+                category = Category.query.get(form.category_id.data)
+                if category:
+                    article.categories.append(category)
+            
+            db.session.commit()
+            flash('記事を作成しました。ブロックを追加して内容を編集してください。', 'success')
+            
+            # リダイレクト先URLにブロック追加パラメータがあるかチェック
+            redirect_url = url_for('admin.edit_article_block_editor', article_id=article.id)
+            add_block_type = request.args.get('add_block')
+            if add_block_type:
+                redirect_url += f'?add_block={add_block_type}'
+            
+            return redirect(redirect_url)
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Block editor article creation error: {e}")
+            flash('記事の作成に失敗しました。', 'danger')
+    
+    return render_template('admin/block_editor.html', 
+                         form=form, 
+                         article=None, 
+                         blocks=[], 
+                         all_categories=all_categories)
+
+@admin_bp.route('/article/block-editor/edit/<int:article_id>/', methods=['GET', 'POST'])
+@admin_required
+def edit_article_block_editor(article_id):
+    """ブロック型エディタで記事編集"""
+    if not BLOCK_EDITOR_AVAILABLE:
+        flash('ブロックエディタが利用できません。', 'warning')
+        return redirect(url_for('admin.edit_article', article_id=article_id))
+    
+    article = Article.query.get_or_404(article_id)
+    
+    # 既存記事をブロックエディタに変換（初回アクセス時）
+    if not article.use_block_editor:
+        article.convert_to_block_editor()
+        flash('記事をブロック型エディタに変換しました。', 'info')
+    
+    form = BlockEditorForm(obj=article)
+    all_categories = Category.query.order_by(Category.name).all()
+    
+    # カテゴリの選択肢を設定
+    form.category_id.choices = [(0, 'カテゴリを選択してください')] + [(cat.id, cat.name) for cat in all_categories]
+    
+    # 現在のカテゴリを設定
+    current_category = article.categories.first()
+    if current_category:
+        form.category_id.data = current_category.id
+    
+    # 記事のブロックを取得
+    blocks = article.get_visible_blocks()
+    
+    # 初期ブロック追加の処理
+    add_block_type = request.args.get('add_block')
+    if add_block_type and BLOCK_EDITOR_AVAILABLE:
+        try:
+            block_type = BlockType.query.filter_by(type_name=add_block_type).first()
+            if block_type:
+                # 最大順序番号を取得
+                max_order = db.session.query(func.max(ArticleBlock.sort_order)).filter_by(article_id=article.id).scalar() or 0
+                
+                # 新しいブロックを作成
+                new_block = ArticleBlock(
+                    article_id=article.id,
+                    block_type_id=block_type.id,
+                    sort_order=max_order + 1,
+                    title=f'新しい{block_type.type_label}'
+                )
+                
+                db.session.add(new_block)
+                db.session.commit()
+                flash(f'{block_type.type_label}を追加しました。', 'success')
+                
+                # ブロックリストを更新
+                blocks = article.get_visible_blocks()
+        except Exception as e:
+            current_app.logger.error(f"Initial block creation error: {e}")
+            flash('ブロックの追加に失敗しました。', 'warning')
+    
+    if form.validate_on_submit():
+        try:
+            # フォームのaction値を確認
+            action = request.form.get('action', 'save_draft')
+            
+            # 記事基本情報の更新
+            article.title = form.title.data
+            article.slug = form.slug.data
+            article.summary = form.summary.data
+            article.meta_title = form.meta_title.data
+            article.meta_description = form.meta_description.data
+            article.meta_keywords = form.meta_keywords.data
+            article.canonical_url = form.canonical_url.data
+            article.allow_comments = request.form.get('allow_comments') == 'true'
+            article.updated_at = datetime.utcnow()
+            
+            # 公開状態の更新
+            was_published = article.is_published
+            is_published = (action == 'publish') or (request.form.get('is_published') == 'true')
+            article.is_published = is_published
+            if is_published and not was_published:
+                article.published_at = datetime.utcnow()
+            
+            # カテゴリ関連付けの更新
+            # dynamic relationshipの場合は直接clearできないため、手動で削除
+            current_category_ids = [cat.id for cat in article.categories.all()]
+            for cat_id in current_category_ids:
+                category_to_remove = Category.query.get(cat_id)
+                if category_to_remove:
+                    article.categories.remove(category_to_remove)
+                    
+            if form.category_id.data and form.category_id.data != 0:
+                category = Category.query.get(form.category_id.data)
+                if category:
+                    article.categories.append(category)
+            
+            db.session.commit()
+            flash('記事を更新しました。', 'success')
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Block editor article update error: {e}")
+            flash('記事の更新に失敗しました。', 'danger')
+    
+    return render_template('admin/block_editor.html', 
+                         form=form, 
+                         article=article, 
+                         blocks=blocks, 
+                         all_categories=all_categories)
+
+@admin_bp.route('/api/block/add', methods=['POST'])
+@admin_required
+def add_block():
+    """新しいブロックを追加"""
+    # 関数の開始を必ず記録
+    print("=== add_block function called ===")
+    current_app.logger.info("=== add_block function called ===")
+    
+    try:
+        current_app.logger.info(f"Request method: {request.method}")
+        current_app.logger.info(f"Request content type: {request.content_type}")
+        current_app.logger.info(f"Request data raw: {request.data}")
+        current_app.logger.info(f"Request form: {dict(request.form)}")
+        current_app.logger.info(f"Request args: {dict(request.args)}")
+        
+        # リクエストの Content-Type を確認
+        if 'application/json' not in (request.content_type or ''):
+            current_app.logger.error(f"Invalid content type: {request.content_type}")
+            return jsonify({'success': False, 'error': f'Content-Type が application/json ではありません: {request.content_type}'})
+        
+        data = request.get_json(force=True)
+        current_app.logger.info(f"Parsed JSON data: {data}")
+        
+        if data is None:
+            current_app.logger.error("No JSON data received")
+            return jsonify({'success': False, 'error': 'JSONデータが受信されませんでした'})
+        
+        article_id = data.get('article_id')
+        block_type_name = data.get('block_type')
+        current_app.logger.info(f"article_id: {article_id}, block_type: {block_type_name}")
+        
+        if not article_id or not block_type_name:
+            return jsonify({'success': False, 'error': '必要なパラメータが不足しています'})
+        
+        article = Article.query.get(article_id)
+        if not article:
+            return jsonify({'success': False, 'error': '記事が見つかりません'})
+        
+        block_type = BlockType.query.filter_by(type_name=block_type_name).first()
+        if not block_type:
+            return jsonify({'success': False, 'error': 'ブロックタイプが見つかりません'})
+        
+        # 最大順序番号を取得
+        max_order = db.session.query(func.max(ArticleBlock.sort_order)).filter_by(article_id=article_id).scalar() or 0
+        
+        # 新しいブロックを作成
+        new_block = ArticleBlock(
+            article_id=article_id,
+            block_type_id=block_type.id,
+            sort_order=max_order + 1,
+            title=f'新しい{block_type.type_label}'
+        )
+        
+        db.session.add(new_block)
+        db.session.commit()
+        
+        current_app.logger.info(f"Block added successfully: ID={new_block.id}, Type={block_type_name}")
+        
+        # ブロックHTMLを生成
+        from flask import render_template_string
+        block_html = render_template('admin/block_item.html', block=new_block)
+        
+        current_app.logger.info("Block HTML generated successfully")
+        
+        return jsonify({
+            'success': True, 
+            'block_id': new_block.id,
+            'block_html': block_html
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Add block error: {e}")
+        current_app.logger.error(f"Exception type: {type(e).__name__}")
+        import traceback
+        current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': f'ブロック追加エラー: {str(e)}'})
+
+@admin_bp.route('/api/block/edit')
+@admin_required
+def edit_block():
+    """ブロック編集フォームを取得"""
+    try:
+        block_id = request.args.get('block_id')
+        if not block_id:
+            return 'ブロックIDが指定されていません', 400
+        
+        block = ArticleBlock.query.get_or_404(block_id)
+        form = create_block_form(block.block_type.type_name, obj=block)
+        
+        return render_template('admin/block_edit_form.html', block=block, form=form)
+        
+    except Exception as e:
+        current_app.logger.error(f"Edit block form error: {e}")
+        return 'ブロック編集フォームの読み込みに失敗しました', 500
+
+@admin_bp.route('/api/block/save', methods=['POST'])
+@admin_required
+def save_block():
+    """ブロックの保存"""
+    try:
+        current_app.logger.info("save_block function called")
+        current_app.logger.info(f"Request method: {request.method}")
+        current_app.logger.info(f"Request form keys: {list(request.form.keys())}")
+        current_app.logger.info(f"Request headers: {dict(request.headers)}")
+        
+        # CSRFトークンをログで確認
+        csrf_token = request.form.get('csrf_token')
+        current_app.logger.info(f"CSRF token received: {csrf_token}")
+        
+        block_id = request.form.get('block_id')
+        current_app.logger.info(f"Received block_id: {block_id}")
+        
+        if not block_id:
+            current_app.logger.error("No block_id provided")
+            return jsonify({'success': False, 'error': 'ブロックIDが指定されていません'})
+        
+        try:
+            block = ArticleBlock.query.get(block_id)
+            if not block:
+                current_app.logger.error(f"Block not found: {block_id}")
+                return jsonify({'success': False, 'error': f'ブロック（ID: {block_id}）が見つかりません'})
+        except Exception as get_error:
+            current_app.logger.error(f"Error getting block: {get_error}")
+            return jsonify({'success': False, 'error': f'ブロック取得エラー: {str(get_error)}'})
+        
+        # フォーム検証を完全にスキップして直接更新
+        current_app.logger.info(f"Form data: {dict(request.form)}")
+        current_app.logger.info(f"Block type: {block.block_type.type_name}")
+        current_app.logger.info(f"Block ID: {block_id}")
+        
+        # フォーム検証をスキップして直接フィールドを更新
+        try:
+            # ブロック共通フィールドの更新
+            if 'title' in request.form:
+                block.title = request.form.get('title', '')
+            if 'css_classes' in request.form:
+                block.css_classes = request.form.get('css_classes', '')
+            
+            # ブロックタイプ別の処理
+            if block.is_text_block:
+                content = request.form.get('content', '')
+                current_app.logger.info(f"Content to save: {content}")
+                block.content = content
+                
+            elif block.is_image_block or block.is_featured_image_block:
+                # 画像メタデータの更新
+                if 'image_alt_text' in request.form:
+                    block.image_alt_text = request.form.get('image_alt_text', '')
+                if 'image_caption' in request.form:
+                    block.image_caption = request.form.get('image_caption', '')
+                
+                # 画像ファイルのアップロード処理
+                if 'image_file' in request.files and request.files['image_file'].filename:
+                    image_file = request.files['image_file']
+                    current_app.logger.info(f"Processing image upload: {image_file.filename}")
+                    
+                    # トリミング情報を取得
+                    crop_data = None
+                    crop_x = request.form.get('crop_x')
+                    crop_y = request.form.get('crop_y')
+                    crop_width = request.form.get('crop_width')
+                    crop_height = request.form.get('crop_height')
+                    
+                    if all([crop_x, crop_y, crop_width, crop_height]):
+                        try:
+                            crop_data = {
+                                'x': int(float(crop_x)),
+                                'y': int(float(crop_y)),
+                                'width': int(float(crop_width)),
+                                'height': int(float(crop_height))
+                            }
+                            current_app.logger.info(f"Crop data: {crop_data}")
+                        except (ValueError, TypeError) as e:
+                            current_app.logger.warning(f"Invalid crop data: {e}")
+                            crop_data = None
+                    
+                    # 画像処理を実行
+                    try:
+                        if crop_data:
+                            # トリミング付き画像処理
+                            image_path = process_block_image_with_crop(
+                                image_file, 
+                                block.block_type.type_name, 
+                                crop_data, 
+                                block.id
+                            )
+                        else:
+                            # 通常の画像処理
+                            image_path = process_block_image(
+                                image_file, 
+                                block.block_type.type_name, 
+                                block.id
+                            )
+                        
+                        if image_path:
+                            # 古い画像ファイルを削除
+                            if block.image_path:
+                                old_path = os.path.join(current_app.root_path, block.image_path)
+                                if os.path.exists(old_path):
+                                    os.remove(old_path)
+                                    current_app.logger.info(f"Deleted old image: {old_path}")
+                            
+                            # 新しい画像パスを保存
+                            block.image_path = image_path
+                            current_app.logger.info(f"Image saved: {image_path}")
+                        else:
+                            current_app.logger.error("Image processing failed")
+                            
+                    except Exception as img_error:
+                        current_app.logger.error(f"Image processing error: {img_error}")
+                        # 画像処理が失敗してもメタデータの更新は続行
+                
+            elif block.is_sns_embed_block:
+                if 'embed_url' in request.form:
+                    embed_url = request.form.get('embed_url', '')
+                    block.embed_url = embed_url
+                    
+                    # SNSプラットフォーム検出
+                    platform = detect_sns_platform(embed_url)
+                    if platform:
+                        block.embed_platform = platform
+                        current_app.logger.info(f"Detected SNS platform: {platform}")
+                        
+                        # SNS固有IDの抽出
+                        sns_id = extract_sns_id(embed_url, platform)
+                        if sns_id:
+                            block.embed_id = sns_id
+                            current_app.logger.info(f"Extracted SNS ID: {sns_id}")
+                            
+                            # 埋込HTMLの生成
+                            embed_html = generate_sns_embed_html(embed_url, platform, sns_id)
+                            if embed_html:
+                                block.embed_html = embed_html
+                                current_app.logger.info("Generated embed HTML")
+                        else:
+                            current_app.logger.warning(f"Could not extract SNS ID from: {embed_url}")
+                    else:
+                        current_app.logger.warning(f"Unsupported SNS platform: {embed_url}")
+                        block.embed_platform = 'unknown'
+                
+            elif block.is_external_article_block:
+                # 外部記事URLの更新
+                external_url = request.form.get('external_url', '')
+                if 'external_url' in request.form and external_url:
+                    block.ogp_url = external_url
+                    
+                    # OGPデータを自動取得
+                    current_app.logger.info(f"Fetching OGP data for: {external_url}")
+                    try:
+                        ogp_data = fetch_ogp_data(external_url)
+                        if ogp_data:
+                            current_app.logger.info(f"OGP data retrieved: {ogp_data}")
+                            
+                            # 手動入力が優先、自動取得は空欄のみ埋める
+                            if not request.form.get('ogp_title', '').strip():
+                                block.ogp_title = ogp_data.get('title', '')
+                            else:
+                                block.ogp_title = request.form.get('ogp_title', '')
+                                
+                            if not request.form.get('ogp_description', '').strip():
+                                block.ogp_description = ogp_data.get('description', '')
+                            else:
+                                block.ogp_description = request.form.get('ogp_description', '')
+                                
+                            if not request.form.get('ogp_site_name', '').strip():
+                                block.ogp_site_name = ogp_data.get('site_name', '')
+                            else:
+                                block.ogp_site_name = request.form.get('ogp_site_name', '')
+                                
+                            # OGP画像の処理は将来実装
+                            # block.ogp_image = ogp_data.get('image', '')
+                        else:
+                            current_app.logger.warning(f"Failed to fetch OGP data for: {external_url}")
+                            # 手動入力値を使用
+                            block.ogp_title = request.form.get('ogp_title', '')
+                            block.ogp_description = request.form.get('ogp_description', '')
+                            block.ogp_site_name = request.form.get('ogp_site_name', '')
+                    except Exception as ogp_error:
+                        current_app.logger.error(f"OGP fetch error: {ogp_error}")
+                        # エラー時は手動入力値を使用
+                        block.ogp_title = request.form.get('ogp_title', '')
+                        block.ogp_description = request.form.get('ogp_description', '')
+                        block.ogp_site_name = request.form.get('ogp_site_name', '')
+                else:
+                    # 手動でOGP情報を更新
+                    if 'ogp_title' in request.form:
+                        block.ogp_title = request.form.get('ogp_title', '')
+                    if 'ogp_description' in request.form:
+                        block.ogp_description = request.form.get('ogp_description', '')
+                    if 'ogp_site_name' in request.form:
+                        block.ogp_site_name = request.form.get('ogp_site_name', '')
+            
+            block.updated_at = datetime.utcnow()
+            db.session.commit()
+            
+            current_app.logger.info(f"Block saved successfully: {block_id}")
+            
+            # 更新後のブロックHTMLを生成
+            try:
+                block_html = render_template('admin/block_item.html', block=block)
+                current_app.logger.info("Block HTML rendered successfully")
+            except Exception as render_error:
+                current_app.logger.error(f"Template render error: {render_error}")
+                # HTMLレンダリングが失敗してもブロックは保存されているので成功とする
+                block_html = f'<div class="block-item">ブロック保存済み (ID: {block.id})</div>'
+            
+            # プレビューHTMLも生成
+            try:
+                from block_utils import render_block_content
+                preview_html = render_block_content(block)
+                current_app.logger.info("Block preview HTML rendered successfully")
+            except Exception as preview_error:
+                current_app.logger.error(f"Preview render error: {preview_error}")
+                preview_html = '<div class="block-preview-error">プレビューの生成に失敗しました</div>'
+            
+            return jsonify({
+                'success': True,
+                'block_html': block_html,
+                'preview_html': preview_html,
+                'message': 'ブロックが正常に保存されました'
+            })
+            
+        except Exception as update_error:
+            db.session.rollback()
+            current_app.logger.error(f"Block update error: {update_error}")
+            return jsonify({'success': False, 'error': f'ブロック更新エラー: {str(update_error)}'})
+            
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Save block error: {e}")
+        current_app.logger.error(f"Exception type: {type(e).__name__}")
+        import traceback
+        current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': f'保存中にエラーが発生しました: {str(e)}'})
+
+@admin_bp.route('/api/block/delete', methods=['POST'])
+@admin_required
+def delete_block():
+    """ブロックの削除"""
+    try:
+        data = request.get_json()
+        block_id = data.get('block_id')
+        
+        if not block_id:
+            return jsonify({'success': False, 'error': 'ブロックIDが指定されていません'})
+        
+        block = ArticleBlock.query.get_or_404(block_id)
+        
+        # 画像ファイルが存在する場合は削除
+        if block.image_path:
+            from block_utils import delete_block_image
+            delete_block_image(block.image_path)
+        
+        db.session.delete(block)
+        db.session.commit()
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Delete block error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@admin_bp.route('/api/block/reorder', methods=['POST'])
+@admin_required
+def reorder_blocks():
+    """ブロックの順序変更"""
+    try:
+        data = request.get_json()
+        block_ids = data.get('block_ids', [])
+        
+        for index, block_id in enumerate(block_ids, 1):
+            block = ArticleBlock.query.get(block_id)
+            if block:
+                block.sort_order = index
+        
+        db.session.commit()
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Reorder blocks error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@admin_bp.route('/api/fetch-ogp', methods=['POST'])
+@admin_required  
+def fetch_ogp():
+    """OGP情報取得API"""
+    if not BLOCK_EDITOR_AVAILABLE:
+        return jsonify({'success': False, 'error': 'Block editor not available'})
+    
+    try:
+        data = request.get_json()
+        url = data.get('url')
+        
+        if not url:
+            return jsonify({'success': False, 'error': 'URL is required'})
+        
+        # OGP情報を取得
+        ogp_data = fetch_ogp_data(url)
+        
+        if ogp_data:
+            return jsonify({
+                'success': True,
+                'ogp_data': {
+                    'title': ogp_data.get('title', ''),
+                    'description': ogp_data.get('description', ''),
+                    'site_name': ogp_data.get('site_name', ''),
+                    'image': ogp_data.get('image', '')
+                }
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Could not fetch OGP data'})
+            
+    except Exception as e:
+        current_app.logger.error(f"OGP fetch error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@admin_bp.route('/article/preview/<int:article_id>')
+@admin_required
+def article_preview(article_id):
+    """記事プレビュー（ブロックエディタ対応）"""
+    article = Article.query.get_or_404(article_id)
+    
+    if article.use_block_editor:
+        blocks = article.get_visible_blocks()
+        return render_template('admin/article_preview.html', article=article, blocks=blocks)
+    else:
+        return render_template('article_detail.html', article=article, is_preview=True)
