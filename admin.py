@@ -10,10 +10,10 @@ from PIL import Image
 import time
 import re
 import json
-from forms import CategoryForm, ArticleForm
+from forms import CategoryForm, ArticleForm, WordPressImportForm, GoogleAnalyticsForm
 try:
     from block_forms import BlockEditorForm, create_block_form
-    from block_utils import process_block_image, fetch_ogp_data, detect_sns_platform, extract_sns_id, generate_sns_embed_html
+    from block_utils import process_block_image, process_block_image_with_crop, fetch_ogp_data, detect_sns_platform, extract_sns_id, generate_sns_embed_html
     from models import BlockType, ArticleBlock
     BLOCK_EDITOR_AVAILABLE = True
 except ImportError as e:
@@ -591,13 +591,17 @@ def create_article():
                 
                 # アイキャッチ画像の処理（IDが確定した後）
                 if form.featured_image.data and form.featured_image.data.filename:
-                    current_app.logger.info(f"Processing featured image for article ID: {new_article.id}")
-                    featured_image = process_featured_image(form.featured_image.data, new_article.id)
-                    if featured_image:
-                        new_article.featured_image = featured_image
-                        current_app.logger.info(f"Featured image saved: {featured_image}")
-                    else:
-                        current_app.logger.error("Failed to process featured image")
+                    try:
+                        current_app.logger.info(f"Processing featured image for article ID: {new_article.id}")
+                        featured_image = process_featured_image(form.featured_image.data, new_article.id)
+                        if featured_image:
+                            new_article.featured_image = featured_image
+                            current_app.logger.info(f"Featured image saved: {featured_image}")
+                        else:
+                            current_app.logger.warning("Featured image processing failed, but continuing with article creation")
+                    except Exception as img_error:
+                        current_app.logger.error(f"Featured image processing error: {img_error}")
+                        flash('画像の処理中にエラーが発生しましたが、記事は作成されました。', 'warning')
                 
                 db.session.commit()
                 current_app.logger.info(f"Article created with featured_image: {new_article.featured_image}")
@@ -606,15 +610,26 @@ def create_article():
             except Exception as e:
                 db.session.rollback()
                 current_app.logger.error(f"Article creation error: {e}")
-                flash('記事の作成に失敗しました。', 'danger')
+                flash(f'記事の作成に失敗しました: {str(e)}', 'danger')
+    else:
+        # バリデーションエラーがある場合
+        if form.errors:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    flash(f'{field}: {error}', 'danger')
     
     return render_template('admin/create_article.html', form=form, all_categories=all_categories)
 
 @admin_bp.route('/article/edit/<int:article_id>/', methods=['GET', 'POST'])
 @admin_required
 def edit_article(article_id):
-    """記事編集"""
+    """記事編集（従来型エディタ）"""
     article = Article.query.get_or_404(article_id)
+    
+    # ブロック型記事の場合はブロック型エディタにリダイレクト
+    if article.use_block_editor:
+        flash('この記事はブロック型エディタで作成されています。ブロック型エディタで編集してください。', 'info')
+        return redirect(url_for('admin.edit_article_block_editor', article_id=article_id))
     form = ArticleForm(obj=article)
     all_categories = Category.query.order_by(Category.name).all()
     
@@ -701,31 +716,11 @@ def toggle_article_status(article_id):
     article = Article.query.get_or_404(article_id)
     
     try:
-        # CSRF検証を完全にスキップ（管理者のみアクセス可能）
-        pass  # CSRF検証をスキップ
-        
-        # リクエストの内容をログ出力
-        current_app.logger.info(f"Request content type: {request.content_type}")
-        current_app.logger.info(f"Request data: {request.data}")
-        current_app.logger.info(f"Request form: {request.form}")
-        current_app.logger.info(f"Request JSON: {request.get_json(force=True, silent=True)}")
-        
-        # JSONとフォームデータの両方に対応
-        if request.content_type == 'application/json':
-            data = request.get_json()
-        else:
-            data = request.form.to_dict()
-            
-        if not data:
-            return jsonify({'success': False, 'error': 'No data provided'}), 400
-            
-        new_status = data.get('is_published', False)
-        # 文字列の場合の変換
-        if isinstance(new_status, str):
-            new_status = new_status.lower() in ['true', '1', 'yes']
-            
+        # フォームデータから状態を取得
+        new_status = request.form.get('is_published', 'false').lower() == 'true'
         was_published = article.is_published
         
+        # ステータス更新
         article.is_published = new_status
         if new_status and not was_published:
             article.published_at = datetime.utcnow()
@@ -734,67 +729,32 @@ def toggle_article_status(article_id):
         
         status_text = '公開' if new_status else '下書き'
         current_app.logger.info(f'Article {article.id} status changed to {status_text}')
-        
         flash(f'記事ステータスを{status_text}に変更しました', 'success')
-        return redirect(url_for('admin.articles'))
-    except BadRequest as e:
-        # CSRF エラーの場合
-        current_app.logger.warning(f"CSRF validation failed, but allowing for admin user: {e}")
-        # 再試行（CSRF検証なし）
-        try:
-            # JSONとフォームデータの両方に対応
-            if request.content_type == 'application/json':
-                data = request.get_json()
-            else:
-                data = request.form.to_dict()
-                
-            if not data:
-                return jsonify({'success': False, 'error': 'No data provided'}), 400
-                
-            new_status = data.get('is_published', False)
-            # 文字列の場合の変換
-            if isinstance(new_status, str):
-                new_status = new_status.lower() in ['true', '1', 'yes']
-                
-            was_published = article.is_published
-            
-            article.is_published = new_status
-            if new_status and not was_published:
-                article.published_at = datetime.utcnow()
-            
-            db.session.commit()
-            
-            status_text = '公開' if new_status else '下書き'
-            current_app.logger.info(f'Article {article.id} status changed to {status_text}')
-            
-            flash(f'記事ステータスを{status_text}に変更しました', 'success')
-            return redirect(url_for('admin.articles'))
-        except Exception as retry_e:
-            db.session.rollback()
-            current_app.logger.error(f"Retry failed: {retry_e}")
-            flash(f'ステータス変更に失敗しました: {retry_e}', 'danger')
-            return redirect(url_for('admin.articles'))
+        
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Status toggle error: {e}")
-        import traceback
-        current_app.logger.error(f"Traceback: {traceback.format_exc()}")
-        flash(f'ステータス変更に失敗しました: {e}', 'danger')
-        return redirect(url_for('admin.articles'))
+        flash(f'ステータス変更に失敗しました: {str(e)}', 'danger')
+    
+    return redirect(url_for('admin.articles'))
 
 @admin_bp.route('/article/delete/<int:article_id>/', methods=['POST'])
 @admin_required
 def delete_article(article_id):
     """記事削除"""
     article = Article.query.get_or_404(article_id)
+    article_title = article.title  # 削除前にタイトルを保存
     
     try:
+        # SQLAlchemyのCASCADE設定により関連ブロックも自動削除される
         db.session.delete(article)
         db.session.commit()
-        flash(f'記事「{article.title}」を削除しました。', 'success')
+        flash(f'記事「{article_title}」を削除しました。', 'success')
+        current_app.logger.info(f"Article deleted successfully: {article_id}")
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Article deletion error: {e}")
+        print(f"Article deletion error: {e}")  # デバッグ用
         flash('記事の削除に失敗しました。', 'danger')
     
     return redirect(url_for('admin.articles'))
@@ -1015,72 +975,7 @@ def bulk_delete_categories():
     return redirect(url_for('admin.categories'))
 
 # サイト設定
-@admin_bp.route('/site_settings/', methods=['GET', 'POST'])
-@admin_required
-def site_settings():
-    """サイト設定管理"""
-    default_settings = [
-        {'key': 'site_title', 'description': 'サイトタイトル', 'type': 'text', 'default': 'ミニブログ'},
-        {'key': 'site_description', 'description': 'サイト説明', 'type': 'textarea', 'default': 'シンプルなブログシステム'},
-        {'key': 'site_keywords', 'description': 'サイトキーワード', 'type': 'text', 'default': 'ブログ,記事,投稿'},
-        {'key': 'admin_email', 'description': '管理者メールアドレス', 'type': 'email', 'default': 'admin@example.com'},
-        {'key': 'posts_per_page', 'description': '1ページあたりの記事数', 'type': 'number', 'default': '10'},
-        {'key': 'enable_comments', 'description': 'コメント機能を有効にする', 'type': 'boolean', 'default': 'true'},
-        {'key': 'maintenance_mode', 'description': 'メンテナンスモード', 'type': 'boolean', 'default': 'false'}
-    ]
-    
-    if request.method == 'POST':
-        try:
-            for setting_def in default_settings:
-                key = setting_def['key']
-                value = request.form.get(key, '')
-                
-                if setting_def['type'] == 'boolean':
-                    value = 'true' if key in request.form else 'false'
-                
-                # SiteSettingクラスが存在する場合のみ設定を保存
-                if hasattr(SiteSetting, 'set_setting'):
-                    SiteSetting.set_setting(
-                        key=key,
-                        value=value,
-                        description=setting_def['description'],
-                        setting_type=setting_def['type'],
-                        is_public=True
-                    )
-            
-            flash('サイト設定を更新しました。', 'success')
-            return redirect(url_for('admin.site_settings'))
-        except Exception as e:
-            current_app.logger.error(f"Site settings update error: {e}")
-            flash('設定の更新に失敗しました。', 'danger')
-    
-    # 既存設定取得
-    settings = {}
-    for setting_def in default_settings:
-        try:
-            if hasattr(SiteSetting, 'query'):
-                setting = SiteSetting.query.filter_by(key=setting_def['key']).first()
-                settings[setting_def['key']] = {
-                    'value': setting.value if setting else setting_def['default'],
-                    'description': setting_def['description'],
-                    'type': setting_def['type']
-                }
-            else:
-                settings[setting_def['key']] = {
-                    'value': setting_def['default'],
-                    'description': setting_def['description'],
-                    'type': setting_def['type']
-                }
-        except:
-            settings[setting_def['key']] = {
-                'value': setting_def['default'],
-                'description': setting_def['description'],
-                'type': setting_def['type']
-            }
-    
-    return render_template('admin/site_settings.html', settings=settings)
-
-# ...existing code...
+# Removed duplicate site_settings function
 
 # コメント管理（admin.py の最後に追加）
 @admin_bp.route('/comments/')
@@ -1337,10 +1232,12 @@ def edit_article_block_editor(article_id):
     
     article = Article.query.get_or_404(article_id)
     
-    # 既存記事をブロックエディタに変換（初回アクセス時）
+    # 従来型記事の場合は従来型エディタにリダイレクト
     if not article.use_block_editor:
-        article.convert_to_block_editor()
-        flash('記事をブロック型エディタに変換しました。', 'info')
+        flash('この記事は従来型エディタで作成されています。従来型エディタで編集してください。', 'info')
+        return redirect(url_for('admin.edit_article', article_id=article_id))
+    
+    # この記事は既にブロック型として設定済み
     
     form = BlockEditorForm(obj=article)
     all_categories = Category.query.order_by(Category.name).all()
@@ -1352,6 +1249,14 @@ def edit_article_block_editor(article_id):
     current_category = article.categories.first()
     if current_category:
         form.category_id.data = current_category.id
+    
+    # フォームに記事の現在の状態を反映
+    form.is_published.data = 'true' if article.is_published else 'false'
+    form.allow_comments.data = 'true' if article.allow_comments else 'false'
+    
+    # デバッグ用ログ
+    current_app.logger.info(f"Article {article.id} - is_published: {article.is_published}, allow_comments: {article.allow_comments}")
+    current_app.logger.info(f"Form data - is_published: {form.is_published.data}, allow_comments: {form.allow_comments.data}")
     
     # 記事のブロックを取得
     blocks = article.get_visible_blocks()
@@ -1651,6 +1556,13 @@ def save_block():
                     embed_url = request.form.get('embed_url', '')
                     block.embed_url = embed_url
                     
+                    # 表示モードの設定を保存
+                    display_mode = request.form.get('display_mode', 'embed')
+                    current_settings = block.get_settings_json()
+                    current_settings['display_mode'] = display_mode
+                    block.set_settings_json(current_settings)
+                    current_app.logger.info(f"Display mode set to: {display_mode}")
+                    
                     # SNSプラットフォーム検出
                     platform = detect_sns_platform(embed_url)
                     if platform:
@@ -1663,7 +1575,7 @@ def save_block():
                             block.embed_id = sns_id
                             current_app.logger.info(f"Extracted SNS ID: {sns_id}")
                             
-                            # 埋込HTMLの生成
+                            # 埋込HTMLの生成（従来モード用）
                             embed_html = generate_sns_embed_html(embed_url, platform, sns_id)
                             if embed_html:
                                 block.embed_html = embed_html
@@ -1673,6 +1585,24 @@ def save_block():
                     else:
                         current_app.logger.warning(f"Unsupported SNS platform: {embed_url}")
                         block.embed_platform = 'unknown'
+                    
+                    # OGPカード表示モード用のOGP情報を保存
+                    if display_mode == 'ogp_card':
+                        # OGP情報の手動入力値を保存
+                        if 'ogp_title' in request.form:
+                            block.ogp_title = request.form.get('ogp_title', '')
+                        if 'ogp_description' in request.form:
+                            block.ogp_description = request.form.get('ogp_description', '')
+                        if 'ogp_site_name' in request.form:
+                            block.ogp_site_name = request.form.get('ogp_site_name', '')
+                        if 'ogp_image' in request.form:
+                            block.ogp_image = request.form.get('ogp_image', '')
+                        
+                        # OGP URLとして埋込URLを設定
+                        block.ogp_url = embed_url
+                        block.ogp_cached_at = datetime.utcnow()
+                        
+                        current_app.logger.info("OGP data saved for SNS embed block")
                 
             elif block.is_external_article_block:
                 # 外部記事URLの更新
@@ -1852,6 +1782,37 @@ def fetch_ogp():
         current_app.logger.error(f"OGP fetch error: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
+@admin_bp.route('/api/remove-featured-image', methods=['POST'])
+@admin_required
+def remove_featured_image():
+    """アイキャッチ画像を削除"""
+    try:
+        data = request.get_json()
+        article_id = data.get('article_id')
+        
+        if not article_id:
+            return jsonify({'success': False, 'error': '記事IDが指定されていません'})
+        
+        article = Article.query.get_or_404(article_id)
+        
+        # 画像ファイルを削除
+        if article.featured_image:
+            if delete_old_image(article.featured_image):
+                current_app.logger.info(f"Deleted featured image: {article.featured_image}")
+            
+            # データベースからも削除
+            article.featured_image = None
+            db.session.commit()
+            
+            return jsonify({'success': True, 'message': 'アイキャッチ画像を削除しました'})
+        else:
+            return jsonify({'success': False, 'error': 'アイキャッチ画像が設定されていません'})
+            
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Remove featured image error: {e}")
+        return jsonify({'success': False, 'error': f'画像削除エラー: {str(e)}'})
+
 @admin_bp.route('/article/preview/<int:article_id>')
 @admin_required
 def article_preview(article_id):
@@ -1863,3 +1824,565 @@ def article_preview(article_id):
         return render_template('admin/article_preview.html', article=article, blocks=blocks)
     else:
         return render_template('article_detail.html', article=article, is_preview=True)
+
+# ===============================
+# WordPress インポート機能
+# ===============================
+
+@admin_bp.route('/wordpress-import/', methods=['GET', 'POST'])
+@admin_required
+def wordpress_import():
+    """WordPress インポート画面"""
+    form = WordPressImportForm()
+    import_results = None
+    
+    if form.validate_on_submit():
+        try:
+            # XMLファイルの保存
+            xml_file = form.xml_file.data
+            filename = secure_filename(xml_file.filename)
+            timestamp = int(time.time())
+            filename = f"wp_import_{timestamp}_{filename}"
+            
+            # 一時保存ディレクトリ
+            temp_dir = os.path.join(current_app.instance_path, 'temp')
+            os.makedirs(temp_dir, exist_ok=True)
+            xml_path = os.path.join(temp_dir, filename)
+            xml_file.save(xml_path)
+            
+            # 必要なモジュールをインポート
+            import xml.etree.ElementTree as ET
+            import html
+            import requests
+            from urllib.parse import urlparse
+            
+            # WordPress インポーターの統合版を作成
+            class WebWordPressImporter:
+                """Web版 WordPress インポーター"""
+                
+                def __init__(self, xml_file, author_id, options):
+                    self.xml_file = xml_file
+                    self.author_id = author_id
+                    self.dry_run = options.get('dry_run', False)
+                    self.import_categories = options.get('import_categories', True)
+                    self.import_images = options.get('import_images', True)
+                    self.skip_duplicates = options.get('skip_duplicates', True)
+                    self.stats = {
+                        'categories_imported': 0,
+                        'posts_imported': 0,
+                        'images_downloaded': 0,
+                        'errors': [],
+                        'skipped': []
+                    }
+                
+                def run(self):
+                    """インポート実行"""
+                    
+                    # WordPress XML の名前空間定義
+                    namespaces = {
+                        'wp': 'http://wordpress.org/export/1.2/',
+                        'dc': 'http://purl.org/dc/elements/1.1/',
+                        'content': 'http://purl.org/rss/1.0/modules/content/',
+                        'excerpt': 'http://wordpress.org/export/1.2/excerpt/'
+                    }
+                    
+                    try:
+                        # XML解析
+                        tree = ET.parse(self.xml_file)
+                        root = tree.getroot()
+                        
+                        # カテゴリ抽出・インポート
+                        if self.import_categories:
+                            categories = self._extract_categories(root, namespaces)
+                            self._import_categories(categories)
+                        
+                        # 記事抽出・インポート
+                        posts = self._extract_posts(root, namespaces)
+                        self._import_posts(posts)
+                        
+                        return True
+                        
+                    except Exception as e:
+                        current_app.logger.error(f"WordPress import error: {e}")
+                        self.stats['errors'].append(f"インポートエラー: {e}")
+                        return False
+                
+                def _generate_slug(self, text):
+                    """スラッグ生成"""
+                    if not text:
+                        return 'untitled'
+                    slug = re.sub(r'[^\w\s-]', '', text.lower())
+                    slug = re.sub(r'[-\s]+', '-', slug)
+                    return slug.strip('-')[:50]
+                
+                def _extract_categories(self, root, namespaces):
+                    """カテゴリ抽出"""
+                    categories = []
+                    for cat_elem in root.findall('.//wp:category', namespaces):
+                        cat_name = cat_elem.find('wp:cat_name', namespaces)
+                        category_nicename = cat_elem.find('wp:category_nicename', namespaces)
+                        category_description = cat_elem.find('wp:category_description', namespaces)
+                        
+                        if cat_name is not None and cat_name.text:
+                            categories.append({
+                                'name': html.unescape(cat_name.text),
+                                'slug': category_nicename.text if category_nicename is not None else self._generate_slug(cat_name.text),
+                                'description': html.unescape(category_description.text) if category_description is not None and category_description.text else ''
+                            })
+                    return categories
+                
+                def _extract_posts(self, root, namespaces):
+                    """記事抽出"""
+                    posts = []
+                    for item in root.findall('.//item'):
+                        post_type = item.find('wp:post_type', namespaces)
+                        post_status = item.find('wp:status', namespaces)
+                        
+                        if (post_type is not None and post_type.text == 'post' and 
+                            post_status is not None and post_status.text == 'publish'):
+                            
+                            title = item.find('title')
+                            content = item.find('content:encoded', namespaces)
+                            excerpt = item.find('excerpt:encoded', namespaces)
+                            post_name = item.find('wp:post_name', namespaces)
+                            post_date = item.find('wp:post_date', namespaces)
+                            
+                            # カテゴリ抽出
+                            categories = []
+                            for cat in item.findall('category[@domain="category"]'):
+                                if cat.text:
+                                    categories.append(cat.text)
+                            
+                            posts.append({
+                                'title': html.unescape(title.text) if title is not None else 'Untitled',
+                                'slug': post_name.text if post_name is not None else self._generate_slug(title.text if title is not None else 'untitled'),
+                                'content': html.unescape(content.text) if content is not None else '',
+                                'summary': html.unescape(excerpt.text) if excerpt is not None and excerpt.text else '',
+                                'published_at': self._parse_wp_date(post_date.text if post_date is not None else ''),
+                                'categories': categories
+                            })
+                    return posts
+                
+                def _parse_wp_date(self, date_str):
+                    """日付解析"""
+                    if not date_str:
+                        return datetime.now()
+                    try:
+                        return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+                    except ValueError:
+                        return datetime.now()
+                
+                def _import_categories(self, categories):
+                    """カテゴリインポート"""
+                    for category_data in categories:
+                        try:
+                            if self.skip_duplicates:
+                                existing = Category.query.filter_by(slug=category_data['slug']).first()
+                                if existing:
+                                    self.stats['skipped'].append(f"カテゴリ: {category_data['name']}")
+                                    continue
+                            
+                            if not self.dry_run:
+                                category = Category(
+                                    name=category_data['name'],
+                                    slug=category_data['slug'],
+                                    description=category_data['description']
+                                )
+                                db.session.add(category)
+                                db.session.commit()
+                            
+                            self.stats['categories_imported'] += 1
+                            
+                        except Exception as e:
+                            self.stats['errors'].append(f"カテゴリ作成失敗: {category_data['name']} - {e}")
+                            db.session.rollback()
+                
+                def _import_posts(self, posts):
+                    """記事インポート"""
+                    for post_data in posts:
+                        try:
+                            if self.skip_duplicates:
+                                existing = Article.query.filter_by(slug=post_data['slug']).first()
+                                if existing:
+                                    self.stats['skipped'].append(f"記事: {post_data['title']}")
+                                    continue
+                            
+                            if not self.dry_run:
+                                article = Article(
+                                    title=post_data['title'],
+                                    slug=post_data['slug'],
+                                    content=post_data['content'],
+                                    summary=post_data['summary'],
+                                    status='published',
+                                    published_at=post_data['published_at'],
+                                    author_id=self.author_id,
+                                    use_block_editor=False
+                                )
+                                db.session.add(article)
+                                db.session.flush()
+                                
+                                # カテゴリ関連付け
+                                for category_name in post_data['categories']:
+                                    category = Category.query.filter_by(name=category_name).first()
+                                    if not category:
+                                        category_slug = self._generate_slug(category_name)
+                                        category = Category.query.filter_by(slug=category_slug).first()
+                                    
+                                    if category:
+                                        article_category = ArticleCategory(
+                                            article_id=article.id,
+                                            category_id=category.id
+                                        )
+                                        db.session.add(article_category)
+                                
+                                db.session.commit()
+                            
+                            self.stats['posts_imported'] += 1
+                            
+                        except Exception as e:
+                            self.stats['errors'].append(f"記事作成失敗: {post_data['title']} - {e}")
+                            db.session.rollback()
+            
+            # インポート実行
+            options = {
+                'dry_run': form.dry_run.data,
+                'import_categories': form.import_categories.data,
+                'import_images': form.import_images.data,
+                'skip_duplicates': form.skip_duplicates.data
+            }
+            
+            importer = WebWordPressImporter(xml_path, form.author_id.data, options)
+            success = importer.run()
+            import_results = importer.stats
+            
+            # 一時ファイル削除
+            try:
+                os.remove(xml_path)
+            except:
+                pass
+            
+            if success:
+                flash(f'インポート完了: カテゴリ{import_results["categories_imported"]}個、記事{import_results["posts_imported"]}個', 'success')
+            else:
+                flash('インポート中にエラーが発生しました', 'danger')
+                
+        except Exception as e:
+            current_app.logger.error(f"WordPress import form error: {e}")
+            flash(f'インポートエラー: {e}', 'danger')
+    
+    return render_template('admin/wordpress_import.html', 
+                         form=form, 
+                         import_results=import_results)
+
+# ===============================
+# Google Analytics 設定機能
+# ===============================
+
+@admin_bp.route('/analytics/', methods=['GET', 'POST'])
+@admin_required
+def analytics_settings():
+    """Google Analytics設定画面"""
+    form = GoogleAnalyticsForm()
+    
+    # 現在の設定値を取得してフォームに設定
+    if request.method == 'GET':
+        form.google_analytics_enabled.data = SiteSetting.get_setting('google_analytics_enabled', 'false').lower() == 'true'
+        form.google_analytics_id.data = SiteSetting.get_setting('google_analytics_id', '')
+        form.google_tag_manager_id.data = SiteSetting.get_setting('google_tag_manager_id', '')
+        form.custom_analytics_code.data = SiteSetting.get_setting('custom_analytics_code', '')
+        form.analytics_track_admin.data = SiteSetting.get_setting('analytics_track_admin', 'false').lower() == 'true'
+    
+    if form.validate_on_submit():
+        try:
+            # 設定を保存
+            SiteSetting.set_setting('google_analytics_enabled', 
+                                   'true' if form.google_analytics_enabled.data else 'false',
+                                   'Google Analyticsを有効にする', 'boolean', True)
+            
+            SiteSetting.set_setting('google_analytics_id', 
+                                   form.google_analytics_id.data or '',
+                                   'Google Analytics 4 Measurement ID', 'text', True)
+            
+            SiteSetting.set_setting('google_tag_manager_id', 
+                                   form.google_tag_manager_id.data or '',
+                                   'Google Tag Manager Container ID', 'text', True)
+            
+            SiteSetting.set_setting('custom_analytics_code', 
+                                   form.custom_analytics_code.data or '',
+                                   'カスタムアナリティクスコード', 'text', True)
+            
+            SiteSetting.set_setting('analytics_track_admin', 
+                                   'true' if form.analytics_track_admin.data else 'false',
+                                   '管理者のアクセスも追跡する', 'boolean', False)
+            
+            flash('Google Analytics設定を保存しました', 'success')
+            current_app.logger.info('Google Analytics settings updated')
+            
+        except Exception as e:
+            current_app.logger.error(f"Analytics settings save error: {e}")
+            flash(f'設定の保存に失敗しました: {str(e)}', 'danger')
+    else:
+        # バリデーションエラーがある場合
+        if form.errors:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    flash(f'{field}: {error}', 'danger')
+    
+    # 現在の設定状況を取得（表示用）
+    current_settings = {
+        'google_analytics_enabled': SiteSetting.get_setting('google_analytics_enabled', 'false'),
+        'google_analytics_id': SiteSetting.get_setting('google_analytics_id', ''),
+        'google_tag_manager_id': SiteSetting.get_setting('google_tag_manager_id', ''),
+        'analytics_track_admin': SiteSetting.get_setting('analytics_track_admin', 'false')
+    }
+    
+    return render_template('admin/analytics_settings.html', 
+                         form=form, 
+                         current_settings=current_settings)
+
+# ===============================
+# アクセスログアナライザー機能
+# ===============================
+
+@admin_bp.route('/access-logs/', methods=['GET'])
+@admin_required
+def access_logs():
+    """アクセスログ分析画面"""
+    from access_log_analyzer import AccessLogAnalyzer
+    
+    log_files = []
+    reports = {}
+    error_message = None
+    
+    try:
+        # 利用可能なログファイルを検索
+        log_patterns = ['flask.log', 'server.log', 'access.log', 'app.log']
+        for pattern in log_patterns:
+            if os.path.exists(pattern):
+                log_files.append(pattern)
+        
+        # デフォルトのログファイルを分析
+        if log_files:
+            primary_log = log_files[0]
+            analyzer = AccessLogAnalyzer(primary_log)
+            
+            # 最新1000行のみ分析（パフォーマンス考慮）
+            stats = analyzer.analyze_logs(max_lines=1000)
+            reports[primary_log] = analyzer.generate_report()
+            
+            current_app.logger.info(f"Access log analysis completed for {primary_log}")
+        else:
+            error_message = "アクセスログファイルが見つかりません"
+    
+    except Exception as e:
+        current_app.logger.error(f"Access log analysis error: {e}")
+        error_message = f"ログ分析エラー: {str(e)}"
+    
+    return render_template('admin/access_logs.html', 
+                         log_files=log_files,
+                         reports=reports,
+                         error_message=error_message)
+
+@admin_bp.route('/access-logs/download/<log_file>')
+@admin_required  
+def download_log_report(log_file):
+    """ログレポートのJSONダウンロード"""
+    from access_log_analyzer import AccessLogAnalyzer
+    from flask import jsonify
+    
+    try:
+        if not os.path.exists(log_file):
+            return jsonify({'error': 'ログファイルが見つかりません'}), 404
+        
+        analyzer = AccessLogAnalyzer(log_file)
+        stats = analyzer.analyze_logs(max_lines=5000)  # より多くのデータを分析
+        report = analyzer.generate_report()
+        
+        # タイムスタンプを追加
+        report['generated_at'] = datetime.now().isoformat()
+        report['log_file'] = log_file
+        
+        return jsonify(report)
+    
+    except Exception as e:
+        current_app.logger.error(f"Log report download error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# ===============================
+# AI/LLM SEO対策機能
+# ===============================
+
+@admin_bp.route('/seo-tools/', methods=['GET'])
+@admin_required
+def seo_tools():
+    """SEO対策ツール画面"""
+    # 最近の記事を取得（SEO分析対象）
+    recent_articles = Article.query.order_by(Article.created_at.desc()).limit(10).all()
+    
+    return render_template('admin/seo_tools.html', 
+                         recent_articles=recent_articles)
+
+@admin_bp.route('/seo-analyze/<int:article_id>', methods=['GET', 'POST'])
+@admin_required
+def seo_analyze_article(article_id):
+    """記事のSEO分析"""
+    from seo_optimizer import SEOOptimizer
+    
+    article = Article.query.get_or_404(article_id)
+    analysis_result = None
+    llm_suggestions = None
+    
+    try:
+        optimizer = SEOOptimizer()
+        
+        # 基本SEO分析
+        content = article.content or article.body or ''
+        target_keywords = article.meta_keywords.split(',') if article.meta_keywords else []
+        target_keywords = [kw.strip() for kw in target_keywords if kw.strip()]
+        
+        analysis_result = optimizer.analyze_content(
+            title=article.title,
+            content=content,
+            target_keywords=target_keywords
+        )
+        
+        # LLM提案生成（オプション）
+        if request.method == 'POST' and request.form.get('generate_llm_suggestions'):
+            llm_suggestions = optimizer.generate_llm_suggestions(
+                title=article.title,
+                content=content,
+                target_keywords=target_keywords
+            )
+        
+        current_app.logger.info(f"SEO analysis completed for article {article_id}")
+        
+    except Exception as e:
+        current_app.logger.error(f"SEO analysis error: {e}")
+        flash(f'SEO分析エラー: {str(e)}', 'danger')
+    
+    return render_template('admin/seo_analyze.html',
+                         article=article,
+                         analysis=analysis_result,
+                         llm_suggestions=llm_suggestions)
+
+@admin_bp.route('/seo-batch-analyze/', methods=['GET', 'POST'])
+@admin_required
+def seo_batch_analyze():
+    """複数記事の一括SEO分析"""
+    from seo_optimizer import SEOOptimizer
+    
+    results = []
+    
+    if request.method == 'POST':
+        try:
+            # 分析対象記事の選択
+            article_ids = request.form.getlist('article_ids')
+            if not article_ids:
+                flash('分析対象の記事を選択してください', 'warning')
+                return redirect(url_for('admin.seo_batch_analyze'))
+            
+            optimizer = SEOOptimizer()
+            
+            for article_id in article_ids:
+                article = Article.query.get(int(article_id))
+                if not article:
+                    continue
+                
+                content = article.content or article.body or ''
+                target_keywords = article.meta_keywords.split(',') if article.meta_keywords else []
+                target_keywords = [kw.strip() for kw in target_keywords if kw.strip()]
+                
+                analysis = optimizer.analyze_content(
+                    title=article.title,
+                    content=content,
+                    target_keywords=target_keywords
+                )
+                
+                results.append({
+                    'article': article,
+                    'analysis': analysis
+                })
+            
+            flash(f'{len(results)}件の記事を分析しました', 'success')
+            
+        except Exception as e:
+            current_app.logger.error(f"Batch SEO analysis error: {e}")
+            flash(f'一括分析エラー: {str(e)}', 'danger')
+    
+    # 分析対象記事一覧
+    articles = Article.query.order_by(Article.created_at.desc()).limit(50).all()
+    
+    return render_template('admin/seo_batch_analyze.html',
+                         articles=articles,
+                         results=results)
+
+@admin_bp.route('/api/seo-suggestions', methods=['POST'])
+@admin_required
+def api_seo_suggestions():
+    """SEO改善提案API"""
+    from seo_optimizer import SEOOptimizer
+    
+    try:
+        data = request.get_json()
+        title = data.get('title', '')
+        content = data.get('content', '')
+        keywords = data.get('keywords', [])
+        
+        if not title and not content:
+            return jsonify({'error': 'タイトルまたはコンテンツが必要です'}), 400
+        
+        optimizer = SEOOptimizer()
+        analysis = optimizer.analyze_content(title, content, keywords)
+        
+        return jsonify({
+            'success': True,
+            'analysis': analysis
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"SEO suggestions API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/site_settings/', methods=['GET', 'POST'])
+@admin_required
+def site_settings():
+    """サイト設定画面"""
+    if request.method == 'POST':
+        try:
+            # サイト基本設定
+            settings_to_update = [
+                'site_title', 'site_subtitle', 'site_description', 'site_keywords',
+                'site_author', 'site_email', 'site_url', 'site_logo',
+                'contact_email', 'contact_phone', 'contact_address',
+                'social_twitter', 'social_facebook', 'social_instagram', 'social_youtube',
+                'seo_google_analytics', 'seo_google_search_console', 'seo_google_tag_manager',
+                'maintenance_mode', 'registration_enabled', 'comments_enabled',
+                'max_upload_size', 'allowed_file_types', 'posts_per_page'
+            ]
+            
+            for setting_key in settings_to_update:
+                setting_value = request.form.get(setting_key, '')
+                
+                # 既存設定を取得または新規作成
+                setting = SiteSetting.query.filter_by(key=setting_key).first()
+                if setting:
+                    setting.value = setting_value
+                else:
+                    setting = SiteSetting(key=setting_key, value=setting_value)
+                    db.session.add(setting)
+            
+            db.session.commit()
+            flash('サイト設定を更新しました', 'success')
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Site settings update error: {e}")
+            flash(f'設定更新エラー: {str(e)}', 'danger')
+    
+    # 現在の設定値を取得
+    settings = {}
+    all_settings = SiteSetting.query.all()
+    for setting in all_settings:
+        settings[setting.key] = setting.value
+    
+    return render_template('admin/site_settings.html', settings=settings)
