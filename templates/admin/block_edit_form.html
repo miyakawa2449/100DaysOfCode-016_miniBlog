@@ -1,6 +1,7 @@
 <!-- ブロック編集フォームテンプレート -->
 <form id="blockEditForm" enctype="multipart/form-data">
     <input type="hidden" name="block_id" value="{{ block.id }}">
+    <input type="hidden" name="block_type" value="{{ block.block_type.type_name }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     
     <!-- ブロック共通フィールド -->
@@ -49,15 +50,84 @@
                 <div class="image-preview-wrapper">
                     <img id="imagePreview" class="img-fluid" style="max-height: 300px;">
                 </div>
-                <button type="button" class="btn btn-primary btn-sm mt-2" onclick="startImageCropping()">
+                <button type="button" class="btn btn-primary btn-sm mt-2" onclick="openCropModal()">
                     <i class="fa fa-crop me-1"></i>画像をトリミング
                 </button>
-                <button type="button" class="btn btn-secondary btn-sm mt-2 ms-2" id="cropConfirmBtn" onclick="confirmCrop()" style="display: none;">
-                    <i class="fa fa-check me-1"></i>トリミング確定
-                </button>
-                <button type="button" class="btn btn-outline-secondary btn-sm mt-2 ms-2" id="cropCancelBtn" onclick="cancelCrop()" style="display: none;">
-                    <i class="fa fa-times me-1"></i>キャンセル
-                </button>
+            </div>
+        </div>
+
+        <!-- トリミングモーダル -->
+        <div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="cropModalLabel">
+                            <i class="fa fa-crop me-2"></i>画像トリミング
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-9">
+                                <div class="crop-container">
+                                    <img id="cropImage" class="img-fluid" style="max-width: 100%;">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <h6>操作</h6>
+                                <div class="btn-group-vertical d-grid gap-2 mb-3">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="cropperZoomIn()">
+                                        <i class="fa fa-search-plus me-1"></i>拡大
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="cropperZoomOut()">
+                                        <i class="fa fa-search-minus me-1"></i>縮小
+                                    </button>
+                                </div>
+                                
+                                <h6>移動</h6>
+                                <div class="row mb-3">
+                                    <div class="col-12 text-center">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="cropperMoveUp()">
+                                            <i class="fa fa-arrow-up"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="row mb-2">
+                                    <div class="col-4">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="cropperMoveLeft()">
+                                            <i class="fa fa-arrow-left"></i>
+                                        </button>
+                                    </div>
+                                    <div class="col-4 text-center">
+                                        <button type="button" class="btn btn-outline-warning btn-sm" onclick="cropperReset()">
+                                            <i class="fa fa-refresh"></i>
+                                        </button>
+                                    </div>
+                                    <div class="col-4 text-end">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="cropperMoveRight()">
+                                            <i class="fa fa-arrow-right"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-12 text-center">
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="cropperMoveDown()">
+                                            <i class="fa fa-arrow-down"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            <i class="fa fa-times me-1"></i>キャンセル
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="applyCrop()">
+                            <i class="fa fa-check me-1"></i>トリミング適用
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -79,9 +149,42 @@
         <input type="hidden" id="crop_height" name="crop_height" value="">
     
     {% elif block.block_type.type_name == 'sns_embed' %}
+        <!-- 表示モード選択 -->
+        {% set current_settings = block.get_settings_json() %}
+        {% set display_mode = current_settings.get('display_mode', 'embed') %}
+        
+        <div class="mb-3">
+            <label class="form-label">表示モード</label>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="display_mode" id="display_mode_embed" value="embed" {{ 'checked' if display_mode == 'embed' else '' }}>
+                        <label class="form-check-label" for="display_mode_embed">
+                            <strong>埋込表示</strong><br>
+                            <small class="text-muted">プラットフォームの公式埋込を使用</small>
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="display_mode" id="display_mode_ogp" value="ogp_card" {{ 'checked' if display_mode == 'ogp_card' else '' }}>
+                        <label class="form-check-label" for="display_mode_ogp">
+                            <strong>OGPカード表示</strong><br>
+                            <small class="text-muted">クリック可能なカード形式で表示</small>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <div class="mb-3">
             <label for="embed_url" class="form-label">SNS投稿URL</label>
-            <input type="url" class="form-control" id="embed_url" name="embed_url" value="{{ block.embed_url or '' }}" placeholder="https://twitter.com/user/status/123456789" required>
+            <div class="input-group">
+                <input type="url" class="form-control" id="embed_url" name="embed_url" value="{{ block.embed_url or '' }}" placeholder="https://x.com/user/status/123456789" required>
+                <button type="button" class="btn btn-outline-primary" onclick="fetchSNSOGPPreview()" id="fetchOGPBtn">
+                    <i class="fa fa-refresh me-1"></i>OGP取得
+                </button>
+            </div>
             <div class="form-text">
                 対応プラットフォーム: X (Twitter)、Facebook、Instagram、Threads、YouTube
             </div>
@@ -95,6 +198,58 @@
             </div>
         </div>
         {% endif %}
+        
+        <!-- OGPカード表示モード用の設定 -->
+        <div id="ogpCardSettings" style="display: {{ 'block' if display_mode == 'ogp_card' else 'none' }};">
+            <!-- OGPプレビュー -->
+            <div id="snsOgpPreview" class="mb-3" style="display: {{ 'block' if block.ogp_title else 'none' }};">
+                <div class="card">
+                    <div class="card-header">
+                        <small class="text-muted">OGPプレビュー</small>
+                    </div>
+                    <div class="card-body">
+                        <div id="snsOgpPreviewContent">
+                            {% if block.ogp_title %}
+                            <div class="d-flex">
+                                {% if block.ogp_image %}
+                                <img src="{{ block.ogp_image }}" alt="OGP画像" class="me-3" style="width: 80px; height: 80px; object-fit: cover;">
+                                {% endif %}
+                                <div>
+                                    <h6 class="mb-1">{{ block.ogp_title }}</h6>
+                                    {% if block.ogp_description %}
+                                    <p class="mb-1 text-muted small">{{ block.ogp_description | truncate(100) }}</p>
+                                    {% endif %}
+                                    <small class="text-muted">{{ block.ogp_site_name or block.embed_platform or 'SNS投稿' }}</small>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- OGP情報（手動編集可能） -->
+            <div class="mb-3">
+                <label for="sns_ogp_title" class="form-label">投稿タイトル</label>
+                <input type="text" class="form-control" id="sns_ogp_title" name="ogp_title" value="{{ block.ogp_title or '' }}" placeholder="投稿のタイトル">
+            </div>
+            
+            <div class="mb-3">
+                <label for="sns_ogp_description" class="form-label">投稿内容</label>
+                <textarea class="form-control" id="sns_ogp_description" name="ogp_description" rows="3" placeholder="投稿の内容や説明">{{ block.ogp_description or '' }}</textarea>
+            </div>
+            
+            <div class="mb-3">
+                <label for="sns_ogp_site_name" class="form-label">サイト名</label>
+                <input type="text" class="form-control" id="sns_ogp_site_name" name="ogp_site_name" value="{{ block.ogp_site_name or '' }}" placeholder="X (Twitter)">
+            </div>
+            
+            <div class="mb-3">
+                <label for="sns_ogp_image" class="form-label">OGP画像URL</label>
+                <input type="url" class="form-control" id="sns_ogp_image" name="ogp_image" value="{{ block.ogp_image or '' }}" placeholder="https://example.com/image.jpg">
+                <div class="form-text">投稿に関連する画像のURL</div>
+            </div>
+        </div>
     
     {% elif block.block_type.type_name == 'external_article' %}
         <div class="mb-3">
@@ -161,37 +316,47 @@
 
 <script>
 function previewBlockImage(event) {
+    console.log('previewBlockImage called');
     const file = event.target.files[0];
     if (file) {
+        console.log('File selected:', file.name);
         const reader = new FileReader();
         reader.onload = function(e) {
             const preview = document.getElementById('imagePreview');
             const container = document.getElementById('imagePreviewContainer');
             preview.src = e.target.result;
             container.style.display = 'block';
+            console.log('Image preview container shown');
         };
         reader.readAsDataURL(file);
+    } else {
+        console.log('No file selected');
     }
 }
 
 let cropper = null;
 
-function startImageCropping() {
+function openCropModal() {
     const preview = document.getElementById('imagePreview');
     if (!preview || !preview.src) {
         alert('まず画像を選択してください');
         return;
     }
     
-    // トリミングモードに切り替え
-    const confirmBtn = document.getElementById('cropConfirmBtn');
-    const cancelBtn = document.getElementById('cropCancelBtn');
+    // モーダル内の画像に設定
+    const cropImage = document.getElementById('cropImage');
+    cropImage.src = preview.src;
     
-    if (confirmBtn) confirmBtn.style.display = 'inline-block';
-    if (cancelBtn) cancelBtn.style.display = 'inline-block';
+    // モーダルを表示
+    const modal = new bootstrap.Modal(document.getElementById('cropModal'));
+    modal.show();
     
-    // Cropper.jsを初期化
-    if (typeof Cropper !== 'undefined') {
+    // モーダルが完全に表示されてからCropper.jsを初期化
+    document.getElementById('cropModal').addEventListener('shown.bs.modal', function () {
+        if (cropper) {
+            cropper.destroy();
+        }
+        
         // ブロックタイプに応じたアスペクト比を設定
         const blockType = getBlockType();
         let aspectRatio = 1; // デフォルトは1:1
@@ -202,25 +367,59 @@ function startImageCropping() {
             aspectRatio = 1; // 1:1比率
         }
         
-        cropper = new Cropper(preview, {
+        cropper = new Cropper(cropImage, {
             aspectRatio: aspectRatio,
             viewMode: 1,
-            autoCropArea: 0.8,
+            dragMode: 'crop',
+            autoCropArea: 0.7,
             responsive: true,
-            restore: false,
+            modal: true,
             guides: true,
             center: true,
-            highlight: false,
+            highlight: true,
+            background: true,
+            autoCrop: true,
+            movable: true,
+            zoomable: true,
+            zoomOnWheel: true,
             cropBoxMovable: true,
             cropBoxResizable: true,
-            toggleDragModeOnDblclick: false
+            minCropBoxWidth: 100,
+            minCropBoxHeight: blockType === 'featured_image' ? 56 : 100 // 16:9の場合は100*(9/16)=56
         });
-    } else {
-        alert('画像トリミング機能の読み込みに失敗しました');
-    }
+    }, { once: true });
 }
 
-function confirmCrop() {
+// トリミング操作関数
+function cropperZoomIn() {
+    if (cropper) cropper.zoom(0.1);
+}
+
+function cropperZoomOut() {
+    if (cropper) cropper.zoom(-0.1);
+}
+
+function cropperMoveLeft() {
+    if (cropper) cropper.move(-10, 0);
+}
+
+function cropperMoveRight() {
+    if (cropper) cropper.move(10, 0);
+}
+
+function cropperMoveUp() {
+    if (cropper) cropper.move(0, -10);
+}
+
+function cropperMoveDown() {
+    if (cropper) cropper.move(0, 10);
+}
+
+function cropperReset() {
+    if (cropper) cropper.reset();
+}
+
+function applyCrop() {
     if (!cropper) {
         alert('トリミングが開始されていません');
         return;
@@ -235,42 +434,39 @@ function confirmCrop() {
     document.getElementById('crop_width').value = Math.round(cropData.width);
     document.getElementById('crop_height').value = Math.round(cropData.height);
     
-    // トリミングモードを終了
-    cancelCrop();
+    // プレビュー画像を更新
+    const blockType = getBlockType();
+    let canvasWidth, canvasHeight;
     
-    console.log('Crop data set:', {
-        x: Math.round(cropData.x),
-        y: Math.round(cropData.y),
-        width: Math.round(cropData.width),
-        height: Math.round(cropData.height)
-    });
-}
-
-function cancelCrop() {
-    if (cropper) {
-        cropper.destroy();
-        cropper = null;
+    if (blockType === 'featured_image') {
+        canvasWidth = 400;
+        canvasHeight = 225; // 16:9比率
+    } else {
+        canvasWidth = 300;
+        canvasHeight = 300; // 1:1比率
     }
     
-    // ボタンを隠す
-    const confirmBtn = document.getElementById('cropConfirmBtn');
-    const cancelBtn = document.getElementById('cropCancelBtn');
+    const canvas = cropper.getCroppedCanvas({
+        width: canvasWidth,
+        height: canvasHeight
+    });
     
-    if (confirmBtn) confirmBtn.style.display = 'none';
-    if (cancelBtn) cancelBtn.style.display = 'none';
+    document.getElementById('imagePreview').src = canvas.toDataURL();
+    
+    // モーダルを閉じる
+    const modal = bootstrap.Modal.getInstance(document.getElementById('cropModal'));
+    modal.hide();
+    
+    // Cropperインスタンスをクリーンアップ
+    cropper.destroy();
+    cropper = null;
 }
 
 function getBlockType() {
-    // ブロックタイプを取得（フォームの context から）
-    const form = document.getElementById('blockEditForm');
-    if (form) {
-        const blockId = document.querySelector('input[name="block_id"]').value;
-        // ここでブロックタイプを判定するロジックを実装
-        // 簡易的にURLやタイトルから判定
-        const title = document.querySelector('input[name="title"]').value;
-        if (title && title.includes('アイキャッチ')) {
-            return 'featured_image';
-        }
+    // ブロックタイプを取得（フォームの隠しフィールドから）
+    const blockTypeInput = document.querySelector('input[name="block_type"]');
+    if (blockTypeInput && blockTypeInput.value) {
+        return blockTypeInput.value;
     }
     return 'image'; // デフォルト
 }
@@ -365,6 +561,129 @@ function isValidURL(string) {
         return true;
     } catch (_) {
         return false;
+    }
+}
+
+// SNS埋込ブロック用の表示モード切り替え
+document.addEventListener('DOMContentLoaded', function() {
+    // 表示モードのラジオボタンがある場合
+    const displayModeRadios = document.querySelectorAll('input[name="display_mode"]');
+    displayModeRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            toggleOGPCardSettings();
+        });
+    });
+    
+    // 初期状態を設定
+    toggleOGPCardSettings();
+});
+
+function toggleOGPCardSettings() {
+    const ogpCardSettings = document.getElementById('ogpCardSettings');
+    const isOGPCardMode = document.getElementById('display_mode_ogp') && document.getElementById('display_mode_ogp').checked;
+    
+    if (ogpCardSettings) {
+        ogpCardSettings.style.display = isOGPCardMode ? 'block' : 'none';
+    }
+}
+
+function fetchSNSOGPPreview() {
+    const urlInput = document.getElementById('embed_url');
+    const url = urlInput.value.trim();
+    
+    if (!url) {
+        alert('SNS投稿URLを入力してください');
+        return;
+    }
+    
+    if (!isValidURL(url)) {
+        alert('有効なURLを入力してください');
+        return;
+    }
+    
+    // ローディング表示
+    const button = document.getElementById('fetchOGPBtn');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i>取得中...';
+    button.disabled = true;
+    
+    // サーバーサイドのOGP取得APIを呼び出し
+    fetch('/admin/api/fetch-ogp', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('input[name="csrf_token"]').value
+        },
+        body: JSON.stringify({ url: url })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            displaySNSOGPPreview(data.ogp_data);
+            fillSNSOGPFields(data.ogp_data);
+            
+            // OGPカード表示モードに自動切り替え
+            const ogpCardRadio = document.getElementById('display_mode_ogp');
+            if (ogpCardRadio) {
+                ogpCardRadio.checked = true;
+                toggleOGPCardSettings();
+            }
+        } else {
+            alert('OGP情報の取得に失敗しました: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('SNS OGP fetch error:', error);
+        alert('OGP情報の取得中にエラーが発生しました');
+    })
+    .finally(() => {
+        // ボタンを元に戻す
+        button.innerHTML = originalText;
+        button.disabled = false;
+    });
+}
+
+function displaySNSOGPPreview(ogpData) {
+    const preview = document.getElementById('snsOgpPreview');
+    const content = document.getElementById('snsOgpPreviewContent');
+    
+    if (preview && content) {
+        content.innerHTML = `
+            <div class="d-flex">
+                ${ogpData.image ? `<img src="${ogpData.image}" alt="OGP画像" class="me-3" style="width: 80px; height: 80px; object-fit: cover;">` : ''}
+                <div>
+                    <h6 class="mb-1">${ogpData.title || '(タイトルなし)'}</h6>
+                    ${ogpData.description ? `<p class="mb-1 text-muted small">${ogpData.description.substring(0, 100)}${ogpData.description.length > 100 ? '...' : ''}</p>` : ''}
+                    <small class="text-muted">${ogpData.site_name || 'SNS投稿'}</small>
+                </div>
+            </div>
+        `;
+        
+        preview.style.display = 'block';
+    }
+}
+
+function fillSNSOGPFields(ogpData) {
+    // 空欄の場合のみ自動入力
+    const titleField = document.getElementById('sns_ogp_title');
+    const descField = document.getElementById('sns_ogp_description');
+    const siteField = document.getElementById('sns_ogp_site_name');
+    const imageField = document.getElementById('sns_ogp_image');
+    
+    if (titleField && !titleField.value.trim()) {
+        titleField.value = ogpData.title || '';
+    }
+    
+    if (descField && !descField.value.trim()) {
+        descField.value = ogpData.description || '';
+    }
+    
+    if (siteField && !siteField.value.trim()) {
+        siteField.value = ogpData.site_name || '';
+    }
+    
+    if (imageField && !imageField.value.trim()) {
+        imageField.value = ogpData.image || '';
     }
 }
 </script>

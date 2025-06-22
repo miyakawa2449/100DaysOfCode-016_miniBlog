@@ -41,7 +41,7 @@
                                     <i class="fas fa-heading me-1"></i>サイトタイトル
                                 </label>
                                 <input type="text" class="form-control" id="site_title" name="site_title" 
-                                       value="{{ settings.site_title.value }}" required>
+                                       value="{{ settings.get('site_title', '') }}" required>
                                 <div class="form-text">ブログのタイトルを入力してください。</div>
                             </div>
                         </div>
@@ -51,7 +51,7 @@
                                     <i class="fas fa-link me-1"></i>サイトURL
                                 </label>
                                 <input type="url" class="form-control" id="site_url" name="site_url" 
-                                       value="{{ settings.site_url.value }}" required>
+                                       value="{{ settings.get('site_url', '') }}" required>
                                 <div class="form-text">サイトの完全なURLを入力してください。</div>
                             </div>
                         </div>
@@ -62,7 +62,7 @@
                             <i class="fas fa-file-text me-1"></i>サイト説明
                         </label>
                         <textarea class="form-control" id="site_description" name="site_description" 
-                                  rows="3">{{ settings.site_description.value }}</textarea>
+                                  rows="3">{{ settings.get('site_description', '') }}</textarea>
                         <div class="form-text">サイトの説明文を入力してください。SEOに影響します。</div>
                     </div>
                     
@@ -73,7 +73,7 @@
                                     <i class="fas fa-tags me-1"></i>サイトキーワード
                                 </label>
                                 <input type="text" class="form-control" id="site_keywords" name="site_keywords" 
-                                       value="{{ settings.site_keywords.value }}">
+                                       value="{{ settings.get('site_keywords', '') }}">
                                 <div class="form-text">カンマ区切りでキーワードを入力してください。</div>
                             </div>
                         </div>
@@ -83,7 +83,7 @@
                                     <i class="fas fa-envelope me-1"></i>管理者メールアドレス
                                 </label>
                                 <input type="email" class="form-control" id="admin_email" name="admin_email" 
-                                       value="{{ settings.admin_email.value }}" required>
+                                       value="{{ settings.get('admin_email', '') }}" required>
                                 <div class="form-text">通知メールの送信先として使用されます。</div>
                             </div>
                         </div>
@@ -104,7 +104,7 @@
                                     <i class="fas fa-list me-1"></i>1ページあたりの記事数
                                 </label>
                                 <input type="number" class="form-control" id="posts_per_page" name="posts_per_page" 
-                                       value="{{ settings.posts_per_page.value }}" min="1" max="50">
+                                       value="{{ settings.get('posts_per_page', '') }}" min="1" max="50">
                                 <div class="form-text">トップページで表示する記事数を設定してください。</div>
                             </div>
                         </div>
@@ -113,7 +113,7 @@
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="enable_registration" 
                                            name="enable_registration" 
-                                           {{ 'checked' if settings.enable_registration.value == 'true' else '' }}>
+                                           {{ 'checked' if settings.get('enable_registration', '') == 'true' else '' }}>
                                     <label class="form-check-label" for="enable_registration">
                                         <i class="fas fa-user-plus me-1"></i>ユーザー登録を有効にする
                                     </label>
@@ -137,7 +137,7 @@
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="enable_comments" 
                                            name="enable_comments" 
-                                           {{ 'checked' if settings.enable_comments.value == 'true' else '' }}>
+                                           {{ 'checked' if settings.get('enable_comments', '') == 'true' else '' }}>
                                     <label class="form-check-label" for="enable_comments">
                                         <i class="fas fa-comments me-1"></i>コメント機能を有効にする
                                     </label>
@@ -150,7 +150,7 @@
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" id="comment_moderation" 
                                            name="comment_moderation" 
-                                           {{ 'checked' if settings.comment_moderation.value == 'true' else '' }}>
+                                           {{ 'checked' if settings.get('comment_moderation', '') == 'true' else '' }}>
                                     <label class="form-check-label" for="comment_moderation">
                                         <i class="fas fa-shield-alt me-1"></i>コメント承認制
                                     </label>
@@ -172,7 +172,7 @@
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" id="maintenance_mode" 
                                    name="maintenance_mode" 
-                                   {{ 'checked' if settings.maintenance_mode.value == 'true' else '' }}>
+                                   {{ 'checked' if settings.get('maintenance_mode', '') == 'true' else '' }}>
                             <label class="form-check-label" for="maintenance_mode">
                                 <i class="fas fa-tools me-1"></i>メンテナンスモード
                             </label>
@@ -185,7 +185,7 @@
                             <i class="fab fa-google me-1"></i>Google Analytics ID
                         </label>
                         <input type="text" class="form-control" id="google_analytics_id" name="google_analytics_id" 
-                               value="{{ settings.google_analytics_id.value }}" 
+                               value="{{ settings.get('google_analytics_id', '') }}" 
                                placeholder="例: G-XXXXXXXXXX">
                         <div class="form-text">Google AnalyticsのトラッキングIDを入力してください。</div>
                     </div>
@@ -206,7 +206,7 @@
                             <i class="fab fa-twitter me-1"></i>Twitter
                         </label>
                         <input type="url" class="form-control" id="social_twitter" name="social_twitter" 
-                               value="{{ settings.social_twitter.value }}" 
+                               value="{{ settings.get('social_twitter', '') }}" 
                                placeholder="https://twitter.com/username">
                     </div>
                     
@@ -215,7 +215,7 @@
                             <i class="fab fa-facebook me-1"></i>Facebook
                         </label>
                         <input type="url" class="form-control" id="social_facebook" name="social_facebook" 
-                               value="{{ settings.social_facebook.value }}" 
+                               value="{{ settings.get('social_facebook', '') }}" 
                                placeholder="https://facebook.com/page">
                     </div>
                     
@@ -224,7 +224,7 @@
                             <i class="fab fa-instagram me-1"></i>Instagram
                         </label>
                         <input type="url" class="form-control" id="social_instagram" name="social_instagram" 
-                               value="{{ settings.social_instagram.value }}" 
+                               value="{{ settings.get('social_instagram', '') }}" 
                                placeholder="https://instagram.com/username">
                     </div>
                 </div>

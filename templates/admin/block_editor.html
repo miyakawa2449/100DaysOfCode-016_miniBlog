@@ -174,14 +174,22 @@
 {% block content %}
 <form method="POST" enctype="multipart/form-data" id="blockEditorForm" action="{{ url_for('admin.create_article_block_editor') if not article else url_for('admin.edit_article_block_editor', article_id=article.id) }}">
     {{ form.hidden_tag() }}
+    {{ form.is_published() }}
+    {{ form.allow_comments() }}
     
     <div class="row">
         <!-- メインエディタエリア -->
         <div class="col-lg-8">
             <!-- 記事基本情報 -->
             <div class="card mb-4">
-                <div class="card-header">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fa fa-edit me-2"></i>記事基本情報</h5>
+                    {% if article %}
+                    <a href="{{ url_for('admin.edit_article', article_id=article.id) }}" 
+                       class="btn btn-outline-secondary btn-sm">
+                        <i class="fa fa-edit me-1"></i>従来型エディタに切り替え
+                    </a>
+                    {% endif %}
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -286,14 +294,14 @@
                 </div>
                 <div class="card-body">
                     <div class="form-check mb-3">
-                        <input type="checkbox" class="form-check-input" id="is_published_check" name="is_published_check" {{ 'checked' if article and article.is_published else '' }}>
+                        <input type="checkbox" class="form-check-input" id="is_published_check" name="is_published_check" {{ 'checked' if (form.is_published.data == 'true') or (article and article.is_published) else '' }}>
                         <label class="form-check-label" for="is_published_check">
                             記事を公開する
                         </label>
                     </div>
                     
                     <div class="form-check mb-3">
-                        <input type="checkbox" class="form-check-input" id="allow_comments_check" name="allow_comments_check" {{ 'checked' if article and article.allow_comments else 'checked' }}>
+                        <input type="checkbox" class="form-check-input" id="allow_comments_check" name="allow_comments_check" {{ 'checked' if (form.allow_comments.data == 'true') or (article and article.allow_comments) else '' }}>
                         <label class="form-check-label" for="allow_comments_check">
                             コメントを許可する
                         </label>
@@ -312,52 +320,55 @@
                     <h6 class="mb-0"><i class="fa fa-search me-2"></i>SEO設定</h6>
                 </div>
                 <div class="card-body">
-                    <!-- アイキャッチ画像ブロック -->
-                    {% if article %}
-                    {% set featured_blocks = article.blocks.filter_by(block_type_id=5, is_visible=True).all() %}
+                    <!-- アイキャッチ画像（カテゴリー形式） -->
                     <div class="mb-3">
-                        <label class="form-label d-flex justify-content-between align-items-center">
-                            <span><i class="fa fa-image me-2"></i>アイキャッチ画像</span>
-                            {% if not featured_blocks %}
-                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addFeaturedImageBlock()">
-                                <i class="fa fa-plus me-1"></i>追加
-                            </button>
-                            {% endif %}
-                        </label>
-                        {% if featured_blocks %}
-                        <div class="featured-image-blocks">
-                            {% for block in featured_blocks %}
-                            <div class="featured-block-item p-3 border rounded mb-2">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div class="featured-block-info">
-                                        {% if block.image_path %}
-                                        <img src="{{ url_for('static', filename=block.image_path) }}" 
-                                             alt="{{ block.image_alt_text or 'アイキャッチ画像' }}" 
-                                             class="featured-thumbnail me-3" 
-                                             style="width: 60px; height: 34px; object-fit: cover; border-radius: 4px;">
-                                        {% endif %}
-                                        <span class="text-muted">{{ block.title or 'アイキャッチ画像' }}</span>
-                                    </div>
-                                    <div class="featured-block-actions">
-                                        <button type="button" class="btn btn-sm btn-outline-primary me-1" onclick="editBlock({{ block.id }})">
-                                            <i class="fa fa-edit"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteBlock({{ block.id }})">
-                                            <i class="fa fa-trash"></i>
-                                        </button>
-                                    </div>
-                                </div>
+                        <label class="form-label"><i class="fa fa-image me-2"></i>アイキャッチ画像</label>
+                        
+                        <!-- 現在のアイキャッチ画像表示 -->
+                        {% if article and article.featured_image %}
+                        <div class="current-featured-image mb-3">
+                            <div class="position-relative d-inline-block">
+                                <img src="{{ url_for('static', filename=article.featured_image) }}" 
+                                     alt="現在のアイキャッチ画像" 
+                                     class="img-fluid rounded"
+                                     style="max-height: 200px; max-width: 100%;">
+                                <button type="button" class="btn btn-sm btn-danger position-absolute top-0 end-0 m-1" 
+                                        onclick="removeFeaturedImage()" title="画像を削除">
+                                    <i class="fa fa-times"></i>
+                                </button>
                             </div>
-                            {% endfor %}
-                        </div>
-                        {% else %}
-                        <div class="text-muted text-center p-3 border rounded">
-                            <i class="fa fa-image fa-2x mb-2"></i>
-                            <p class="mb-0">アイキャッチ画像が設定されていません</p>
+                            <small class="text-muted d-block mt-1">現在のアイキャッチ画像</small>
                         </div>
                         {% endif %}
+                        
+                        <!-- ファイル選択 -->
+                        <div class="mb-3">
+                            <input type="file" class="form-control" id="featured_image_file" name="featured_image" 
+                                   accept="image/*" onchange="previewFeaturedImage(event)">
+                            <div class="form-text">推奨サイズ: 800×450px (16:9比率) | JPG、PNG、GIF形式をサポート</div>
+                        </div>
+                        
+                        <!-- プレビューエリア -->
+                        <div id="featuredImagePreviewContainer" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label">画像プレビュー</label>
+                                <div class="text-center">
+                                    <img id="featuredImagePreview" class="img-fluid rounded" style="max-height: 300px;">
+                                </div>
+                                <div class="mt-2">
+                                    <button type="button" class="btn btn-primary btn-sm" onclick="openFeaturedImageCropModal()">
+                                        <i class="fa fa-crop me-1"></i>画像をトリミング
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- トリミング座標の隠しフィールド -->
+                        <input type="hidden" id="featured_crop_x" name="featured_crop_x">
+                        <input type="hidden" id="featured_crop_y" name="featured_crop_y">
+                        <input type="hidden" id="featured_crop_width" name="featured_crop_width">
+                        <input type="hidden" id="featured_crop_height" name="featured_crop_height">
                     </div>
-                    {% endif %}
                     <div class="form-floating mb-3">
                         {{ form.meta_title(class="form-control", placeholder="メタタイトル") }}
                         <label for="meta_title">メタタイトル</label>
@@ -431,6 +442,7 @@ let currentEditingBlock = null;
 document.addEventListener('DOMContentLoaded', function() {
     initializeBlockEditor();
     initializeAutoSlug();
+    initializeFormSync();
 });
 
 function initializeBlockEditor() {
@@ -446,6 +458,40 @@ function initializeBlockEditor() {
             updateBlockOrder();
         }
     });
+}
+
+function initializeFormSync() {
+    // チェックボックスとhiddenフィールドの同期
+    const isPublishedCheck = document.getElementById('is_published_check');
+    const allowCommentsCheck = document.getElementById('allow_comments_check');
+    const isPublishedHidden = document.getElementById('is_published');
+    const allowCommentsHidden = document.getElementById('allow_comments');
+    
+    if (isPublishedCheck && isPublishedHidden) {
+        // 初期値設定（hiddenフィールドの値に基づいてチェックボックスを設定）
+        if (isPublishedHidden.value === 'true') {
+            isPublishedCheck.checked = true;
+        }
+        
+        // チェックボックス変更時の同期
+        isPublishedCheck.addEventListener('change', function() {
+            isPublishedHidden.value = this.checked ? 'true' : 'false';
+            console.log('Published status changed:', this.checked);
+        });
+    }
+    
+    if (allowCommentsCheck && allowCommentsHidden) {
+        // 初期値設定（hiddenフィールドの値に基づいてチェックボックスを設定）
+        if (allowCommentsHidden.value === 'true') {
+            allowCommentsCheck.checked = true;
+        }
+        
+        // チェックボックス変更時の同期
+        allowCommentsCheck.addEventListener('change', function() {
+            allowCommentsHidden.value = this.checked ? 'true' : 'false';
+            console.log('Comments setting changed:', this.checked);
+        });
+    }
 }
 
 function addBlock(blockType) {
@@ -686,7 +732,16 @@ function addFeaturedImageBlock() {
     
     const articleId = {{ article.id if article else 'null' }};
     if (!articleId) {
-        alert('記事が保存されていません。先に記事を保存してください。');
+        // 新規記事の場合は先に記事を作成する
+        const titleField = document.getElementById('title');
+        if (!titleField.value.trim()) {
+            alert('アイキャッチ画像を追加する前に記事タイトルを入力してください。');
+            titleField.focus();
+            return;
+        }
+        
+        // 記事の作成を先に行う
+        createArticleAndAddFeaturedBlock();
         return;
     }
     
@@ -711,6 +766,49 @@ function addFeaturedImageBlock() {
     .catch(error => {
         console.error('Featured block add error:', error);
         alert('アイキャッチブロックの追加中にエラーが発生しました');
+    });
+}
+
+function createArticleAndAddFeaturedBlock() {
+    // 新規記事を作成してからアイキャッチブロックを追加
+    const form = document.getElementById('blockEditorForm');
+    
+    // チェックボックスの値を隠しフィールドに反映
+    updateHiddenFields();
+    
+    const formData = new FormData(form);
+    
+    // 下書きとして保存
+    formData.set('action', 'save_draft');
+    
+    // 明示的にURLを指定
+    const actionUrl = '{{ url_for("admin.create_article_block_editor") }}';
+    
+    fetch(actionUrl, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (response.ok && response.redirected) {
+            // 記事が作成され、編集ページにリダイレクトされた
+            window.location.href = response.url + '?add_block=featured_image';
+        } else if (response.ok) {
+            // レスポンスは成功だが、リダイレクトされていない（エラーがある可能性）
+            return response.text().then(text => {
+                if (text.includes('danger') || text.includes('error')) {
+                    alert('記事の作成に失敗しました。タイトルなど必要な項目を入力してください。');
+                } else {
+                    // 成功したが何らかの理由でリダイレクトされなかった
+                    location.reload();
+                }
+            });
+        } else {
+            alert('記事の作成に失敗しました。ステータス: ' + response.status);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('記事の作成中にエラーが発生しました: ' + error.message);
     });
 }
 
@@ -853,6 +951,156 @@ function createArticleAndAddBlock(blockType) {
     });
 }
 
+// アイキャッチ画像関連の関数
+let featuredImageCropper = null;
+
+function previewFeaturedImage(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const preview = document.getElementById('featuredImagePreview');
+            const container = document.getElementById('featuredImagePreviewContainer');
+            preview.src = e.target.result;
+            container.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function openFeaturedImageCropModal() {
+    const preview = document.getElementById('featuredImagePreview');
+    if (!preview || !preview.src) {
+        alert('まず画像を選択してください');
+        return;
+    }
+    
+    // モーダル内の画像に設定
+    const cropImage = document.getElementById('featuredCropImage');
+    cropImage.src = preview.src;
+    
+    // モーダルを表示
+    const modal = new bootstrap.Modal(document.getElementById('featuredImageCropModal'));
+    modal.show();
+    
+    // モーダルが完全に表示されてからCropper.jsを初期化
+    document.getElementById('featuredImageCropModal').addEventListener('shown.bs.modal', function () {
+        if (featuredImageCropper) {
+            featuredImageCropper.destroy();
+        }
+        
+        featuredImageCropper = new Cropper(cropImage, {
+            aspectRatio: 16 / 9, // 16:9比率
+            viewMode: 1,
+            dragMode: 'crop',
+            autoCropArea: 0.7,
+            responsive: true,
+            modal: true,
+            guides: true,
+            center: true,
+            highlight: true,
+            background: true,
+            autoCrop: true,
+            movable: true,
+            zoomable: true,
+            zoomOnWheel: true,
+            cropBoxMovable: true,
+            cropBoxResizable: true,
+            minCropBoxWidth: 100,
+            minCropBoxHeight: 56 // 16:9の場合は100*(9/16)=56
+        });
+    }, { once: true });
+}
+
+// アイキャッチ画像トリミング操作関数
+function featuredCropperZoomIn() {
+    if (featuredImageCropper) featuredImageCropper.zoom(0.1);
+}
+
+function featuredCropperZoomOut() {
+    if (featuredImageCropper) featuredImageCropper.zoom(-0.1);
+}
+
+function featuredCropperMoveLeft() {
+    if (featuredImageCropper) featuredImageCropper.move(-10, 0);
+}
+
+function featuredCropperMoveRight() {
+    if (featuredImageCropper) featuredImageCropper.move(10, 0);
+}
+
+function featuredCropperMoveUp() {
+    if (featuredImageCropper) featuredImageCropper.move(0, -10);
+}
+
+function featuredCropperMoveDown() {
+    if (featuredImageCropper) featuredImageCropper.move(0, 10);
+}
+
+function featuredCropperReset() {
+    if (featuredImageCropper) featuredImageCropper.reset();
+}
+
+function applyFeaturedImageCrop() {
+    if (!featuredImageCropper) {
+        alert('トリミングが開始されていません');
+        return;
+    }
+    
+    // トリミング情報を取得
+    const cropData = featuredImageCropper.getData();
+    
+    // 隠しフィールドに値を設定
+    document.getElementById('featured_crop_x').value = Math.round(cropData.x);
+    document.getElementById('featured_crop_y').value = Math.round(cropData.y);
+    document.getElementById('featured_crop_width').value = Math.round(cropData.width);
+    document.getElementById('featured_crop_height').value = Math.round(cropData.height);
+    
+    // プレビュー画像を更新
+    const canvas = featuredImageCropper.getCroppedCanvas({
+        width: 400,
+        height: 225 // 16:9比率
+    });
+    
+    document.getElementById('featuredImagePreview').src = canvas.toDataURL();
+    
+    // モーダルを閉じる
+    const modal = bootstrap.Modal.getInstance(document.getElementById('featuredImageCropModal'));
+    modal.hide();
+    
+    // Cropperインスタンスをクリーンアップ
+    featuredImageCropper.destroy();
+    featuredImageCropper = null;
+}
+
+function removeFeaturedImage() {
+    if (confirm('アイキャッチ画像を削除しますか？')) {
+        // サーバーに削除リクエストを送信
+        fetch('{{ url_for("admin.remove_featured_image") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify({
+                article_id: {{ article.id if article else 'null' }}
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('画像の削除に失敗しました');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('削除中にエラーが発生しました');
+        });
+    }
+}
+
 function previewArticle() {
     // プレビュー機能（別ウィンドウで記事プレビューを表示）
     const articleId = '{{ article.id if article else "" }}';
@@ -863,4 +1111,80 @@ function previewArticle() {
     }
 }
 </script>
+
+<!-- アイキャッチ画像トリミングモーダル -->
+<div class="modal fade" id="featuredImageCropModal" tabindex="-1" aria-labelledby="featuredImageCropModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="featuredImageCropModalLabel">
+                    <i class="fa fa-crop me-2"></i>アイキャッチ画像トリミング
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-9">
+                        <div class="crop-container">
+                            <img id="featuredCropImage" class="img-fluid" style="max-width: 100%;">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <h6>操作</h6>
+                        <div class="btn-group-vertical d-grid gap-2 mb-3">
+                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="featuredCropperZoomIn()">
+                                <i class="fa fa-search-plus me-1"></i>拡大
+                            </button>
+                            <button type="button" class="btn btn-outline-primary btn-sm" onclick="featuredCropperZoomOut()">
+                                <i class="fa fa-search-minus me-1"></i>縮小
+                            </button>
+                        </div>
+                        
+                        <h6>移動</h6>
+                        <div class="row mb-3">
+                            <div class="col-12 text-center">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="featuredCropperMoveUp()">
+                                    <i class="fa fa-arrow-up"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-4">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="featuredCropperMoveLeft()">
+                                    <i class="fa fa-arrow-left"></i>
+                                </button>
+                            </div>
+                            <div class="col-4 text-center">
+                                <button type="button" class="btn btn-outline-warning btn-sm" onclick="featuredCropperReset()">
+                                    <i class="fa fa-refresh"></i>
+                                </button>
+                            </div>
+                            <div class="col-4 text-end">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="featuredCropperMoveRight()">
+                                    <i class="fa fa-arrow-right"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-12 text-center">
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="featuredCropperMoveDown()">
+                                    <i class="fa fa-arrow-down"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fa fa-times me-1"></i>キャンセル
+                </button>
+                <button type="button" class="btn btn-primary" onclick="applyFeaturedImageCrop()">
+                    <i class="fa fa-check me-1"></i>トリミング適用
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

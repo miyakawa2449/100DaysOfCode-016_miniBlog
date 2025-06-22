@@ -94,9 +94,10 @@
                             <th>タイトル</th>
                             <th>著者</th>
                             <th>カテゴリ</th>
+                            <th>エディタ</th>
                             <th>状態</th>
                             <th>作成日</th>
-                            <th width="120">操作</th>
+                            <th width="150">操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -130,6 +131,17 @@
                                 {% endif %}
                             </td>
                             <td>
+                                {% if article.use_block_editor %}
+                                    <span class="badge bg-info">
+                                        <i class="fa fa-cubes me-1"></i>ブロック型
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-secondary">
+                                        <i class="fa fa-edit me-1"></i>従来型
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
                                 {% if article.is_published is defined %}
                                     <span class="badge bg-{{ 'success' if article.is_published else 'warning' }}">
                                         {{ '公開' if article.is_published else '下書き' }}
@@ -145,10 +157,17 @@
                             </td>
                             <td>
                                 <div class="btn-group btn-group-sm">
-                                    <a href="{{ url_for('admin.edit_article', article_id=article.id) }}" 
-                                       class="btn btn-outline-primary" title="編集">
-                                        <i class="fa fa-edit"></i>
-                                    </a>
+                                    {% if article.use_block_editor %}
+                                        <a href="{{ url_for('admin.edit_article_block_editor', article_id=article.id) }}" 
+                                           class="btn btn-outline-info" title="ブロック型エディタで編集">
+                                            <i class="fa fa-cubes"></i>
+                                        </a>
+                                    {% else %}
+                                        <a href="{{ url_for('admin.edit_article', article_id=article.id) }}" 
+                                           class="btn btn-outline-primary" title="従来型エディタで編集">
+                                            <i class="fa fa-edit"></i>
+                                        </a>
+                                    {% endif %}
                                     {% if article.is_published %}
                                         <button type="button" 
                                                 class="btn btn-outline-warning" 
