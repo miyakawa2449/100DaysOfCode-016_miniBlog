@@ -147,7 +147,7 @@ def after_request(response):
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' data:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net"
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://platform.twitter.com https://www.instagram.com https://connect.facebook.net https://threads.com https://threads.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' data: https://*.twimg.com https://*.instagram.com https://*.youtube.com https://*.fbcdn.net https://*.threads.com; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; frame-src 'self' https://www.youtube.com https://platform.twitter.com https://www.instagram.com https://www.facebook.com https://threads.net https://threads.com"
     return response
 
 # CSRF トークンをテンプレートで利用可能にする
@@ -164,6 +164,89 @@ def inject_csrf_token():
         return generate_csrf()
     
     return dict(csrf_token=csrf_token, csrf_token_value=csrf_token_value)
+
+# Google Analytics統合
+@app.context_processor
+def inject_analytics():
+    """Google Analyticsの設定をテンプレートに注入"""
+    from models import SiteSetting
+    from markupsafe import Markup
+    
+    def google_analytics_code():
+        """Google Analyticsのトラッキングコードを生成"""
+        # 管理者のトラッキングをスキップするかチェック
+        track_admin = SiteSetting.get_setting('analytics_track_admin', 'false').lower() == 'true'
+        if not track_admin and current_user.is_authenticated and current_user.role == 'admin':
+            return Markup('')
+        
+        # Google Analyticsが有効かチェック
+        enabled = SiteSetting.get_setting('google_analytics_enabled', 'false').lower() == 'true'
+        if not enabled:
+            return Markup('')
+        
+        analytics_id = SiteSetting.get_setting('google_analytics_id', '')
+        gtm_id = SiteSetting.get_setting('google_tag_manager_id', '')
+        custom_code = SiteSetting.get_setting('custom_analytics_code', '')
+        
+        html_parts = []
+        
+        # Google Analytics 4
+        if analytics_id:
+            ga4_code = f'''
+            <!-- Google tag (gtag.js) -->
+            <script async src="https://www.googletagmanager.com/gtag/js?id={analytics_id}"></script>
+            <script>
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){{dataLayer.push(arguments);}}
+              gtag('js', new Date());
+              gtag('config', '{analytics_id}');
+            </script>
+            '''
+            html_parts.append(ga4_code)
+        
+        # Google Tag Manager
+        if gtm_id:
+            gtm_code = f'''
+            <!-- Google Tag Manager -->
+            <script>(function(w,d,s,l,i){{w[l]=w[l]||[];w[l].push({{'gtm.start':
+            new Date().getTime(),event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],
+            j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+            'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+            }})(window,document,'script','dataLayer','{gtm_id}');</script>
+            <!-- End Google Tag Manager -->
+            '''
+            html_parts.append(gtm_code)
+        
+        # カスタムアナリティクスコード
+        if custom_code:
+            html_parts.append(f'<!-- Custom Analytics Code -->\n{custom_code}')
+        
+        return Markup('\n'.join(html_parts))
+    
+    def google_tag_manager_noscript():
+        """Google Tag Manager の noscript 部分"""
+        track_admin = SiteSetting.get_setting('analytics_track_admin', 'false').lower() == 'true'
+        if not track_admin and current_user.is_authenticated and current_user.role == 'admin':
+            return Markup('')
+        
+        enabled = SiteSetting.get_setting('google_analytics_enabled', 'false').lower() == 'true'
+        gtm_id = SiteSetting.get_setting('google_tag_manager_id', '')
+        
+        if enabled and gtm_id:
+            noscript_code = f'''
+            <!-- Google Tag Manager (noscript) -->
+            <noscript><iframe src="https://www.googletagmanager.com/ns.html?id={gtm_id}"
+            height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+            <!-- End Google Tag Manager (noscript) -->
+            '''
+            return Markup(noscript_code)
+        
+        return Markup('')
+    
+    return dict(
+        google_analytics_code=google_analytics_code,
+        google_tag_manager_noscript=google_tag_manager_noscript
+    )
 
 # カスタムフィルター
 @app.template_filter('nl2br')

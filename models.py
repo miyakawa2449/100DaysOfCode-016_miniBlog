@@ -135,8 +135,19 @@ class Article(db.Model):
         back_populates='articles'  # ★ 変更: Category.articles と紐づける
     )
     
+    # Article から ArticleBlock へのリレーションシップ
+    blocks = db.relationship(
+        'ArticleBlock',
+        backref='article',
+        lazy='dynamic',
+        cascade='all, delete-orphan',  # 記事削除時にブロックも削除
+        order_by='ArticleBlock.sort_order'
+    )
+    
     def get_visible_blocks(self):
         """表示可能なブロックを順序付きで取得"""
+        if not hasattr(self, 'blocks') or self.blocks is None:
+            return []
         return self.blocks.filter_by(is_visible=True).order_by(ArticleBlock.sort_order).all()
     
     def get_text_content(self):
@@ -364,8 +375,7 @@ class ArticleBlock(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # リレーションシップ
-    article = db.relationship('Article', backref=db.backref('blocks', lazy='dynamic', order_by='ArticleBlock.sort_order'))
+    # リレーションシップ（Articleから定義されるためここでは不要）
     
     def __repr__(self):
         return f'<ArticleBlock {self.id}: {self.block_type.type_name if self.block_type else "Unknown"} in Article {self.article_id}>'

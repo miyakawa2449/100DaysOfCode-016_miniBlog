@@ -8,7 +8,7 @@ from wtforms import StringField, TextAreaField, SubmitField, FileField, IntegerF
 from wtforms.validators import DataRequired, Optional, URL, Length, Email, ValidationError
 import re
 from wtforms.widgets import HiddenInput
-from flask_wtf.file import FileAllowed
+from flask_wtf.file import FileAllowed, FileRequired
 
 class CategoryForm(FlaskForm):
     name = StringField('カテゴリ名', validators=[DataRequired(), Length(max=100)])
@@ -117,3 +117,50 @@ class PasswordResetForm(FlaskForm):
     def validate_password_confirm(self, field):
         if field.data != self.password.data:
             raise ValidationError('パスワードが一致しません。')
+
+class WordPressImportForm(FlaskForm):
+    """WordPress インポートフォーム"""
+    xml_file = FileField('WordPress エクスポートファイル (XML)', validators=[
+        FileRequired('XMLファイルを選択してください'),
+        FileAllowed(['xml'], 'XMLファイルのみアップロード可能です')
+    ])
+    author_id = SelectField('記事の著者', coerce=int, validators=[DataRequired()])
+    dry_run = BooleanField('テスト実行（実際にはインポートしない）', default=False)
+    
+    # 詳細オプション
+    import_categories = BooleanField('カテゴリをインポート', default=True)
+    import_images = BooleanField('画像をダウンロード', default=True)
+    skip_duplicates = BooleanField('重複データをスキップ', default=True)
+    
+    submit = SubmitField('インポート開始')
+    
+    def __init__(self, *args, **kwargs):
+        super(WordPressImportForm, self).__init__(*args, **kwargs)
+        # 著者選択肢を動的に設定
+        from models import User
+        self.author_id.choices = [(user.id, f"{user.name} ({user.email})") 
+                                  for user in User.query.filter_by(role='admin').all()]
+        if not self.author_id.choices:
+            # 管理者がいない場合は全ユーザーから選択
+            self.author_id.choices = [(user.id, f"{user.name} ({user.email})") 
+                                      for user in User.query.all()]
+
+class GoogleAnalyticsForm(FlaskForm):
+    """Google Analytics設定フォーム"""
+    google_analytics_enabled = BooleanField('Google Analyticsを有効にする', default=False)
+    google_analytics_id = StringField('Google Analytics 4 Measurement ID', validators=[Optional(), Length(max=50)])
+    google_tag_manager_id = StringField('Google Tag Manager Container ID', validators=[Optional(), Length(max=50)])
+    custom_analytics_code = TextAreaField('カスタムアナリティクスコード', validators=[Optional()])
+    analytics_track_admin = BooleanField('管理者のアクセスも追跡する', default=False)
+    
+    submit = SubmitField('設定を保存')
+    
+    def validate_google_analytics_id(self, field):
+        """Google Analytics IDの形式チェック"""
+        if field.data and not field.data.startswith('G-'):
+            raise ValidationError('Google Analytics IDは "G-" で始まる必要があります（例: G-XXXXXXXXXX）')
+    
+    def validate_google_tag_manager_id(self, field):
+        """Google Tag Manager IDの形式チェック"""
+        if field.data and not field.data.startswith('GTM-'):
+            raise ValidationError('Google Tag Manager IDは "GTM-" で始まる必要があります（例: GTM-XXXXXXX）')
