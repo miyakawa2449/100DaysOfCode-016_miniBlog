@@ -21,7 +21,7 @@ SNS_PATTERNS = {
     'twitter': [r'twitter\.com', r'x\.com'],
     'facebook': [r'facebook\.com', r'fb\.com'],
     'instagram': [r'instagram\.com'],
-    'threads': [r'threads\.net'],
+    'threads': [r'threads\.net', r'threads\.com'],
     'youtube': [r'youtube\.com', r'youtu\.be']
 }
 
@@ -142,6 +142,44 @@ def generate_sns_embed_html(url, platform, sns_id):
     
     # フォールバック: シンプルなリンク
     return f'<a href="{url}" target="_blank" rel="noopener">{url}</a>'
+
+def fetch_sns_ogp_data(url, platform):
+    """SNS投稿からOGP情報を取得（プラットフォーム別に最適化）"""
+    try:
+        logger.info(f"Fetching SNS OGP data for {platform}: {url}")
+        
+        # まず通常のOGP取得を試行
+        ogp_data = fetch_ogp_data(url)
+        
+        if not ogp_data:
+            return None
+            
+        # プラットフォーム別の最適化
+        if platform == 'twitter':
+            # Twitterの場合、サイト名を統一
+            ogp_data['site_name'] = 'X (Twitter)'
+            
+            # タイトルが長すぎる場合は短縮
+            if ogp_data.get('title') and len(ogp_data['title']) > 100:
+                ogp_data['title'] = ogp_data['title'][:100] + '...'
+                
+        elif platform == 'youtube':
+            ogp_data['site_name'] = 'YouTube'
+            
+        elif platform == 'instagram':
+            ogp_data['site_name'] = 'Instagram'
+            
+        elif platform == 'facebook':
+            ogp_data['site_name'] = 'Facebook'
+            
+        elif platform == 'threads':
+            ogp_data['site_name'] = 'Threads'
+        
+        return ogp_data
+        
+    except Exception as e:
+        logger.error(f"SNS OGP fetch error: {e}")
+        return None
 
 def fetch_ogp_data(url):
     """URLからOGP情報を取得"""
@@ -299,18 +337,9 @@ def process_block_image_with_crop(image_file, block_type, crop_data, block_id=No
             # ブロックタイプ別の最適化処理
             if block_type == 'image':
                 # 1:1比率、700px（正方形）
+                # ユーザーがトリミングした領域をそのまま700x700にリサイズ
                 final_size = (700, 700)
-                # クロップ済み画像をアスペクト比を保ちながら正方形に収める
-                cropped_img.thumbnail((700, 700), Image.Resampling.LANCZOS)
-                
-                # 正方形の背景を作成（白背景）
-                background = Image.new('RGB', final_size, (255, 255, 255))
-                
-                # 中央に配置
-                paste_x = (final_size[0] - cropped_img.width) // 2
-                paste_y = (final_size[1] - cropped_img.height) // 2
-                background.paste(cropped_img, (paste_x, paste_y))
-                resized_img = background
+                resized_img = cropped_img.resize(final_size, Image.Resampling.LANCZOS)
                 
             elif block_type == 'featured_image':
                 # 16:9比率、800px幅
