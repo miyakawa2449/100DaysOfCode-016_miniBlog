@@ -90,7 +90,7 @@
                     <div class="row text-center mb-3">
                         <div class="col">
                             <div class="border-end">
-                                <div class="h5 mb-0">{{ user.articles|length }}</div>
+                                <div class="h5 mb-0">{{ (user.articles|list)|length if user.articles else 0 }}</div>
                                 <small class="text-muted">記事</small>
                             </div>
                         </div>
@@ -118,7 +118,7 @@
         <div class="col-lg-8">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h3 class="h5 mb-0">📝 投稿記事</h3>
-                <span class="badge bg-secondary">{{ user.articles|length }}件</span>
+                <span class="badge bg-secondary">{{ (user.articles|list)|length if user.articles else 0 }}件</span>
             </div>
             
             {% if user.articles %}
@@ -134,7 +134,7 @@
                                 </h5>
                                 {% if article.body %}
                                 <p class="card-text text-muted small">
-                                    {{ (article.body|striptags)[:200] }}{% if (article.body|striptags)|length > 200 %}...{% endif %}
+                                    {{ (article.body|striptags)[:200] }}{% if article.body and (article.body|striptags)|length > 200 %}...{% endif %}
                                 </p>
                                 {% endif %}
                                 <div class="d-flex align-items-center">

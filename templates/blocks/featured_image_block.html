@@ -3,7 +3,7 @@
     <div class="block-content">
         {% if block.image_path %}
             <figure class="featured-image-figure">
-                <img src="{{ url_for('static', filename=block.image_path) }}" 
+                <img src="/static/{{ block.image_path }}" 
                      alt="{{ block.image_alt_text or (article.title + 'のアイキャッチ画像') if article else 'アイキャッチ画像' }}"
                      class="featured-image img-fluid"
                      loading="lazy">

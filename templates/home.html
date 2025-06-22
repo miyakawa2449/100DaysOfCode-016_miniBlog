@@ -49,8 +49,10 @@
                         <p class="article-excerpt">
                             {% if article.summary %}
                                 {{ article.summary | truncate(100, True) }}
-                            {% else %}
+                            {% elif article.body %}
                                 {{ article.body | striptags | truncate(100, True) }}
+                            {% else %}
+                                記事の概要が設定されていません。
                             {% endif %}
                         </p>
                         

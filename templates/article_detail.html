@@ -1,11 +1,11 @@
 {% extends "layout.html" %}
 
 {% block title %}{{ article.title }} - ミニブログ{% endblock %}
-{% block description %}{{ article.body | striptags | truncate(160, True) }}{% endblock %}
+{% block description %}{{ (article.body | striptags | truncate(160, True)) if article.body else (article.summary or 'プログラミング、テック、ライフスタイルに関する最新記事をお届けします。') }}{% endblock %}
 {% block keywords %}{{ article.meta_keywords if article.meta_keywords else 'ブログ,記事' }}{% endblock %}
 
 {% block og_title %}{{ article.title }}{% endblock %}
-{% block og_description %}{{ article.body | striptags | truncate(160, True) }}{% endblock %}
+{% block og_description %}{{ (article.body | striptags | truncate(160, True)) if article.body else (article.summary or 'プログラミング、テック、ライフスタイルに関する最新記事をお届けします。') }}{% endblock %}
 {% block og_type %}article{% endblock %}
 
 {% block content %}
@@ -138,7 +138,7 @@
                             </h4>
                             <p class="author-role">著者</p>
                             {% if article.author.introduction %}
-                            <p class="author-bio">{{ article.author.introduction[:100] }}{% if article.author.introduction|length > 100 %}...{% endif %}</p>
+                            <p class="author-bio">{{ article.author.introduction[:100] }}{% if article.author.introduction and article.author.introduction|length > 100 %}...{% endif %}</p>
                             {% endif %}
                             <a href="{{ url_for('profile', handle_name=article.author.handle_name or article.author.name) }}" class="btn btn-sm btn-outline">
                                 プロフィールを見る

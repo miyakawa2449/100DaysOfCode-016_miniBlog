@@ -5,11 +5,55 @@
     {% endif %}
     
     <div class="block-content">
-        {% if block.embed_html %}
+        {% set display_mode = block.get_settings_json().get('display_mode', 'embed') %}
+        
+        {% if display_mode == 'ogp_card' and block.ogp_title %}
+            <!-- OGPカード表示モード -->
+            <div class="sns-ogp-card sns-{{ block.embed_platform or 'unknown' }}">
+                <a href="{{ block.embed_url or block.ogp_url }}" target="_blank" rel="noopener noreferrer" class="sns-ogp-link">
+                    {% if block.ogp_image %}
+                    <div class="sns-ogp-image">
+                        <img src="{{ block.ogp_image }}" alt="{{ block.ogp_title or 'SNS投稿' }}" class="img-fluid" loading="lazy">
+                    </div>
+                    {% endif %}
+                    
+                    <div class="sns-ogp-info">
+                        {% if block.ogp_title %}
+                        <h4 class="sns-ogp-title">{{ block.ogp_title }}</h4>
+                        {% endif %}
+                        
+                        {% if block.ogp_description %}
+                        <p class="sns-ogp-description">{{ block.ogp_description | truncate(150) }}</p>
+                        {% endif %}
+                        
+                        <div class="sns-ogp-meta">
+                            {% if block.ogp_site_name %}
+                            <span class="sns-ogp-site">{{ block.ogp_site_name }}</span>
+                            {% elif block.embed_platform == 'twitter' %}
+                            <span class="sns-ogp-site">X (Twitter)</span>
+                            {% elif block.embed_platform == 'facebook' %}
+                            <span class="sns-ogp-site">Facebook</span>
+                            {% elif block.embed_platform == 'instagram' %}
+                            <span class="sns-ogp-site">Instagram</span>
+                            {% elif block.embed_platform == 'threads' %}
+                            <span class="sns-ogp-site">Threads</span>
+                            {% elif block.embed_platform == 'youtube' %}
+                            <span class="sns-ogp-site">YouTube</span>
+                            {% endif %}
+                            <i class="fa fa-external-link ms-2"></i>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            
+        {% elif block.embed_html %}
+            <!-- 従来の埋込表示モード -->
             <div class="sns-embed-container sns-{{ block.embed_platform or 'unknown' }}">
                 {{ block.embed_html | safe }}
             </div>
+            
         {% elif block.embed_url %}
+            <!-- フォールバック表示 -->
             <div class="sns-embed-fallback">
                 <a href="{{ block.embed_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary">
                     <i class="fa fa-external-link me-2"></i>

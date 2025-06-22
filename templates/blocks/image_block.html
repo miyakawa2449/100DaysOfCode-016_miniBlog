@@ -7,7 +7,7 @@
     <div class="block-content">
         {% if block.image_path %}
             <figure class="block-image-figure">
-                <img src="{{ url_for('static', filename=block.image_path) }}" 
+                <img src="/static/{{ block.image_path }}" 
                      alt="{{ block.image_alt_text or 'ブロック画像' }}"
                      class="block-image img-fluid"
                      loading="lazy">
