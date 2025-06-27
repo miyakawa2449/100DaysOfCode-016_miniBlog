@@ -118,11 +118,11 @@ class WordPressImporter:
                 featured_image = self.extract_featured_image(content.text if content is not None else '')
                 
                 post_data = {
-                    'title': html.unescape(title.text) if title is not None else 'Untitled',
+                    'title': html.unescape(title.text) if title is not None and title.text else 'Untitled',
                     'slug': post_name.text if post_name is not None else self.generate_slug(title.text if title is not None else 'untitled'),
-                    'content': html.unescape(content.text) if content is not None else '',
+                    'content': html.unescape(content.text) if content is not None and content.text else '',
                     'summary': html.unescape(excerpt.text) if excerpt is not None and excerpt.text else '',
-                    'description': html.unescape(description.text) if description is not None else '',
+                    'description': html.unescape(description.text) if description is not None and description.text else '',
                     'published_at': self.parse_wp_date(post_date.text if post_date is not None else pub_date.text if pub_date is not None else ''),
                     'categories': categories,
                     'featured_image': featured_image,
@@ -289,11 +289,11 @@ class WordPressImporter:
                     article = Article(
                         title=post_data['title'],
                         slug=post_data['slug'],
-                        content=post_data['content'],
+                        body=post_data['content'],
                         summary=post_data['summary'],
-                        description=post_data['description'],
+                        meta_description=post_data['description'],
                         featured_image=featured_image_path,
-                        status='published',
+                        is_published=True,
                         published_at=post_data['published_at'],
                         author_id=self.author_id,
                         use_block_editor=False  # WordPress記事は従来型エディタ
@@ -314,11 +314,8 @@ class WordPressImporter:
                             category = Category.query.filter_by(name=category_name).first()
                         
                         if category:
-                            article_category = ArticleCategory(
-                                article_id=article.id,
-                                category_id=category.id
-                            )
-                            db.session.add(article_category)
+                            # 多対多関係の追加（article_categoriesテーブル使用）
+                            article.categories.append(category)
                     
                     db.session.commit()
                     self.stats['posts_imported'] += 1
@@ -377,7 +374,7 @@ def main():
     
     # 著者存在チェック
     with app.app_context():
-        author = User.query.get(args.author_id)
+        author = db.session.get(User, args.author_id)
         if not author:
             print(f"❌ 著者ID {args.author_id} のユーザーが見つかりません")
             sys.exit(1)
