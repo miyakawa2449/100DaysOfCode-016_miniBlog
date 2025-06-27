@@ -1588,21 +1588,46 @@ def save_block():
                     
                     # OGPカード表示モード用のOGP情報を保存
                     if display_mode == 'ogp_card':
-                        # OGP情報の手動入力値を保存
-                        if 'ogp_title' in request.form:
-                            block.ogp_title = request.form.get('ogp_title', '')
-                        if 'ogp_description' in request.form:
-                            block.ogp_description = request.form.get('ogp_description', '')
-                        if 'ogp_site_name' in request.form:
-                            block.ogp_site_name = request.form.get('ogp_site_name', '')
-                        if 'ogp_image' in request.form:
-                            block.ogp_image = request.form.get('ogp_image', '')
-                        
                         # OGP URLとして埋込URLを設定
                         block.ogp_url = embed_url
-                        block.ogp_cached_at = datetime.utcnow()
                         
-                        current_app.logger.info("OGP data saved for SNS embed block")
+                        # 自動OGP取得を試行（手動入力が空の場合のみ）
+                        auto_fetch_ogp = (
+                            not request.form.get('ogp_title', '').strip() and
+                            not request.form.get('ogp_description', '').strip() and
+                            not request.form.get('ogp_site_name', '').strip()
+                        )
+                        
+                        if auto_fetch_ogp and embed_url:
+                            current_app.logger.info(f"Auto-fetching SNS OGP data for: {embed_url}")
+                            try:
+                                from block_utils import fetch_sns_ogp_data
+                                ogp_data = fetch_sns_ogp_data(embed_url, platform)
+                                
+                                if ogp_data:
+                                    current_app.logger.info(f"SNS OGP data retrieved: {ogp_data}")
+                                    block.ogp_title = ogp_data.get('title', '')
+                                    block.ogp_description = ogp_data.get('description', '')
+                                    block.ogp_site_name = ogp_data.get('site_name', '')
+                                    block.ogp_image = ogp_data.get('image', '')
+                                else:
+                                    current_app.logger.warning(f"Failed to fetch SNS OGP data for: {embed_url}")
+                            
+                            except Exception as ogp_error:
+                                current_app.logger.error(f"SNS OGP fetch error: {ogp_error}")
+                        
+                        # 手動入力値で上書き（手動入力が優先）
+                        if 'ogp_title' in request.form and request.form.get('ogp_title', '').strip():
+                            block.ogp_title = request.form.get('ogp_title', '')
+                        if 'ogp_description' in request.form and request.form.get('ogp_description', '').strip():
+                            block.ogp_description = request.form.get('ogp_description', '')
+                        if 'ogp_site_name' in request.form and request.form.get('ogp_site_name', '').strip():
+                            block.ogp_site_name = request.form.get('ogp_site_name', '')
+                        if 'ogp_image' in request.form and request.form.get('ogp_image', '').strip():
+                            block.ogp_image = request.form.get('ogp_image', '')
+                        
+                        block.ogp_cached_at = datetime.utcnow()
+                        current_app.logger.info("SNS OGP data saved for embed block")
                 
             elif block.is_external_article_block:
                 # 外部記事URLの更新
@@ -1762,8 +1787,17 @@ def fetch_ogp():
         if not url:
             return jsonify({'success': False, 'error': 'URL is required'})
         
-        # OGP情報を取得
-        ogp_data = fetch_ogp_data(url)
+        # SNS URLかどうかを判定してOGP情報を取得
+        platform = detect_sns_platform(url)
+        
+        if platform:
+            # SNS URLs用の専用OGP取得
+            current_app.logger.info(f"Detected SNS platform: {platform} for URL: {url}")
+            from block_utils import fetch_sns_ogp_data
+            ogp_data = fetch_sns_ogp_data(url, platform)
+        else:
+            # 一般的なOGP取得
+            ogp_data = fetch_ogp_data(url)
         
         if ogp_data:
             return jsonify({
@@ -2386,3 +2420,21 @@ def site_settings():
         settings[setting.key] = setting.value
     
     return render_template('admin/site_settings.html', settings=settings)
+
+@admin_bp.route('/preview_markdown', methods=['POST'])
+@admin_required
+def preview_markdown():
+    """Markdownプレビュー用エンドポイント"""
+    markdown_text = request.form.get('markdown_text', '')
+    
+    if not markdown_text:
+        return '<p class="text-muted">プレビューを表示するには本文を入力してください。</p>'
+    
+    try:
+        # app.pyのmarkdown_filterを使用してHTMLに変換
+        from app import markdown_filter
+        html_content = markdown_filter(markdown_text)
+        return str(html_content)
+    except Exception as e:
+        current_app.logger.error(f"Markdown preview error: {e}")
+        return f'<p class="text-danger">プレビューエラー: {str(e)}</p>'

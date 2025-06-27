@@ -10,9 +10,7 @@
 {% endblock %}
 
 {% block head_extra %}
-<!-- Quill Editor -->
-<link href="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/quill/1.3.7/quill.min.js"></script>
+<!-- Markdown Editor Styles -->
 <style>
 .preview-container {
     border: 2px dashed #dee2e6;
@@ -42,40 +40,107 @@
     color: #dc3545;
 }
 
-/* Quill Editor Custom Styles */
-.ql-editor {
-    min-height: 300px;
-    font-size: 16px;
+/* Markdown Editor Styles */
+.markdown-editor {
+    min-height: 400px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 14px;
     line-height: 1.6;
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    padding: 1rem;
     background-color: white;
+    resize: vertical;
 }
 
-.ql-toolbar {
-    border-top: 1px solid #ccc;
-    border-left: 1px solid #ccc;
-    border-right: 1px solid #ccc;
-    border-radius: 8px 8px 0 0;
-    background-color: #f8f9fa;
+.markdown-editor:focus {
+    border-color: #86b7fe;
+    outline: 0;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
 }
 
-.ql-container {
-    border-bottom: 1px solid #ccc;
-    border-left: 1px solid #ccc;
-    border-right: 1px solid #ccc;
-    border-radius: 0 0 8px 8px;
-    background-color: white;
-}
-
-.ql-toolbar.ql-snow {
+.markdown-toolbar {
     background: #f8f9fa;
+    border: 1px solid #ced4da;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    padding: 0.5rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
 }
 
-.quill-wrapper {
+.markdown-button {
+    background: #e9ecef;
+    border: 1px solid #adb5bd;
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.markdown-button:hover {
+    background: #dee2e6;
+}
+
+.markdown-preview {
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    padding: 1rem;
+    background-color: white;
+    min-height: 400px;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.editor-tabs {
+    display: flex;
+    border-bottom: 1px solid #dee2e6;
     margin-bottom: 1rem;
 }
 
-#quill-editor {
-    background-color: white;
+.editor-tab {
+    padding: 0.5rem 1rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.editor-tab.active {
+    border-bottom-color: #0d6efd;
+    color: #0d6efd;
+    font-weight: 500;
+}
+
+.editor-tab:hover {
+    background: #f8f9fa;
+}
+
+.editor-content {
+    display: none;
+}
+
+.editor-content.active {
+    display: block;
+}
+
+.sns-embed-help {
+    background: #e7f3ff;
+    border: 1px solid #b8daff;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.image-upload-helper {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
 }
 </style>
 {% endblock %}
@@ -89,12 +154,8 @@
         <div class="col-lg-8">
             <!-- 基本情報 -->
             <div class="card mb-4">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fa fa-edit me-2"></i>記事内容</h5>
-                    <a href="{{ url_for('admin.edit_article_block_editor', article_id=article.id) }}" 
-                       class="btn btn-outline-info btn-sm">
-                        <i class="fa fa-cubes me-1"></i>ブロック型エディタに切り替え
-                    </a>
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa fa-edit me-2"></i>記事内容（Markdownエディタ）</h5>
                 </div>
                 <div class="card-body">
                     <!-- タイトル -->
@@ -136,10 +197,95 @@
                     <!-- 本文 -->
                     <div class="mb-3">
                         <label for="body" class="form-label required-field">{{ form.body.label.text }}</label>
-                        <div class="quill-wrapper">
-                            <div id="quill-editor"></div>
+                        
+                        <!-- SNS埋込機能ヘルプ -->
+                        <div class="sns-embed-help">
+                            <h6><i class="fa fa-magic me-1"></i>SNS自動埋込機能</h6>
+                            <p class="mb-2 small">以下のSNS URLを1行に貼り付けると自動的に埋込表示されます：</p>
+                            <ul class="mb-2 small">
+                                <li><strong>YouTube:</strong> https://youtu.be/VIDEO_ID または https://www.youtube.com/watch?v=VIDEO_ID</li>
+                                <li><strong>Twitter/X:</strong> https://twitter.com/user/status/TWEET_ID または https://x.com/user/status/TWEET_ID</li>
+                                <li><strong>Instagram:</strong> https://www.instagram.com/p/POST_ID/</li>
+                                <li><strong>Facebook:</strong> https://fb.watch/VIDEO_ID</li>
+                                <li><strong>Threads:</strong> https://www.threads.net/@user/post/POST_ID （ユーザー名・投稿IDを含むカード表示）</li>
+                            </ul>
                         </div>
-                        {{ form.body(style="display: none;", id="body") }}
+                        
+                        <!-- 画像アップロードヘルプ -->
+                        <div class="image-upload-helper">
+                            <h6><i class="fa fa-image me-1"></i>画像の挿入方法</h6>
+                            <p class="mb-2 small">Markdownで画像を挿入する方法：</p>
+                            <ul class="mb-2 small">
+                                <li><code>![画像の説明](画像のURL)</code> - 外部画像のURL</li>
+                                <li><code>![画像の説明](/static/uploads/image.jpg)</code> - アップロード済み画像</li>
+                                <li>アイキャッチ画像は右側のサイドバーからアップロード可能</li>
+                            </ul>
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="showImageUploadModal()">
+                                <i class="fa fa-upload me-1"></i>画像をアップロード
+                            </button>
+                        </div>
+                        
+                        <!-- エディタタブ -->
+                        <div class="editor-tabs">
+                            <button type="button" class="editor-tab active" onclick="switchTab('edit')">
+                                <i class="fa fa-edit me-1"></i>編集
+                            </button>
+                            <button type="button" class="editor-tab" onclick="switchTab('preview')">
+                                <i class="fa fa-eye me-1"></i>プレビュー
+                            </button>
+                        </div>
+                        
+                        <!-- Markdownツールバー -->
+                        <div class="markdown-toolbar">
+                            <button type="button" class="markdown-button" onclick="insertMarkdown('**', '**')" title="太字">
+                                <i class="fa fa-bold"></i>
+                            </button>
+                            <button type="button" class="markdown-button" onclick="insertMarkdown('*', '*')" title="斜体">
+                                <i class="fa fa-italic"></i>
+                            </button>
+                            <button type="button" class="markdown-button" onclick="insertMarkdown('# ', '')" title="見出し1">
+                                H1
+                            </button>
+                            <button type="button" class="markdown-button" onclick="insertMarkdown('## ', '')" title="見出し2">
+                                H2
+                            </button>
+                            <button type="button" class="markdown-button" onclick="insertMarkdown('### ', '')" title="見出し3">
+                                H3
+                            </button>
+                            <button type="button" class="markdown-button" onclick="insertMarkdown('- ', '')" title="リスト">
+                                <i class="fa fa-list"></i>
+                            </button>
+                            <button type="button" class="markdown-button" onclick="insertMarkdown('1. ', '')" title="番号付きリスト">
+                                <i class="fa fa-list-ol"></i>
+                            </button>
+                            <button type="button" class="markdown-button" onclick="insertMarkdown('[', '](URL)')" title="リンク">
+                                <i class="fa fa-link"></i>
+                            </button>
+                            <button type="button" class="markdown-button" onclick="insertMarkdown('![画像の説明](', ')')" title="画像">
+                                <i class="fa fa-image"></i>
+                            </button>
+                            <button type="button" class="markdown-button" onclick="insertMarkdown('`', '`')" title="インラインコード">
+                                <i class="fa fa-code"></i>
+                            </button>
+                            <button type="button" class="markdown-button" onclick="insertMarkdown('```\n', '\n```')" title="コードブロック">
+                                <i class="fa fa-file-code"></i>
+                            </button>
+                            <button type="button" class="markdown-button" onclick="insertMarkdown('> ', '')" title="引用">
+                                <i class="fa fa-quote-left"></i>
+                            </button>
+                        </div>
+                        
+                        <!-- エディタコンテンツ -->
+                        <div class="editor-content active" id="edit-content">
+                            {{ form.body(class="markdown-editor" + (" is-invalid" if form.body.errors else ""), placeholder="Markdownで記事の本文を入力してください...\n\n例:\n# 見出し1\n## 見出し2\n\n**太字**や*斜体*を使えます。\n\nSNS URLを貼り付けると自動的に埋込表示されます:\nhttps://youtu.be/VIDEO_ID", id="body") }}
+                        </div>
+                        
+                        <div class="editor-content" id="preview-content">
+                            <div class="markdown-preview" id="markdown-preview">
+                                プレビューを表示するには「プレビュー」タブをクリックしてください。
+                            </div>
+                        </div>
+                        
                         {% if form.body.errors %}
                             <div class="invalid-feedback d-block">
                                 {% for error in form.body.errors %}{{ error }}{% endfor %}
@@ -214,11 +360,8 @@
                         <a href="{{ url_for('article_detail', slug=article.slug) }}" target="_blank" class="btn btn-outline-info btn-sm me-2">
                             <i class="fa fa-external-link me-1"></i>記事を表示
                         </a>
-                        <a href="{{ url_for('admin.article_preview', article_id=article.id) }}" target="_blank" class="btn btn-outline-secondary btn-sm me-2">
+                        <a href="{{ url_for('admin.article_preview', article_id=article.id) }}" target="_blank" class="btn btn-outline-secondary btn-sm">
                             <i class="fa fa-eye me-1"></i>プレビュー
-                        </a>
-                        <a href="{{ url_for('admin.edit_article_block_editor', article_id=article.id) }}" class="btn btn-primary btn-sm">
-                            <i class="fa fa-th-list me-1"></i>ブロックエディタで編集
                         </a>
                     </div>
                 </div>
@@ -356,79 +499,81 @@
 
 {% block scripts_extra %}
 <script>
-// Quill Editor 初期化
-let quill;
+// Markdownエディタの機能
 
-// Quill.jsが読み込まれるまで待機
-function waitForQuill() {
-    return new Promise((resolve) => {
-        if (typeof Quill !== 'undefined') {
-            resolve();
-        } else {
-            setTimeout(() => waitForQuill().then(resolve), 100);
+// タブ切り替え
+function switchTab(tab) {
+    // タブボタンの状態変更
+    document.querySelectorAll('.editor-tab').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`button[onclick="switchTab('${tab}')"]`).classList.add('active');
+    
+    // コンテンツの表示切り替え
+    document.querySelectorAll('.editor-content').forEach(content => content.classList.remove('active'));
+    
+    if (tab === 'edit') {
+        document.getElementById('edit-content').classList.add('active');
+    } else if (tab === 'preview') {
+        document.getElementById('preview-content').classList.add('active');
+        updatePreview();
+    }
+}
+
+// Markdownプレビュー更新
+function updatePreview() {
+    const markdownText = document.getElementById('body').value;
+    const previewDiv = document.getElementById('markdown-preview');
+    
+    if (!markdownText.trim()) {
+        previewDiv.innerHTML = '<p class="text-muted">プレビューを表示するには本文を入力してください。</p>';
+        return;
+    }
+    
+    // サーバーサイドでMarkdownを処理するため、フォームデータを送信
+    const formData = new FormData();
+    formData.append('markdown_text', markdownText);
+    
+    fetch('/admin/preview_markdown', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
         }
+    })
+    .then(response => response.text())
+    .then(html => {
+        previewDiv.innerHTML = html;
+    })
+    .catch(error => {
+        console.error('Preview error:', error);
+        previewDiv.innerHTML = '<p class="text-danger">プレビューの表示に失敗しました。</p>';
     });
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, waiting for Quill...');
+// Markdownツールバー機能
+function insertMarkdown(before, after) {
+    const textarea = document.getElementById('body');
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = textarea.value.substring(start, end);
     
-    waitForQuill().then(() => {
-        console.log('Quill loaded, initializing editor...');
-        
-        // Quillの設定
-        const toolbarOptions = [
-            [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
-            ['bold', 'italic', 'underline', 'strike'],
-            [{ 'color': [] }, { 'background': [] }],
-            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-            [{ 'indent': '-1'}, { 'indent': '+1' }],
-            [{ 'align': [] }],
-            ['blockquote', 'code-block'],
-            ['link', 'image'],
-            ['clean']
-        ];
+    const replacement = before + selectedText + after;
+    
+    textarea.value = textarea.value.substring(0, start) + replacement + textarea.value.substring(end);
+    
+    // カーソル位置を調整
+    const newCursorPos = start + before.length + selectedText.length;
+    textarea.focus();
+    textarea.setSelectionRange(newCursorPos, newCursorPos);
+}
 
-        const editorElement = document.getElementById('quill-editor');
-        if (editorElement) {
-            console.log('Editor element found, creating Quill instance...');
-            
-            quill = new Quill('#quill-editor', {
-                theme: 'snow',
-                modules: {
-                    toolbar: toolbarOptions
-                },
-                placeholder: '記事の本文を入力してください...'
-            });
-
-            console.log('Quill initialized successfully');
-
-            // 既存のテキストエリアの内容をQuillに設定
-            const bodyTextarea = document.getElementById('body');
-            if (bodyTextarea && bodyTextarea.value) {
-                try {
-                    console.log('Setting existing content:', bodyTextarea.value);
-                    quill.root.innerHTML = bodyTextarea.value;
-                } catch (e) {
-                    console.warn('Failed to set Quill content:', e);
-                    // フォールバック: プレーンテキストとして設定
-                    quill.setText(bodyTextarea.value);
-                }
-            }
-
-            // Quillの内容変更時にテキストエリアを更新
-            quill.on('text-change', function() {
-                if (bodyTextarea) {
-                    bodyTextarea.value = quill.root.innerHTML;
-                }
-            });
-        } else {
-            console.error('Quill editor element not found!');
-        }
-    }).catch(error => {
-        console.error('Failed to initialize Quill:', error);
-    });
-});
+// 画像アップロードモーダル（簡易版）
+function showImageUploadModal() {
+    const imageUrl = prompt('画像のURLを入力してください（例: /static/uploads/image.jpg）:');
+    if (imageUrl) {
+        const imageText = prompt('画像の説明文を入力してください（alt属性）:', '画像');
+        insertMarkdown(`![${imageText}](`, `${imageUrl})`);
+    }
+}
 
 // 画像プレビュー
 function previewImage(event) {
@@ -448,14 +593,7 @@ function previewImage(event) {
 // フォーム送信前の確認
 document.querySelector('form').addEventListener('submit', function(e) {
     const title = document.getElementById('{{ form.title.id }}').value.trim();
-    const bodyTextarea = document.getElementById('body');
-    
-    // Quillの内容をテキストエリアに同期
-    if (quill) {
-        bodyTextarea.value = quill.root.innerHTML;
-    }
-    
-    const body = bodyTextarea.value.trim();
+    const body = document.getElementById('body').value.trim();
     
     if (!title) {
         e.preventDefault();
@@ -463,7 +601,7 @@ document.querySelector('form').addEventListener('submit', function(e) {
         return false;
     }
     
-    if (!body || body === '<p><br></p>') {
+    if (!body) {
         e.preventDefault();
         alert('本文を入力してください。');
         return false;
@@ -477,5 +615,35 @@ function setPublishStatus(isPublished) {
         publishCheckbox.checked = isPublished;
     }
 }
+
+// キーボードショートカット
+document.getElementById('body').addEventListener('keydown', function(e) {
+    if (e.ctrlKey || e.metaKey) {
+        switch(e.key) {
+            case 'b':
+                e.preventDefault();
+                insertMarkdown('**', '**');
+                break;
+            case 'i':
+                e.preventDefault();
+                insertMarkdown('*', '*');
+                break;
+            case 'k':
+                e.preventDefault();
+                insertMarkdown('[', '](URL)');
+                break;
+        }
+    }
+});
+
+// オートセーブ機能（オプション）
+let autoSaveTimeout;
+document.getElementById('body').addEventListener('input', function() {
+    clearTimeout(autoSaveTimeout);
+    autoSaveTimeout = setTimeout(() => {
+        // ここで自動保存の処理を実装可能
+        console.log('Auto-save triggered');
+    }, 5000); // 5秒後に自動保存
+});
 </script>
 {% endblock %}
