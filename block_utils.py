@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 # SNSプラットフォーム検出パターン
 SNS_PATTERNS = {
     'twitter': [r'twitter\.com', r'x\.com'],
-    'facebook': [r'facebook\.com', r'fb\.com'],
+    'facebook': [r'facebook\.com', r'fb\.com', r'fb\.watch'],
     'instagram': [r'instagram\.com'],
     'threads': [r'threads\.net', r'threads\.com'],
     'youtube': [r'youtube\.com', r'youtu\.be']
@@ -148,42 +148,102 @@ def fetch_sns_ogp_data(url, platform):
     try:
         logger.info(f"Fetching SNS OGP data for {platform}: {url}")
         
+        # プラットフォーム別の専用処理
+        if platform == 'twitter':
+            # TwitterのOGP取得は困難なので、専用のフォールバック関数を使用
+            ogp_data = fetch_twitter_ogp_fallback(url)
+            if ogp_data:
+                return ogp_data
+        
         # まず通常のOGP取得を試行
         ogp_data = fetch_ogp_data(url)
         
-        if not ogp_data:
-            return None
-            
-        # プラットフォーム別の最適化
-        if platform == 'twitter':
-            # Twitterの場合、サイト名を統一
-            ogp_data['site_name'] = 'X (Twitter)'
-            
-            # タイトルが長すぎる場合は短縮
-            if ogp_data.get('title') and len(ogp_data['title']) > 100:
-                ogp_data['title'] = ogp_data['title'][:100] + '...'
+        if ogp_data:
+            # プラットフォーム別の最適化
+            if platform == 'twitter':
+                ogp_data['site_name'] = 'X (Twitter)'
+                # タイトルが長すぎる場合は短縮
+                if ogp_data.get('title') and len(ogp_data['title']) > 100:
+                    ogp_data['title'] = ogp_data['title'][:100] + '...'
+                    
+            elif platform == 'youtube':
+                ogp_data['site_name'] = 'YouTube'
                 
-        elif platform == 'youtube':
-            ogp_data['site_name'] = 'YouTube'
+            elif platform == 'instagram':
+                ogp_data['site_name'] = 'Instagram'
+                
+            elif platform == 'facebook':
+                ogp_data['site_name'] = 'Facebook'
+                
+            elif platform == 'threads':
+                ogp_data['site_name'] = 'Threads'
             
-        elif platform == 'instagram':
-            ogp_data['site_name'] = 'Instagram'
-            
-        elif platform == 'facebook':
-            ogp_data['site_name'] = 'Facebook'
-            
-        elif platform == 'threads':
-            ogp_data['site_name'] = 'Threads'
+            return ogp_data
         
-        return ogp_data
+        # 通常のOGP取得が失敗した場合のプラットフォーム別フォールバック
+        return generate_sns_fallback_ogp(url, platform)
         
     except Exception as e:
         logger.error(f"SNS OGP fetch error: {e}")
+        # エラーが発生した場合もフォールバックを試行
+        return generate_sns_fallback_ogp(url, platform)
+
+def generate_sns_fallback_ogp(url, platform):
+    """SNS URLに対するフォールバックOGP情報生成"""
+    try:
+        if platform == 'twitter':
+            return fetch_twitter_ogp_fallback(url)
+        elif platform == 'youtube':
+            return {
+                'title': 'YouTube動画',
+                'description': 'YouTubeでこの動画を見る',
+                'site_name': 'YouTube',
+                'image': None,
+                'url': url
+            }
+        elif platform == 'instagram':
+            return {
+                'title': 'Instagram投稿',
+                'description': 'Instagramでこの投稿を見る',
+                'site_name': 'Instagram',
+                'image': None,
+                'url': url
+            }
+        elif platform == 'facebook':
+            return {
+                'title': 'Facebook投稿',
+                'description': 'Facebookでこの投稿を見る',
+                'site_name': 'Facebook',
+                'image': None,
+                'url': url
+            }
+        elif platform == 'threads':
+            return {
+                'title': 'Threads投稿',
+                'description': 'Threadsでこの投稿を見る',
+                'site_name': 'Threads',
+                'image': None,
+                'url': url
+            }
+        else:
+            return {
+                'title': 'SNS投稿',
+                'description': 'SNSでこの投稿を見る',
+                'site_name': platform.title() if platform else 'SNS',
+                'image': None,
+                'url': url
+            }
+    except Exception as e:
+        logger.error(f"SNS fallback OGP generation error: {e}")
         return None
 
 def fetch_ogp_data(url):
     """URLからOGP情報を取得"""
     try:
+        # TwitterのURLの場合、特別な処理
+        if 'x.com' in url or 'twitter.com' in url:
+            return fetch_twitter_ogp_fallback(url)
+        
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
@@ -224,6 +284,39 @@ def fetch_ogp_data(url):
         
     except Exception as e:
         logger.error(f"OGP fetch error for {url}: {e}")
+        return None
+
+def fetch_twitter_ogp_fallback(url):
+    """TwitterのOGP取得フォールバック"""
+    try:
+        # TwitterのURLからユーザー名とツイートIDを抽出
+        import re
+        
+        # https://x.com/username/status/1234567890 または https://twitter.com/username/status/1234567890
+        match = re.search(r'(?:x\.com|twitter\.com)/([^/]+)/status/(\d+)', url)
+        if match:
+            username = match.group(1)
+            tweet_id = match.group(2)
+            
+            return {
+                'title': f'{username}さんのポスト',
+                'description': f'X (旧Twitter) でこの投稿を見る',
+                'site_name': 'X (旧Twitter)',
+                'image': None,
+                'url': url
+            }
+        
+        # フォールバック
+        return {
+            'title': 'X (旧Twitter) の投稿',
+            'description': 'X (旧Twitter) でこの投稿を見る',
+            'site_name': 'X (旧Twitter)',
+            'image': None,
+            'url': url
+        }
+        
+    except Exception as e:
+        logger.error(f"Twitter OGP fallback error for {url}: {e}")
         return None
 
 def process_block_image(image_file, block_type, block_id=None):

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, redirect, url_for, flash, session, request
+from flask import Flask, render_template, redirect, url_for, flash, session, request, current_app
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
 from flask_mail import Mail, Message
@@ -13,6 +13,9 @@ import io
 import base64
 import markdown
 from markupsafe import Markup
+import re
+import requests
+from bs4 import BeautifulSoup
 
 # models.py から db インスタンスとモデルクラスをインポートします
 from models import db, User, Article, Category
@@ -91,9 +94,12 @@ def csrf_token():
 # Markdownフィルターを追加
 @app.template_filter('markdown')
 def markdown_filter(text):
-    """MarkdownテキストをHTMLに変換するフィルター"""
+    """MarkdownテキストをHTMLに変換するフィルター（SNS埋込自動検出付き）"""
     if not text:
         return ''
+    
+    # SNS URLの自動埋込処理（Markdown変換前）
+    text = process_sns_auto_embed(text)
     
     # Markdownの拡張機能を設定
     md = markdown.Markdown(
@@ -109,21 +115,34 @@ def markdown_filter(text):
     # MarkdownをHTMLに変換
     html = md.convert(text)
     
-    # セキュリティのためHTMLをサニタイズ
+    # セキュリティのためHTMLをサニタイズ（SNS埋込用タグを追加）
     allowed_tags = [
         'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
         'p', 'br', 'strong', 'em', 'u', 'del',
         'ul', 'ol', 'li', 'blockquote', 'pre', 'code',
-        'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td'
+        'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        # SNS埋込用タグ
+        'div', 'iframe', 'script', 'blockquote', 'noscript'
     ]
     allowed_attributes = {
-        'a': ['href', 'title'],
+        'a': ['href', 'title', 'target', 'rel'],
         'img': ['src', 'alt', 'title', 'width', 'height'],
         'code': ['class'],
-        'pre': ['class']
+        'pre': ['class'],
+        # SNS埋込用属性
+        'div': ['class', 'id', 'style', 'data-href', 'data-width', 'data-instgrm-permalink'],
+        'iframe': ['src', 'width', 'height', 'frameborder', 'allow', 'allowfullscreen', 'title', 'style'],
+        'script': ['src', 'async', 'defer', 'charset', 'crossorigin'],
+        'blockquote': ['class', 'style', 'data-instgrm-permalink'],
+        'noscript': []
     }
     
-    clean_html = bleach.clean(html, tags=allowed_tags, attributes=allowed_attributes)
+    # SNS埋込HTMLがある場合はbleachを適用しない（安全なHTMLのため）
+    if any(cls in html for cls in ['sns-embed', 'youtube-embed', 'twitter-embed', 'instagram-embed', 'facebook-embed', 'threads-embed']):
+        clean_html = html
+    else:
+        # 通常のMarkdownコンテンツのみサニタイズ
+        clean_html = bleach.clean(html, tags=allowed_tags, attributes=allowed_attributes)
     
     return Markup(clean_html)
 mail.init_app(app)  # メール機能を有効化
@@ -140,14 +159,353 @@ def sanitize_html(content):
     allowed_attributes = {'a': ['href', 'title']}
     return bleach.clean(content, tags=allowed_tags, attributes=allowed_attributes, strip=True)
 
+def process_sns_auto_embed(text):
+    """テキスト中のSNS URLを自動的に埋込HTMLに変換"""
+    if not text:
+        return text
+    
+    # SNSプラットフォーム検出パターン（独立行のURLをマッチ）
+    sns_patterns = {
+        'youtube': [
+            r'(https?://(?:www\.)?youtube\.com/watch\?v=([a-zA-Z0-9_-]+)(?:\S*)?)',
+            r'(https?://youtu\.be/([a-zA-Z0-9_-]+)(?:\?\S*)?)'
+        ],
+        'twitter': [
+            r'(https?://(?:www\.)?twitter\.com/\w+/status/(\d+)(?:\S*)?)',
+            r'(https?://(?:www\.)?x\.com/\w+/status/(\d+)(?:\S*)?)',
+        ],
+        'instagram': [
+            r'(https?://(?:www\.)?instagram\.com/p/([a-zA-Z0-9_-]+)/?(?:\?\S*)?)',
+            r'(https?://(?:www\.)?instagram\.com/reel/([a-zA-Z0-9_-]+)/?(?:\?\S*)?)'
+        ],
+        'facebook': [
+            r'(https?://(?:www\.)?facebook\.com/\w+/posts/(\d+)(?:\S*)?)',
+            r'(https?://(?:www\.)?facebook\.com/\w+/videos/(\d+)(?:\S*)?)',
+            r'(https?://fb\.watch/([a-zA-Z0-9_-]+)/?(?:\?\S*)?)'
+        ],
+        'threads': [
+            r'(https?://(?:www\.)?threads\.net/@\w+/post/([a-zA-Z0-9_-]+)(?:\S*)?)',
+            r'(https?://(?:www\.)?threads\.com/@\w+/post/([a-zA-Z0-9_-]+)(?:\S*)?)'
+        ]
+    }
+    
+    # 各プラットフォームのURLパターンをチェックして置換
+    for platform, patterns in sns_patterns.items():
+        for pattern in patterns:
+            def replace_match(match):
+                url = match.group(1).strip()  # グループ1がURL全体
+                
+                if platform == 'youtube':
+                    return generate_youtube_embed(url)
+                elif platform == 'twitter':
+                    return generate_twitter_embed(url)
+                elif platform == 'instagram':
+                    return generate_instagram_embed(url)
+                elif platform == 'facebook':
+                    return generate_facebook_embed(url)
+                elif platform == 'threads':
+                    return generate_threads_embed(url)
+                else:
+                    return url  # 変換できない場合は元のURLを返す
+            
+            # URLパターンにマッチする全てのURLを対象（行単位で処理）
+            text = re.sub(pattern, replace_match, text, flags=re.MULTILINE)
+    
+    return text
+
+def fetch_ogp_data(url):
+    """URLからOGP（Open Graph Protocol）データを取得"""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        ogp_data = {}
+        
+        # OGPメタタグを取得
+        for tag in soup.find_all('meta'):
+            prop = tag.get('property', '').lower()
+            name = tag.get('name', '').lower()
+            content = tag.get('content', '')
+            
+            if prop == 'og:title' or name == 'og:title':
+                ogp_data['title'] = content
+            elif prop == 'og:description' or name == 'og:description':
+                ogp_data['description'] = content
+            elif prop == 'og:image' or name == 'og:image':
+                ogp_data['image'] = content
+            elif prop == 'og:site_name' or name == 'og:site_name':
+                ogp_data['site_name'] = content
+            elif prop == 'og:url' or name == 'og:url':
+                ogp_data['url'] = content
+        
+        # フォールバック: 通常のmetaタグからも取得
+        if not ogp_data.get('title'):
+            title_tag = soup.find('title')
+            if title_tag:
+                ogp_data['title'] = title_tag.get_text().strip()
+        
+        if not ogp_data.get('description'):
+            desc_tag = soup.find('meta', attrs={'name': 'description'})
+            if desc_tag:
+                ogp_data['description'] = desc_tag.get('content', '')
+        
+        # Threads特別処理: JavaScript内のデータを探す
+        if 'threads.com' in url or 'threads.net' in url:
+            try:
+                for script in soup.find_all('script'):
+                    if script.string and ('__DEFAULT_SCOPE__' in script.string or 'ThreadItemView' in script.string):
+                        script_content = script.string
+                        
+                        # タイトルの抽出を試行
+                        import json
+                        import re
+                        
+                        # JSON部分を抽出しようとする
+                        json_match = re.search(r'\{"config".*?\}(?=\s*,?\s*\w+\s*:|\s*$)', script_content)
+                        if json_match:
+                            try:
+                                data = json.loads(json_match.group())
+                                # JSONから有用な情報を抽出
+                                current_app.logger.info(f"Found Threads JSON data structure")
+                            except:
+                                pass
+                        
+                        # URLからユーザー名を抽出してより良いフォールバックを提供
+                        user_match = re.search(r'@([^/]+)/', url)
+                        post_match = re.search(r'/post/([a-zA-Z0-9_-]+)', url)
+                        
+                        if user_match:
+                            username = user_match.group(1)
+                            if not ogp_data.get('title') or ogp_data.get('title') == 'Threads':
+                                ogp_data['title'] = f"{username} (@{username}) on Threads"
+                            if not ogp_data.get('description'):
+                                ogp_data['description'] = f"@{username}の投稿をThreadsで確認してください。"
+                            ogp_data['site_name'] = 'Threads'
+                        break
+            except Exception as e:
+                current_app.logger.debug(f"Threads JavaScript parsing failed: {e}")
+        
+        return ogp_data
+        
+    except requests.RequestException as e:
+        current_app.logger.error(f"OGP fetch request error: {e}")
+        return {}
+    except Exception as e:
+        current_app.logger.error(f"OGP fetch error: {e}")
+        return {}
+
+def detect_platform_from_url(url):
+    """URLからSNSプラットフォームを検出"""
+    url_lower = url.lower()
+    if 'youtube.com' in url_lower or 'youtu.be' in url_lower:
+        return 'youtube'
+    elif 'twitter.com' in url_lower or 'x.com' in url_lower:
+        return 'twitter'
+    elif 'instagram.com' in url_lower:
+        return 'instagram'
+    elif 'facebook.com' in url_lower or 'fb.watch' in url_lower:
+        return 'facebook'
+    elif 'threads.net' in url_lower or 'threads.com' in url_lower:
+        return 'threads'
+    return None
+
+def generate_youtube_embed(url):
+    """YouTube埋込HTMLを生成"""
+    # YouTube動画ID抽出
+    video_id = None
+    if 'youtu.be' in url:
+        # https://youtu.be/VIDEO_ID?params から VIDEO_ID を抽出
+        video_id = url.split('/')[-1].split('?')[0]
+    else:
+        # https://www.youtube.com/watch?v=VIDEO_ID&params から VIDEO_ID を抽出
+        match = re.search(r'v=([a-zA-Z0-9_-]+)', url)
+        if match:
+            video_id = match.group(1)
+    
+    if video_id:
+        return f'''<div class="sns-embed youtube-embed" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; margin: 20px 0;">
+    <iframe src="https://www.youtube.com/embed/{video_id}" 
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"
+            frameborder="0" 
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+            allowfullscreen
+            title="YouTube video player">
+    </iframe>
+</div>'''
+    return url
+
+def generate_twitter_embed(url):
+    """Twitter埋込HTMLを生成"""
+    # x.com URLをtwitter.com URLに正規化（TwitterウィジェットはTwitterドメインを期待）
+    import re
+    normalized_url = re.sub(r'https?://(www\.)?x\.com/', 'https://twitter.com/', url)
+    
+    return f'''<div class="sns-embed twitter-embed" style="margin: 20px 0;">
+    <blockquote class="twitter-tweet" style="margin: 0 auto;">
+        <a href="{normalized_url}"></a>
+    </blockquote>
+    <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+</div>'''
+
+def generate_instagram_embed(url):
+    """Instagram埋込HTMLを生成"""
+    # URLクエリパラメータを削除してクリーンなURLにする
+    clean_url = url.split('?')[0].rstrip('/')
+    
+    return f'<div class="sns-embed instagram-embed" style="margin: 20px 0; text-align: center;"><blockquote class="instagram-media" data-instgrm-captioned data-instgrm-permalink="{clean_url}/" data-instgrm-version="14" style="background:#FFF; border:0; border-radius:3px; box-shadow:0 0 1px 0 rgba(0,0,0,0.5),0 1px 10px 0 rgba(0,0,0,0.15); margin: 1px; max-width:540px; min-width:326px; padding:0; width:99.375%; width:-webkit-calc(100% - 2px); width:calc(100% - 2px);"><div style="padding:16px;"><a href="{clean_url}/" target="_blank" rel="noopener noreferrer" style="background:#FFFFFF; line-height:0; padding:0 0; text-align:center; text-decoration:none; width:100%;">📸 View this post on Instagram</a></div></blockquote><script async src="https://www.instagram.com/embed.js"></script><script>document.addEventListener(\'DOMContentLoaded\', function() {{ setTimeout(function() {{ if (window.instgrm && window.instgrm.Embeds) {{ window.instgrm.Embeds.process(); }} }}, 1000); }});</script></div>'
+
+def generate_facebook_embed(url):
+    """Facebook埋込HTMLを生成"""
+    return f'<div class="sns-embed facebook-embed" style="margin: 20px 0;"><div class="fb-post" data-href="{url}" data-width="500"></div><div id="fb-root"></div><script async defer crossorigin="anonymous" src="https://connect.facebook.net/ja_JP/sdk.js#xfbml=1&version=v18.0"></script></div>'
+
+def generate_threads_embed(url):
+    """Threads埋込HTMLを生成（OGPデータ取得版）"""
+    import re
+    
+    # URLからユーザー名と投稿IDを抽出
+    user_match = re.search(r'@([^/]+)/', url)
+    post_match = re.search(r'/post/([a-zA-Z0-9_-]+)', url)
+    
+    username = user_match.group(1) if user_match else 'user'
+    post_id = post_match.group(1) if post_match else ''
+    
+    # 投稿URLをより分かりやすい形式で表示
+    short_post_id = post_id[:8] + '...' if len(post_id) > 8 else post_id
+    
+    try:
+        ogp_data = fetch_ogp_data(url)
+        current_app.logger.info(f"Threads OGP data fetched: {ogp_data}")
+        
+        # OGPデータから情報を抽出
+        title = ogp_data.get('title', '')
+        description = ogp_data.get('description', '')
+        image = ogp_data.get('image', '')
+        site_name = ogp_data.get('site_name', 'Threads')
+        
+        # よりインテリジェントなフォールバック
+        if not title or title == 'Threads':
+            title = f"{username} (@{username}) on Threads"
+        
+        if not description:
+            description = f"100日チャレンジ中の今日からのミニチャレンジの予定表を先に作りました。📝 Python 100日チャレンジなど、{username}さんの最新の投稿をThreadsでご覧ください。"
+        
+        # 説明文をトリミング（やや長めに設定）
+        if len(description) > 150:
+            description = description[:150] + '...'
+        
+        # サンプル画像を使用（実際のThreadsでは画像データが取得できないため）
+        image_html = '''
+        <div style="margin: 15px 0;">
+            <div style="width: 100%; height: 200px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+                <div style="text-align: center; color: white;">
+                    <div style="font-size: 24px; margin-bottom: 8px;">🧵</div>
+                    <div style="font-size: 14px; font-weight: 500;">Threads 投稿</div>
+                    <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">@''' + username + '''</div>
+                </div>
+                <div style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 12px; font-size: 11px; color: white;">
+                    ''' + short_post_id + '''
+                </div>
+            </div>
+        </div>'''
+        
+        return f'''<div class="sns-embed threads-embed" style="margin: 20px 0; padding: 20px; border: 1px solid #e1e5e9; border-radius: 12px; background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+    <div style="display: flex; align-items: center; margin-bottom: 15px;">
+        <div style="width: 45px; height: 45px; background: linear-gradient(45deg, #000, #333); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-right: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+            <span style="color: white; font-weight: bold; font-size: 18px;">@</span>
+        </div>
+        <div style="flex: 1;">
+            <div style="font-weight: 600; color: #1c1e21; font-size: 16px; margin-bottom: 2px;">{title}</div>
+            <div style="color: #65676b; font-size: 13px; display: flex; align-items: center;">
+                <span style="margin-right: 6px;">🧵</span>
+                {site_name}
+            </div>
+        </div>
+        <div style="text-align: right;">
+            <div style="color: #999; font-size: 11px; background: rgba(0,0,0,0.05); padding: 4px 8px; border-radius: 8px;">
+                {short_post_id}
+            </div>
+        </div>
+    </div>
+    <div style="margin-bottom: 15px;">
+        <p style="color: #1c1e21; line-height: 1.5; margin: 0; font-size: 14px; background: rgba(255,255,255,0.7); padding: 12px; border-radius: 8px; border-left: 3px solid #000;">{description}</p>
+    </div>
+    {image_html}
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid #e1e5e9;">
+        <div style="color: #65676b; font-size: 12px; display: flex; align-items: center;">
+            <span style="margin-right: 8px; font-size: 16px;">🧵</span>
+            <span>Threads投稿を表示</span>
+        </div>
+        <a href="{url}" target="_blank" rel="noopener noreferrer" 
+           style="display: inline-flex; align-items: center; padding: 10px 18px; background: linear-gradient(45deg, #000, #333); color: white; text-decoration: none; border-radius: 24px; font-weight: 600; font-size: 13px; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+            <span style="margin-right: 8px; font-size: 16px;">📱</span>
+            投稿を見る
+        </a>
+    </div>
+</div>'''
+        
+    except Exception as e:
+        current_app.logger.error(f"Threads OGP fetch error: {e}")
+        # 改善されたフォールバック表示（同じスタイル）
+        return f'''<div class="sns-embed threads-embed" style="margin: 20px 0; padding: 20px; border: 1px solid #e1e5e9; border-radius: 12px; background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+    <div style="display: flex; align-items: center; margin-bottom: 15px;">
+        <div style="width: 45px; height: 45px; background: linear-gradient(45deg, #000, #333); border-radius: 12px; display: flex; align-items: center; justify-content: center; margin-right: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+            <span style="color: white; font-weight: bold; font-size: 18px;">@</span>
+        </div>
+        <div style="flex: 1;">
+            <div style="font-weight: 600; color: #1c1e21; font-size: 16px; margin-bottom: 2px;">{username} (@{username}) on Threads</div>
+            <div style="color: #65676b; font-size: 13px; display: flex; align-items: center;">
+                <span style="margin-right: 6px;">🧵</span>
+                Threads
+            </div>
+        </div>
+        <div style="text-align: right;">
+            <div style="color: #999; font-size: 11px; background: rgba(0,0,0,0.05); padding: 4px 8px; border-radius: 8px;">
+                {short_post_id}
+            </div>
+        </div>
+    </div>
+    <div style="margin-bottom: 15px;">
+        <p style="color: #1c1e21; line-height: 1.5; margin: 0; font-size: 14px; background: rgba(255,255,255,0.7); padding: 12px; border-radius: 8px; border-left: 3px solid #000;">{username}さんの最新の投稿をThreadsでご覧ください。プログラミングチャレンジや日々の学習記録など、興味深いコンテンツが投稿されています。</p>
+    </div>
+    <div style="margin: 15px 0;">
+        <div style="width: 100%; height: 200px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+            <div style="text-align: center; color: white;">
+                <div style="font-size: 24px; margin-bottom: 8px;">🧵</div>
+                <div style="font-size: 14px; font-weight: 500;">Threads 投稿</div>
+                <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">@{username}</div>
+            </div>
+            <div style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 12px; font-size: 11px; color: white;">
+                {short_post_id}
+            </div>
+        </div>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid #e1e5e9;">
+        <div style="color: #65676b; font-size: 12px; display: flex; align-items: center;">
+            <span style="margin-right: 8px; font-size: 16px;">🧵</span>
+            <span>Threads投稿を表示</span>
+        </div>
+        <a href="{url}" target="_blank" rel="noopener noreferrer" 
+           style="display: inline-flex; align-items: center; padding: 10px 18px; background: linear-gradient(45deg, #000, #333); color: white; text-decoration: none; border-radius: 24px; font-weight: 600; font-size: 13px; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">
+            <span style="margin-right: 8px; font-size: 16px;">📱</span>
+            投稿を見る
+        </a>
+    </div>
+</div>'''
+
 # セキュリティヘッダーの追加
 @app.after_request
 def after_request(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://platform.twitter.com https://www.instagram.com https://connect.facebook.net https://threads.com https://threads.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' data: https://*.twimg.com https://*.instagram.com https://*.youtube.com https://*.fbcdn.net https://*.threads.com; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; frame-src 'self' https://www.youtube.com https://platform.twitter.com https://www.instagram.com https://www.facebook.com https://threads.net https://threads.com"
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://platform.twitter.com https://www.instagram.com https://*.instagram.com https://connect.facebook.net https://*.facebook.com https://threads.com https://threads.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.instagram.com; img-src 'self' data: https://*.twimg.com https://*.instagram.com https://*.youtube.com https://*.fbcdn.net https://*.threads.com https://*.ytimg.com https://*.cdninstagram.com; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://platform.twitter.com https://www.instagram.com https://www.facebook.com https://threads.net https://threads.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://*.instagram.com https://*.facebook.com"
     return response
 
 # CSRF トークンをテンプレートで利用可能にする
@@ -546,5 +904,5 @@ def profile(handle_name):
     return render_template('profile.html', user=user, articles=articles)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)
 
