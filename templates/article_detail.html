@@ -1,11 +1,12 @@
 {% extends "layout.html" %}
+{% from 'macros/block_macros.html' import render_block_content %}
 
 {% block title %}{{ article.title }} - ミニブログ{% endblock %}
-{% block description %}{{ (article.body | striptags | truncate(160, True)) if article.body else (article.summary or 'プログラミング、テック、ライフスタイルに関する最新記事をお届けします。') }}{% endblock %}
+{% block description %}{{ (article.body | markdown | striptags | truncate(160, True)) if article.body else (article.summary or 'プログラミング、テック、ライフスタイルに関する最新記事をお届けします。') }}{% endblock %}
 {% block keywords %}{{ article.meta_keywords if article.meta_keywords else 'ブログ,記事' }}{% endblock %}
 
 {% block og_title %}{{ article.title }}{% endblock %}
-{% block og_description %}{{ (article.body | striptags | truncate(160, True)) if article.body else (article.summary or 'プログラミング、テック、ライフスタイルに関する最新記事をお届けします。') }}{% endblock %}
+{% block og_description %}{{ (article.body | markdown | striptags | truncate(160, True)) if article.body else (article.summary or 'プログラミング、テック、ライフスタイルに関する最新記事をお届けします。') }}{% endblock %}
 {% block og_type %}article{% endblock %}
 
 {% block content %}
@@ -108,7 +109,7 @@
                     {% endif %}
                 {% else %}
                     <!-- 従来型記事 -->
-                    {{ article.body | safe }}
+                    {{ article.body | markdown | safe }}
                 {% endif %}
             </div>
 

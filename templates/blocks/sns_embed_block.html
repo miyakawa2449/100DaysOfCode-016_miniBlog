@@ -7,7 +7,7 @@
     <div class="block-content">
         {% set display_mode = block.get_settings_json().get('display_mode', 'embed') %}
         
-        {% if display_mode == 'ogp_card' and block.ogp_title %}
+        {% if display_mode == 'ogp_card' %}
             <!-- OGPカード表示モード -->
             <div class="sns-ogp-card sns-{{ block.embed_platform or 'unknown' }}">
                 <a href="{{ block.embed_url or block.ogp_url }}" target="_blank" rel="noopener noreferrer" class="sns-ogp-link">
@@ -20,10 +20,14 @@
                     <div class="sns-ogp-info">
                         {% if block.ogp_title %}
                         <h4 class="sns-ogp-title">{{ block.ogp_title }}</h4>
+                        {% else %}
+                        <h4 class="sns-ogp-title">{{ block.embed_platform|title or 'SNS' }} 投稿</h4>
                         {% endif %}
                         
                         {% if block.ogp_description %}
                         <p class="sns-ogp-description">{{ block.ogp_description | truncate(150) }}</p>
+                        {% else %}
+                        <p class="sns-ogp-description">{{ block.embed_url }}</p>
                         {% endif %}
                         
                         <div class="sns-ogp-meta">
@@ -46,26 +50,27 @@
                 </a>
             </div>
             
-        {% elif block.embed_html %}
-            <!-- 従来の埋込表示モード -->
-            <div class="sns-embed-container sns-{{ block.embed_platform or 'unknown' }}">
-                {{ block.embed_html | safe }}
-            </div>
-            
         {% elif block.embed_url %}
-            <!-- フォールバック表示 -->
-            <div class="sns-embed-fallback">
-                <a href="{{ block.embed_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary">
-                    <i class="fa fa-external-link me-2"></i>
-                    {% if block.embed_platform == 'twitter' %}X (Twitter)で見る
-                    {% elif block.embed_platform == 'facebook' %}Facebookで見る
-                    {% elif block.embed_platform == 'instagram' %}Instagramで見る
-                    {% elif block.embed_platform == 'threads' %}Threadsで見る
-                    {% elif block.embed_platform == 'youtube' %}YouTubeで見る
-                    {% else %}SNS投稿を見る
-                    {% endif %}
-                </a>
-            </div>
+            {% if block.embed_html %}
+                <!-- 従来の埋込表示モード -->
+                <div class="sns-embed-container sns-{{ block.embed_platform or 'unknown' }}">
+                    {{ block.embed_html | safe }}
+                </div>
+            {% else %}
+                <!-- フォールバック表示 -->
+                <div class="sns-embed-fallback">
+                    <a href="{{ block.embed_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary">
+                        <i class="fa fa-external-link me-2"></i>
+                        {% if block.embed_platform == 'twitter' %}X (Twitter)で見る
+                        {% elif block.embed_platform == 'facebook' %}Facebookで見る
+                        {% elif block.embed_platform == 'instagram' %}Instagramで見る
+                        {% elif block.embed_platform == 'threads' %}Threadsで見る
+                        {% elif block.embed_platform == 'youtube' %}YouTubeで見る
+                        {% else %}SNS投稿を見る
+                        {% endif %}
+                    </a>
+                </div>
+            {% endif %}
         {% else %}
             <div class="text-muted">SNS投稿URLが設定されていません</div>
         {% endif %}

@@ -854,6 +854,34 @@ function initializeBlockForm() {
     // 画像プレビュー、トリミング機能など
 }
 
+function updateBlockAfterSave(data) {
+    // ブロックの表示を更新
+    if (currentEditingBlock && data.block_html) {
+        const blockElement = document.querySelector(`[data-block-id="${currentEditingBlock}"]`);
+        if (blockElement) {
+            blockElement.outerHTML = data.block_html;
+        }
+    }
+    
+    // プレビューエリアを更新
+    if (currentEditingBlock && data.preview_html) {
+        updateBlockPreview(currentEditingBlock, data.preview_html);
+    }
+    
+    // 記事のプレビューを更新
+    updateArticlePreview();
+}
+
+function updateArticlePreview() {
+    // 記事全体のプレビューを更新する関数
+    // プレビューエリアの全体的な更新処理
+    const previewArea = document.getElementById('article-preview');
+    if (previewArea) {
+        // ここで記事全体のプレビューを更新する処理を実装
+        console.log('Article preview updated');
+    }
+}
+
 function initializeAutoSlug() {
     const titleField = document.getElementById('title');
     const slugField = document.getElementById('slug');
@@ -1108,6 +1136,280 @@ function previewArticle() {
         window.open('{{ url_for("admin.article_preview", article_id=article.id if article else 0) }}', '_blank');
     } else {
         alert('記事を保存してからプレビューしてください');
+    }
+}
+
+// モーダル内のフォーム用のJavaScript関数
+function saveBlockFromModal() {
+    const form = document.getElementById('blockEditContent').querySelector('#blockEditForm');
+    if (!form) {
+        alert('フォームが見つかりません');
+        return;
+    }
+    
+    const formData = new FormData(form);
+    
+    fetch('/admin/api/block/save', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // ブロックリストを更新
+            if (data.block_html && currentEditingBlock) {
+                updateBlockAfterSave(data);
+            }
+            
+            // モーダルを閉じる
+            const modal = bootstrap.Modal.getInstance(document.getElementById('blockEditModal'));
+            if (modal) {
+                modal.hide();
+            }
+            
+            alert('ブロックが保存されました');
+        } else {
+            alert('ブロックの保存に失敗しました: ' + (data.error || '不明なエラー'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('ブロックの保存中にエラーが発生しました');
+    });
+}
+
+function fetchSNSOGPPreview() {
+    const modalContent = document.getElementById('blockEditContent');
+    const urlInput = modalContent.querySelector('#embed_url');
+    
+    if (!urlInput) {
+        alert('URLフィールドが見つかりません');
+        return;
+    }
+    
+    const url = urlInput.value.trim();
+    
+    if (!url) {
+        alert('SNS投稿URLを入力してください');
+        return;
+    }
+    
+    if (!isValidURL(url)) {
+        alert('有効なURLを入力してください');
+        return;
+    }
+    
+    // ローディング表示
+    const button = modalContent.querySelector('#fetchOGPBtn');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i>取得中...';
+    button.disabled = true;
+    
+    // CSRFトークンを取得
+    const csrfToken = modalContent.querySelector('input[name="csrf_token"]');
+    if (!csrfToken) {
+        alert('CSRFトークンが見つかりません');
+        button.innerHTML = originalText;
+        button.disabled = false;
+        return;
+    }
+    
+    // サーバーサイドのOGP取得APIを呼び出し
+    fetch('/admin/api/fetch-ogp', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken.value
+        },
+        body: JSON.stringify({ url: url })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            displaySNSOGPPreview(data.ogp_data, modalContent);
+            fillSNSOGPFields(data.ogp_data, modalContent);
+            
+            // OGPカード表示モードに自動切り替え
+            const ogpCardRadio = modalContent.querySelector('#display_mode_ogp');
+            if (ogpCardRadio) {
+                ogpCardRadio.checked = true;
+                toggleOGPCardSettings(modalContent);
+            }
+        } else {
+            alert('OGP情報の取得に失敗しました: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('SNS OGP fetch error:', error);
+        alert('OGP情報の取得中にエラーが発生しました');
+    })
+    .finally(() => {
+        // ボタンを元に戻す
+        button.innerHTML = originalText;
+        button.disabled = false;
+    });
+}
+
+function fetchOGPPreview() {
+    const modalContent = document.getElementById('blockEditContent');
+    const urlInput = modalContent.querySelector('#external_url');
+    
+    if (!urlInput) {
+        alert('URLフィールドが見つかりません');
+        return;
+    }
+    
+    const url = urlInput.value.trim();
+    
+    if (!url) {
+        alert('URLを入力してください');
+        return;
+    }
+    
+    if (!isValidURL(url)) {
+        alert('有効なURLを入力してください');
+        return;
+    }
+    
+    // ローディング表示 - ボタンを正しく取得
+    const button = modalContent.querySelector('button[onclick*="fetchOGPPreview"]');
+    const originalText = button.innerHTML;
+    button.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i>取得中...';
+    button.disabled = true;
+    
+    // CSRFトークンを取得
+    const csrfToken = modalContent.querySelector('input[name="csrf_token"]');
+    if (!csrfToken) {
+        alert('CSRFトークンが見つかりません');
+        button.innerHTML = originalText;
+        button.disabled = false;
+        return;
+    }
+    
+    // サーバーサイドのOGP取得APIを呼び出し
+    fetch('/admin/api/fetch-ogp', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken.value
+        },
+        body: JSON.stringify({ url: url })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            displayOGPPreview(data.ogp_data, modalContent);
+            fillOGPFields(data.ogp_data, modalContent);
+        } else {
+            alert('OGP情報の取得に失敗しました: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('OGP fetch error:', error);
+        alert('OGP情報の取得中にエラーが発生しました');
+    })
+    .finally(() => {
+        // ボタンを元に戻す
+        button.innerHTML = originalText;
+        button.disabled = false;
+    });
+}
+
+function displaySNSOGPPreview(ogpData, context) {
+    const preview = context.querySelector('#snsOgpPreview');
+    const content = context.querySelector('#snsOgpPreviewContent');
+    
+    if (preview && content) {
+        content.innerHTML = `
+            <div class="d-flex">
+                ${ogpData.image ? `<img src="${ogpData.image}" alt="OGP画像" class="me-3" style="width: 80px; height: 80px; object-fit: cover;">` : ''}
+                <div>
+                    <h6 class="mb-1">${ogpData.title || '(タイトルなし)'}</h6>
+                    ${ogpData.description ? `<p class="mb-1 text-muted small">${ogpData.description.substring(0, 100)}${ogpData.description.length > 100 ? '...' : ''}</p>` : ''}
+                    <small class="text-muted">${ogpData.site_name || 'SNS投稿'}</small>
+                </div>
+            </div>
+        `;
+        
+        preview.style.display = 'block';
+    }
+}
+
+function fillSNSOGPFields(ogpData, context) {
+    // 空欄の場合のみ自動入力
+    const titleField = context.querySelector('#sns_ogp_title');
+    const descField = context.querySelector('#sns_ogp_description');
+    const siteField = context.querySelector('#sns_ogp_site_name');
+    const imageField = context.querySelector('#sns_ogp_image');
+    
+    if (titleField && !titleField.value.trim()) {
+        titleField.value = ogpData.title || '';
+    }
+    
+    if (descField && !descField.value.trim()) {
+        descField.value = ogpData.description || '';
+    }
+    
+    if (siteField && !siteField.value.trim()) {
+        siteField.value = ogpData.site_name || '';
+    }
+    
+    if (imageField && !imageField.value.trim()) {
+        imageField.value = ogpData.image || '';
+    }
+}
+
+function displayOGPPreview(ogpData, context) {
+    const preview = context.querySelector('#ogpPreview');
+    const content = context.querySelector('#ogpPreviewContent');
+    
+    content.innerHTML = `
+        <h6 class="card-title">${ogpData.title || '(タイトルなし)'}</h6>
+        <p class="card-text text-muted small">${ogpData.description || '(説明なし)'}</p>
+        <div class="d-flex justify-content-between align-items-center">
+            <small class="text-muted">${ogpData.site_name || '(サイト名なし)'}</small>
+            <small class="text-success"><i class="fa fa-check me-1"></i>取得完了</small>
+        </div>
+    `;
+    
+    preview.style.display = 'block';
+}
+
+function fillOGPFields(ogpData, context) {
+    // 空欄の場合のみ自動入力
+    const titleField = context.querySelector('#ogp_title');
+    const descField = context.querySelector('#ogp_description');
+    const siteField = context.querySelector('#ogp_site_name');
+    
+    if (titleField && !titleField.value.trim()) {
+        titleField.value = ogpData.title || '';
+    }
+    
+    if (descField && !descField.value.trim()) {
+        descField.value = ogpData.description || '';
+    }
+    
+    if (siteField && !siteField.value.trim()) {
+        siteField.value = ogpData.site_name || '';
+    }
+}
+
+function toggleOGPCardSettings(context) {
+    context = context || document;
+    const ogpCardSettings = context.querySelector('#ogpCardSettings');
+    const isOGPCardMode = context.querySelector('#display_mode_ogp') && context.querySelector('#display_mode_ogp').checked;
+    
+    if (ogpCardSettings) {
+        ogpCardSettings.style.display = isOGPCardMode ? 'block' : 'none';
+    }
+}
+
+function isValidURL(string) {
+    try {
+        new URL(string);
+        return true;
+    } catch (_) {
+        return false;
     }
 }
 </script>

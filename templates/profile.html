@@ -134,7 +134,7 @@
                                 </h5>
                                 {% if article.body %}
                                 <p class="card-text text-muted small">
-                                    {{ (article.body|striptags)[:200] }}{% if article.body and (article.body|striptags)|length > 200 %}...{% endif %}
+                                    {{ (article.body | markdown | striptags)[:200] }}{% if article.body and (article.body | markdown | striptags)|length > 200 %}...{% endif %}
                                 </p>
                                 {% endif %}
                                 <div class="d-flex align-items-center">
