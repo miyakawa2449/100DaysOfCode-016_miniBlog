@@ -45,7 +45,7 @@
                                 {% if article.summary %}
                                     {{ article.summary | truncate(100, True) }}
                                 {% else %}
-                                    {{ article.body | markdown | striptags | truncate(100, True) }}
+                                    {{ article.body | striptags | truncate(100, True) }}
                                 {% endif %}
                             </p>
                             <div class="text-muted">

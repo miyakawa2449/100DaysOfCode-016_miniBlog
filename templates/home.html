@@ -50,7 +50,8 @@
                             {% if article.summary %}
                                 {{ article.summary | truncate(100, True) }}
                             {% elif article.body %}
-                                {{ article.body | markdown | striptags | truncate(100, True) }}
+                                {% set plain_text = article.body | striptags | truncate(100, True) %}
+                                {{ plain_text }}
                             {% else %}
                                 記事の概要が設定されていません。
                             {% endif %}
