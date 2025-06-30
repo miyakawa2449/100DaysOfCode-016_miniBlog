@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, session, current_app, jsonify
 from flask_login import login_required, current_user
-from models import db, User, Article, Category, Comment, SiteSetting
+from models import db, User, Article, Category, Comment, SiteSetting, UploadedImage
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
@@ -178,6 +178,169 @@ def process_featured_image(image_file, article_id=None):
             except:
                 pass
         return None
+
+def process_cropped_image(cropped_data, article_id=None):
+    """トリミング後の画像データの処理"""
+    import base64
+    import io
+    
+    try:
+        current_app.logger.info(f"Processing cropped image data for article ID: {article_id}")
+        
+        # Data URLからbase64データを抽出
+        if cropped_data.startswith('data:image'):
+            header, base64_data = cropped_data.split(',', 1)
+        else:
+            base64_data = cropped_data
+        
+        # base64デコード
+        image_data = base64.b64decode(base64_data)
+        
+        # PILで画像を開く
+        img = Image.open(io.BytesIO(image_data))
+        
+        # RGB変換（JPEG保存のため）
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        
+        # ファイル名生成
+        timestamp = int(time.time())
+        filename = f"featured_cropped_{article_id or 'new'}_{timestamp}.jpg"
+        
+        # 保存先ディレクトリ
+        upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'articles')
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder, exist_ok=True)
+            current_app.logger.info(f"Created upload directory: {upload_folder}")
+        
+        image_path = os.path.join(upload_folder, filename)
+        
+        # 画像保存
+        img.save(image_path, format='JPEG', quality=85)
+        current_app.logger.info(f"Cropped image saved: {image_path}")
+        
+        # 相対パスを返す
+        relative_path = os.path.relpath(image_path, current_app.static_folder)
+        current_app.logger.info(f"Returning relative path: {relative_path}")
+        return relative_path
+        
+    except Exception as e:
+        current_app.logger.error(f"Cropped image processing error: {e}")
+        import traceback
+        current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+        return None
+
+def process_uploaded_image(image_file, alt_text="", caption="", description=""):
+    """記事本文用の画像アップロード処理"""
+    import mimetypes
+    
+    if not image_file or not image_file.filename:
+        return None, "画像ファイルが選択されていません。"
+    
+    try:
+        # ファイル名の安全化
+        original_filename = secure_filename(image_file.filename)
+        if not original_filename:
+            return None, "無効なファイル名です。"
+        
+        # 拡張子チェック
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+        file_ext = os.path.splitext(original_filename)[1].lower()
+        if file_ext not in allowed_extensions:
+            return None, f"サポートされていないファイル形式です。対応形式: {', '.join(allowed_extensions)}"
+        
+        # MIMEタイプ検証
+        mime_type, _ = mimetypes.guess_type(original_filename)
+        if not mime_type or not mime_type.startswith('image/'):
+            return None, "画像ファイルではありません。"
+        
+        # ファイルサイズチェック（10MB制限 - トリミング画像対応）
+        image_file.seek(0, 2)  # ファイル末尾に移動
+        file_size = image_file.tell()
+        image_file.seek(0)  # ファイル先頭に戻る
+        
+        max_size = 10 * 1024 * 1024  # 10MB
+        if file_size > max_size:
+            return None, f"ファイルサイズが大きすぎます（最大{max_size // (1024*1024)}MB）。"
+        
+        # ユニークなファイル名生成
+        timestamp = int(time.time())
+        filename = f"content_{current_user.id}_{timestamp}{file_ext}"
+        
+        # 保存先ディレクトリ
+        upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'content')
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder, exist_ok=True)
+        
+        # 一時保存
+        temp_path = os.path.join(upload_folder, f"temp_{filename}")
+        image_file.save(temp_path)
+        
+        # 画像処理とメタデータ取得
+        final_path = os.path.join(upload_folder, filename)
+        width, height = None, None
+        
+        with Image.open(temp_path) as img:
+            width, height = img.size
+            
+            # RGB変換（JPEG保存のため）
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
+            
+            # 大きすぎる画像はリサイズ（最大2000px）
+            max_dimension = 2000
+            if max(width, height) > max_dimension:
+                ratio = max_dimension / max(width, height)
+                new_width = int(width * ratio)
+                new_height = int(height * ratio)
+                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                width, height = new_width, new_height
+            
+            # 最終保存
+            img.save(final_path, format='JPEG' if file_ext in ['.jpg', '.jpeg'] else 'PNG', 
+                    quality=85 if file_ext in ['.jpg', '.jpeg'] else None)
+        
+        # 一時ファイル削除
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        
+        # データベースに保存
+        relative_path = os.path.relpath(final_path, current_app.static_folder)
+        
+        uploaded_image = UploadedImage(
+            filename=filename,
+            original_filename=original_filename,
+            file_path=relative_path,
+            file_size=os.path.getsize(final_path),
+            mime_type=mime_type,
+            width=width,
+            height=height,
+            alt_text=alt_text,
+            caption=caption,
+            description=description,
+            uploader_id=current_user.id
+        )
+        
+        db.session.add(uploaded_image)
+        db.session.commit()
+        
+        current_app.logger.info(f"Image uploaded successfully: {filename}")
+        return uploaded_image, None
+        
+    except Exception as e:
+        current_app.logger.error(f"Image upload error: {e}")
+        import traceback
+        current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # クリーンアップ
+        for cleanup_path in [locals().get('temp_path'), locals().get('final_path')]:
+            if cleanup_path and os.path.exists(cleanup_path):
+                try:
+                    os.remove(cleanup_path)
+                except:
+                    pass
+        
+        return None, "画像のアップロードに失敗しました。"
 
 # デバッグ用のテスト関数（簡易版）
 @admin_bp.route('/debug/simple')
@@ -590,7 +753,24 @@ def create_article():
                 db.session.flush()  # IDを取得するためにflush
                 
                 # アイキャッチ画像の処理（IDが確定した後）
-                if form.featured_image.data and form.featured_image.data.filename:
+                cropped_image_data = request.form.get('cropped_image_data')
+                
+                if cropped_image_data:
+                    # トリミング後の画像データがある場合
+                    try:
+                        current_app.logger.info(f"Processing cropped image data for new article ID: {new_article.id}")
+                        featured_image = process_cropped_image(cropped_image_data, new_article.id)
+                        if featured_image:
+                            new_article.featured_image = featured_image
+                            current_app.logger.info(f"New cropped featured image saved: {featured_image}")
+                        else:
+                            current_app.logger.error("Failed to process cropped featured image")
+                    except Exception as img_error:
+                        current_app.logger.error(f"Cropped image processing error: {img_error}")
+                        flash('トリミング画像の処理中にエラーが発生しましたが、記事は作成されました。', 'warning')
+                        
+                elif form.featured_image.data and form.featured_image.data.filename:
+                    # 通常の画像アップロード
                     try:
                         current_app.logger.info(f"Processing featured image for article ID: {new_article.id}")
                         featured_image = process_featured_image(form.featured_image.data, new_article.id)
@@ -667,7 +847,25 @@ def edit_article(article_id):
                     article.published_at = datetime.utcnow()
                 
                 # アイキャッチ画像の処理
-                if form.featured_image.data and form.featured_image.data.filename:
+                cropped_image_data = request.form.get('cropped_image_data')
+                
+                if cropped_image_data:
+                    # トリミング後の画像データがある場合
+                    current_app.logger.info(f"Processing cropped image data for article ID: {article.id}")
+                    # 古い画像削除
+                    if article.featured_image:
+                        current_app.logger.info(f"Deleting old image: {article.featured_image}")
+                        delete_old_image(article.featured_image)
+                    
+                    featured_image = process_cropped_image(cropped_image_data, article.id)
+                    if featured_image:
+                        article.featured_image = featured_image
+                        current_app.logger.info(f"New cropped featured image saved: {featured_image}")
+                    else:
+                        current_app.logger.error("Failed to process cropped featured image")
+                        
+                elif form.featured_image.data and form.featured_image.data.filename:
+                    # 通常の画像アップロード
                     current_app.logger.info(f"Processing new featured image for article ID: {article.id}")
                     # 古い画像削除
                     if article.featured_image:
@@ -2438,3 +2636,244 @@ def preview_markdown():
     except Exception as e:
         current_app.logger.error(f"Markdown preview error: {e}")
         return f'<p class="text-danger">プレビューエラー: {str(e)}</p>'
+
+@admin_bp.route('/upload_image', methods=['POST'])
+@admin_required
+def upload_image():
+    """画像アップロード用APIエンドポイント"""
+    try:
+        # ファイル取得
+        if 'image' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': '画像ファイルが送信されていません。'
+            }), 400
+        
+        image_file = request.files['image']
+        alt_text = request.form.get('alt_text', '').strip()
+        caption = request.form.get('caption', '').strip()
+        description = request.form.get('description', '').strip()
+        
+        # 画像処理
+        uploaded_image, error = process_uploaded_image(
+            image_file, alt_text, caption, description
+        )
+        
+        if error:
+            return jsonify({
+                'success': False,
+                'error': error
+            }), 400
+        
+        # 成功レスポンス
+        return jsonify({
+            'success': True,
+            'image': {
+                'id': uploaded_image.id,
+                'filename': uploaded_image.filename,
+                'original_filename': uploaded_image.original_filename,
+                'url': uploaded_image.file_url,
+                'alt_text': uploaded_image.alt_text,
+                'caption': uploaded_image.caption,
+                'width': uploaded_image.width,
+                'height': uploaded_image.height,
+                'file_size': uploaded_image.file_size_mb,
+                'markdown': uploaded_image.markdown_syntax
+            }
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Upload image API error: {e}")
+        return jsonify({
+            'success': False,
+            'error': '画像のアップロードに失敗しました。'
+        }), 500
+
+@admin_bp.route('/images', methods=['GET'])
+@admin_required
+def list_images():
+    """アップロード済み画像一覧API"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        search = request.args.get('search', '').strip()
+        
+        # 基本クエリ
+        query = UploadedImage.query.filter_by(is_active=True)
+        
+        # 検索フィルター
+        if search:
+            search_filter = f'%{search}%'
+            query = query.filter(
+                db.or_(
+                    UploadedImage.original_filename.ilike(search_filter),
+                    UploadedImage.alt_text.ilike(search_filter),
+                    UploadedImage.caption.ilike(search_filter),
+                    UploadedImage.description.ilike(search_filter)
+                )
+            )
+        
+        # ページネーション
+        pagination = query.order_by(UploadedImage.upload_date.desc()).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        
+        images = []
+        for img in pagination.items:
+            images.append({
+                'id': img.id,
+                'filename': img.filename,
+                'original_filename': img.original_filename,
+                'url': img.file_url,
+                'alt_text': img.alt_text,
+                'caption': img.caption,
+                'width': img.width,
+                'height': img.height,
+                'file_size': img.file_size_mb,
+                'upload_date': img.upload_date.strftime('%Y-%m-%d %H:%M:%S'),
+                'usage_count': img.usage_count,
+                'markdown': img.markdown_syntax
+            })
+        
+        return jsonify({
+            'success': True,
+            'images': images,
+            'pagination': {
+                'page': pagination.page,
+                'per_page': pagination.per_page,
+                'total': pagination.total,
+                'pages': pagination.pages,
+                'has_prev': pagination.has_prev,
+                'has_next': pagination.has_next
+            }
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"List images API error: {e}")
+        return jsonify({
+            'success': False,
+            'error': '画像一覧の取得に失敗しました。'
+        }), 500
+
+@admin_bp.route('/images/<int:image_id>', methods=['PUT'])
+@admin_required
+def update_image(image_id):
+    """画像情報更新API"""
+    try:
+        image = UploadedImage.query.get_or_404(image_id)
+        
+        # フォームデータから取得
+        alt_text = request.form.get('alt_text', '').strip()
+        caption = request.form.get('caption', '').strip()
+        description = request.form.get('description', '').strip()
+        
+        # バリデーション
+        if not alt_text:
+            return jsonify({
+                'success': False,
+                'error': 'Alt属性は必須です。'
+            }), 400
+        
+        # 更新
+        image.alt_text = alt_text
+        image.caption = caption if caption else None
+        image.description = description if description else None
+        image.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': '画像情報を更新しました。',
+            'image': {
+                'id': image.id,
+                'alt_text': image.alt_text,
+                'caption': image.caption,
+                'description': image.description,
+                'markdown': image.markdown_syntax
+            }
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Update image API error: {e}")
+        return jsonify({
+            'success': False,
+            'error': '画像情報の更新に失敗しました。'
+        }), 500
+
+@admin_bp.route('/images/<int:image_id>', methods=['DELETE'])
+@admin_required
+def delete_image(image_id):
+    """画像削除API"""
+    try:
+        image = UploadedImage.query.get_or_404(image_id)
+        
+        # ファイル削除
+        file_path = os.path.join(current_app.static_folder, image.file_path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        
+        # データベースから削除（論理削除）
+        image.is_active = False
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': '画像を削除しました。'
+        })
+        
+    except Exception as e:
+        current_app.logger.error(f"Delete image API error: {e}")
+        return jsonify({
+            'success': False,
+            'error': '画像の削除に失敗しました。'
+        }), 500
+
+@admin_bp.route('/images_manager/')
+@admin_required
+def images_manager():
+    """画像管理ページ"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        search = request.args.get('search', '').strip()
+        per_page = 12  # グリッド表示のため12個ずつ
+        
+        # 基本クエリ
+        query = UploadedImage.query.filter_by(is_active=True)
+        
+        # 検索フィルター
+        if search:
+            search_filter = f'%{search}%'
+            query = query.filter(
+                db.or_(
+                    UploadedImage.original_filename.ilike(search_filter),
+                    UploadedImage.alt_text.ilike(search_filter),
+                    UploadedImage.caption.ilike(search_filter),
+                    UploadedImage.description.ilike(search_filter)
+                )
+            )
+        
+        # ページネーション
+        images_pagination = query.order_by(UploadedImage.upload_date.desc()).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        
+        # 統計情報
+        total_images = UploadedImage.query.filter_by(is_active=True).count()
+        total_size = db.session.query(func.sum(UploadedImage.file_size)).filter_by(is_active=True).scalar() or 0
+        
+        stats = {
+            'total_images': total_images,
+            'total_size_mb': round(total_size / (1024 * 1024), 2),
+            'search_results': len(images_pagination.items) if search else None
+        }
+        
+        return render_template('admin/images.html',
+                             images=images_pagination,
+                             search=search,
+                             stats=stats)
+                             
+    except Exception as e:
+        current_app.logger.error(f"Images manager error: {e}")
+        flash('画像管理ページの読み込みに失敗しました。', 'danger')
+        return redirect(url_for('admin.dashboard'))
