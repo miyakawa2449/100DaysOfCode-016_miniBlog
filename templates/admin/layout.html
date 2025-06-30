@@ -96,6 +96,14 @@
                     </a>
                 </li>
                 
+                <!-- 画像管理 -->
+                <li class="sidebar-list {{ 'active' if request.endpoint == 'admin.images' else '' }}">
+                    <a href="{{ url_for('admin.images_manager') }}">
+                        <i class="fa fa-images"></i>
+                        <span class="menu-text">画像管理</span>
+                    </a>
+                </li>
+                
                 <!-- セキュリティ -->
                 <li class="sidebar-title">
                     <span>セキュリティ</span>
