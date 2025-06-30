@@ -34,16 +34,19 @@
 | title            | タイトル           | TEXT         | NOT NULL                    |
 | slug             | スラッグ           | TEXT         | UNIQUE, NOT NULL            |
 | summary          | 要約               | TEXT         |                             |
-| description      | ディスクリプション | TEXT         |                             |
-| eyecatch_image   | アイキャッチ画像   | TEXT         | ファイルパス等              |
+| body             | 記事本文           | TEXT         | Markdown形式                |
+| featured_image   | アイキャッチ画像   | TEXT         | ファイルパス（16:9比率）    |
 | status           | 公開ステータス     | TEXT         | draft/published/scheduled/承認待ち |
 | published_at     | 公開日時           | DATETIME     |                             |
 | author_id        | 著者ユーザID       | INTEGER      | users.id (FK)               |
 | created_at       | 作成日時           | DATETIME     |                             |
 | updated_at       | 更新日時           | DATETIME     |                             |
+| meta_title       | SEO用メタタイトル  | TEXT         | NULL可                      |
+| meta_description | SEO用メタ説明文    | TEXT         | NULL可                      |
 | meta_keywords    | メタキーワード     | TEXT         | カンマ区切り,またはJSON     |
 | canonical_url    | カノニカルURL      | TEXT         | NULL可、自動生成が基本      |
-| json_ld          | 構造化データ(JSON-LD) | TEXT      | JSON-LD形式で保存（必要に応じて）|
+| is_published     | 公開フラグ         | BOOLEAN      | DEFAULT FALSE               |
+| allow_comments   | コメント許可フラグ | BOOLEAN      | DEFAULT TRUE                |
 | ext_json         | 拡張用JSON         | JSON/TEXT    | 拡張用                      |
 
 ---
@@ -88,7 +91,7 @@
 
 ---
 
-## comments（コメント）
+## comments（コメント）🆕2025年6月30日完全実装
 
 | カラム名         | 日本語名           | 型           | 制約・備考                  |
 |------------------|--------------------|--------------|-----------------------------|
@@ -97,9 +100,16 @@
 | user_id          | ユーザID           | INTEGER      | users.id (FK), NULL可       |
 | name             | 投稿者名           | TEXT         | 未ログイン時用              |
 | body             | コメント本文       | TEXT         |                             |
-| status           | ステータス         | TEXT         | 公開/非公開/承認待ち        |
-| notify           | 通知フラグ         | BOOLEAN      |                             |
+| is_approved      | 承認状態           | BOOLEAN      | DEFAULT FALSE（承認待ち）   |
 | created_at       | 作成日時           | DATETIME     |                             |
+| updated_at       | 更新日時           | DATETIME     |                             |
+
+**実装済み機能**:
+- ✅ コメント投稿機能（記事詳細ページ）
+- ✅ 承認システム（管理者承認後公開）
+- ✅ 管理画面（一覧・承認・拒否・削除）
+- ✅ CSRFトークン対応
+- ✅ 一括操作機能
 
 ---
 
@@ -111,6 +121,30 @@
 - categories（親子関係：parent_idで自己参照）
 - articles 1 --- * comments
 - users 1 --- * comments
+
+## uploaded_images（アップロード画像）🆕2025年6月30日実装
+
+| カラム名         | 日本語名           | 型           | 制約・備考                  |
+|------------------|--------------------|--------------|-----------------------------|
+| id               | 画像ID             | INTEGER      | PRIMARY KEY, AUTOINCREMENT  |
+| filename         | ファイル名         | TEXT         | 実際のファイル名            |
+| url              | 画像URL            | TEXT         | アクセス用URL               |
+| alt_text         | 代替テキスト       | TEXT         | アクセシビリティ用          |
+| caption          | キャプション       | TEXT         | 画像説明（省略可）          |
+| description      | 説明               | TEXT         | 管理用説明（省略可）        |
+| file_size        | ファイルサイズ     | INTEGER      | バイト単位                  |
+| width            | 幅                 | INTEGER      | ピクセル                    |
+| height           | 高さ               | INTEGER      | ピクセル                    |
+| uploaded_by      | アップロード者     | INTEGER      | users.id (FK)               |
+| created_at       | 作成日時           | DATETIME     |                             |
+
+**実装済み機能**:
+- ✅ 4:3比率クロッピング機能
+- ✅ Cropper.js統合リアルタイムトリミング
+- ✅ ドラッグ&ドロップアップロード
+- ✅ プレビュー表示
+- ✅ エラーハンドリング・タイムアウト対応
+- ✅ Markdownコピー機能
 
 ---
 

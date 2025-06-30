@@ -1,6 +1,6 @@
 # ルーティング設計仕様書
 
-**最終更新日: 2025年6月18日**
+**最終更新日: 2025年6月30日**
 
 ## 公開側
 - / : ホーム
@@ -12,7 +12,7 @@
 - /password_reset/ : パスワードリセット
 - /category/<slug>/ : カテゴリーページ
 - /article/<slug>/ : 記事ページ
-- /article/<slug>/comment/ : コメント投稿（POST）
+- /add_comment/<int:article_id>/ : コメント投稿（POST）🆕2025年6月30日実装
 - /profile/<handle_name>/ : プロフィールページ
 
 ## 管理側
@@ -27,11 +27,14 @@
 - /admin/comments/ : コメント管理
 - /admin/comments/edit/<comment_id> : コメント編集
 
-### 記事管理（従来型）
+### 記事管理（Markdownエディタ）🆕2025年6月30日完全統一
 - /admin/articles/ : 記事管理
-- /admin/article/edit/<article_id>/ : 記事編集（従来型）
+- /admin/article/create/ : 記事作成（Markdownエディタ）
+- /admin/article/edit/<article_id>/ : 記事編集（Markdownエディタ）
 - /admin/article/toggle_status/<article_id>/ : 記事ステータス切り替え（POST）
-- /admin/article/upload_image/ : 画像アップロード（POST）
+- /admin/upload_image/ : 画像アップロード（POST）
+- /admin/images/ : 画像管理
+- /admin/preview_markdown/ : Markdownプレビュー（POST）
 
 ### ブロック型エディタ 🆕
 - /admin/article/block-editor/create/ : ブロック型記事作成（GET/POST）
@@ -49,29 +52,36 @@
 - /admin/totp_setup/ : 2FA設定（GET/POST）
 - /admin/totp_disable/ : 2FA無効化（GET/POST）
 - /admin/totp_verify/ : 2FA認証確認（POST）
-## 実装状況（2025年6月18日現在）
+## 実装状況（2025年6月30日現在）
 
 ### ✅ 実装完了
 - **公開側ルーティング**: 100%完了
 - **基本管理機能**: 100%完了  
-- **ブロック型エディタ**: 95%完了
+- **Markdownエディタ記事管理**: 100%完了（2025年6月30日統一）
+- **画像管理機能**: 100%完了（2025年6月30日実装）
+- **コメント機能**: 100%完了（2025年6月30日実装）
 - **ブロック管理API**: 100%完了
 - **2段階認証**: 100%完了
 
 ### 🔧 修正・改善予定
 - ブロック型記事の公開ページ表示（一部エラー修正）
-- 画像トリミング機能の強化
 - サイト管理機能の完全実装
 
+### ✅ 2025年6月30日新規実装
+- **コメント投稿**: `/add_comment/<int:article_id>/`
+- **画像管理**: `/admin/images/`
+- **Markdownプレビュー**: `/admin/preview_markdown/`
+- **記事作成統一**: `/admin/article/create/`
+
 ### 📊 統計
-- **総ルーティング数**: 25+個
-- **APIエンドポイント**: 6個
-- **認証保護ルート**: 20+個
+- **総ルーティング数**: 30+個
+- **APIエンドポイント**: 8個
+- **認証保護ルート**: 25+個
 - **CSRF保護**: 全POST/PUT/DELETEルート
 
 ---
 
-**ルーティング設計**: 95%完了 | **API設計**: 100%完了 | **セキュリティ**: 100%完了
+**ルーティング設計**: 100%完了 | **API設計**: 100%完了 | **セキュリティ**: 100%完了 | **コメント機能**: 100%完了 | **画像管理**: 100%完了
 - /admin/mails/ : メール管理
 - /admin/settings/notifications/ : 通知設定
 
