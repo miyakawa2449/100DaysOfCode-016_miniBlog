@@ -46,6 +46,185 @@ body {
     text-decoration: underline;
 }
 
+/* ===== Comments Section ===== */
+.comments-section {
+    margin: 3rem 0;
+    padding: 2rem 0;
+    border-top: 2px solid var(--gray-300);
+}
+
+.comments-container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.comments-title {
+    font-size: 1.5rem;
+    color: var(--gray-800);
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.comments-list {
+    margin-bottom: 2rem;
+}
+
+.comment-item {
+    background: var(--white);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-300);
+}
+
+.comment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.comment-author {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin: 0;
+}
+
+.comment-date {
+    font-size: 0.875rem;
+    color: var(--gray-500);
+}
+
+.comment-content {
+    line-height: 1.6;
+    color: var(--gray-700);
+}
+
+.comment-replies {
+    margin-top: 1rem;
+    padding-left: 2rem;
+    border-left: 3px solid var(--gray-300);
+}
+
+.comment-reply {
+    background: var(--gray-100);
+    border-radius: var(--border-radius);
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.comment-reply .comment-author {
+    font-size: 0.9rem;
+}
+
+.no-comments {
+    text-align: center;
+    color: var(--gray-500);
+    font-style: italic;
+    padding: 2rem;
+    background: var(--gray-100);
+    border-radius: var(--border-radius);
+    margin-bottom: 2rem;
+}
+
+.comment-form-container {
+    background: var(--white);
+    border-radius: var(--border-radius);
+    padding: 2rem;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-300);
+}
+
+.comment-form-title {
+    font-size: 1.25rem;
+    color: var(--gray-800);
+    margin-bottom: 1.5rem;
+}
+
+.comment-form .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+    .comment-form .form-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+.comment-form .form-group {
+    margin-bottom: 1rem;
+}
+
+.comment-form .form-group label {
+    display: block;
+    font-weight: 600;
+    color: var(--gray-700);
+    margin-bottom: 0.5rem;
+}
+
+.comment-form .form-group .required {
+    color: #dc3545;
+}
+
+.comment-form .form-control {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    transition: var(--transition);
+    background-color: var(--white);
+}
+
+.comment-form .form-control:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+}
+
+.comment-form .form-text {
+    font-size: 0.875rem;
+    color: var(--gray-500);
+    margin-top: 0.25rem;
+}
+
+.comment-form .btn {
+    background: var(--primary-gradient);
+    color: var(--white);
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.comment-form .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+}
+
+.comment-notice {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--gray-100);
+    border-radius: var(--border-radius);
+    border-left: 4px solid var(--primary-color);
+}
+
 /* ===== Article Featured Image ===== */
 .article-featured-image {
     margin: 2rem 0;
@@ -273,6 +452,26 @@ body {
     color: var(--gray-700);
     margin: 0 0 1rem 0;
     flex-grow: 1;
+}
+
+/* トップページの記事抜粋内のリンクとコードのスタイル */
+.article-excerpt a {
+    color: var(--gray-800);
+    text-decoration: none;
+}
+
+.article-excerpt a:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
+}
+
+.article-excerpt code {
+    background: var(--gray-100);
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.875em;
+    color: var(--gray-800);
 }
 
 .article-footer {

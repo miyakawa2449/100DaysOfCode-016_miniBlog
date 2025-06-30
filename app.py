@@ -18,7 +18,7 @@ import requests
 from bs4 import BeautifulSoup
 
 # models.py から db インスタンスとモデルクラスをインポートします
-from models import db, User, Article, Category
+from models import db, User, Article, Category, Comment
 # forms.py からフォームクラスをインポート
 from forms import LoginForm, TOTPVerificationForm, TOTPSetupForm, PasswordResetRequestForm, PasswordResetForm
 
@@ -103,13 +103,14 @@ def markdown_filter(text):
     
     # Markdownの拡張機能を設定
     md = markdown.Markdown(
-        extensions=['extra', 'codehilite', 'toc'],
+        extensions=['extra', 'codehilite', 'toc', 'nl2br'],
         extension_configs={
             'codehilite': {
                 'css_class': 'highlight',
                 'use_pygments': False
             }
-        }
+        },
+        tab_length=2  # タブ長を短く設定
     )
     
     # MarkdownをHTMLに変換
@@ -889,6 +890,60 @@ def article_detail(slug):
             return redirect(url_for('home'))
     
     return render_template('article_detail.html', article=article)
+
+@app.route('/add_comment/<int:article_id>', methods=['POST'])
+def add_comment(article_id):
+    """コメントを追加"""
+    from models import Article, Comment, db
+    from flask import request, flash, redirect, url_for
+    
+    article = Article.query.get_or_404(article_id)
+    
+    if not article.allow_comments:
+        flash('このページではコメントが無効になっています。', 'error')
+        return redirect(url_for('article_detail', slug=article.slug))
+    
+    # フォームデータを取得
+    author_name = request.form.get('author_name', '').strip()
+    author_email = request.form.get('author_email', '').strip()
+    author_website = request.form.get('author_website', '').strip()
+    content = request.form.get('content', '').strip()
+    
+    # バリデーション
+    if not author_name or not author_email or not content:
+        flash('必須項目を入力してください。', 'error')
+        return redirect(url_for('article_detail', slug=article.slug))
+    
+    if len(author_name) > 100:
+        flash('お名前は100文字以内で入力してください。', 'error')
+        return redirect(url_for('article_detail', slug=article.slug))
+    
+    if len(content) > 1000:
+        flash('コメントは1000文字以内で入力してください。', 'error')
+        return redirect(url_for('article_detail', slug=article.slug))
+    
+    # コメントを作成
+    comment = Comment(
+        article_id=article.id,
+        author_name=author_name,
+        author_email=author_email,
+        author_website=author_website if author_website else None,
+        content=content,
+        is_approved=False,  # デフォルトは承認待ち
+        ip_address=request.environ.get('REMOTE_ADDR'),
+        user_agent=request.environ.get('HTTP_USER_AGENT', '')[:500]
+    )
+    
+    try:
+        db.session.add(comment)
+        db.session.commit()
+        flash('コメントを投稿しました。承認後に表示されます。', 'success')
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Comment submission error: {e}')
+        flash('コメントの投稿に失敗しました。', 'error')
+    
+    return redirect(url_for('article_detail', slug=article.slug))
 
 @app.route('/profile/<handle_name>/')
 def profile(handle_name):

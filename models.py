@@ -119,6 +119,7 @@ class Article(db.Model):
     
     # 画像関連
     featured_image = db.Column(db.String(255), nullable=True)  # アイキャッチ画像
+    featured_image_alt = db.Column(db.String(255), nullable=True)  # アイキャッチ画像のalt属性
     
     # ブロック型エディタ関連
     use_block_editor = db.Column(db.Boolean, default=False)  # ブロックエディタ使用フラグ
@@ -225,6 +226,7 @@ class Category(db.Model):
     meta_description = db.Column(db.Text, nullable=True)
     meta_keywords = db.Column(db.String(255), nullable=True)
     ogp_image = db.Column(db.String(255), nullable=True)
+    ogp_image_alt = db.Column(db.String(255), nullable=True)  # OGP画像のalt属性
     canonical_url = db.Column(db.String(255), nullable=True)
     json_ld = db.Column(db.Text, nullable=True)
     ext_json = db.Column(db.Text, nullable=True)
@@ -305,6 +307,70 @@ class SiteSetting(db.Model):
             db.session.add(setting)
         db.session.commit()
         return setting
+
+# --- 画像管理用モデル ---
+
+class UploadedImage(db.Model):
+    """アップロード済み画像管理"""
+    __tablename__ = 'uploaded_images'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(255), nullable=False)  # 保存時のファイル名
+    original_filename = db.Column(db.String(255), nullable=False)  # 元のファイル名
+    file_path = db.Column(db.String(500), nullable=False)  # 相対パス
+    file_size = db.Column(db.Integer, nullable=False)  # ファイルサイズ（バイト）
+    mime_type = db.Column(db.String(100), nullable=False)  # MIMEタイプ
+    width = db.Column(db.Integer)  # 画像幅
+    height = db.Column(db.Integer)  # 画像高さ
+    
+    # メタデータ
+    alt_text = db.Column(db.String(255))  # alt属性
+    caption = db.Column(db.Text)  # キャプション
+    description = db.Column(db.Text)  # 説明
+    
+    # アップロード情報
+    uploader_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    upload_date = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # 管理情報
+    is_active = db.Column(db.Boolean, default=True)
+    usage_count = db.Column(db.Integer, default=0)  # 使用回数
+    last_used_at = db.Column(db.DateTime)  # 最終使用日時
+    
+    # タイムスタンプ
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # リレーションシップ
+    uploader = db.relationship('User', backref=db.backref('uploaded_images', lazy='dynamic'))
+    
+    def __repr__(self):
+        return f'<UploadedImage {self.filename}: {self.alt_text or "No alt"}>'
+    
+    @property
+    def file_url(self):
+        """画像のURLを取得"""
+        return f"/static/{self.file_path}"
+    
+    @property
+    def file_size_mb(self):
+        """ファイルサイズをMBで取得"""
+        return round(self.file_size / (1024 * 1024), 2)
+    
+    @property
+    def markdown_syntax(self):
+        """マークダウン記法を生成"""
+        alt = self.alt_text or self.original_filename
+        if self.caption:
+            return f'![{alt}]({self.file_url} "{self.caption}")'
+        else:
+            return f'![{alt}]({self.file_url})'
+    
+    def increment_usage(self):
+        """使用回数を増加"""
+        self.usage_count += 1
+        self.last_used_at = datetime.utcnow()
+        db.session.commit()
 
 # --- ブロック型エディタ用モデル ---
 
