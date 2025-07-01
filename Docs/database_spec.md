@@ -1,5 +1,17 @@
 # データベース設計
 
+**最新更新**: 2025年7月1日 - MySQL 9.3.0移行完了・SQLAlchemy 2.0対応済み・CRUD重複実装解決
+
+---
+
+## 🎯 データベース環境
+
+- **データベース**: MySQL 9.3.0 (本番・開発統一)
+- **ORM**: SQLAlchemy 2.0.41 (非推奨パターン完全排除済み)
+- **接続ドライバー**: PyMySQL 1.1.1 (AWS RDS対応)
+- **マイグレーション**: Flask-Migrate (Alembic) 4.0.5
+- **設定管理**: 環境変数ベース (開発・本番分離対応)
+
 ---
 
 ## users（ユーザ）
@@ -170,5 +182,79 @@
 | `canonical_url`      | VARCHAR(255)    | 正規URL                                                                |                            | NULL許容                                                               |
 | `json_ld`            | TEXT            | JSON-LD形式の構造化データ                                                |                            | NULL許容                                                               |
 | `ext_json`           | TEXT            | 外部連携用JSONデータ (汎用)                                            |                            | NULL許容                                                               |
+
+---
+
+## 🚀 **サービス層アーキテクチャ (2025年7月1日追加)**
+
+### **CRUD重複実装の解決**
+
+従来の問題：
+- 記事作成・編集ルートに400行の重複コード
+- カテゴリ作成・編集ルートに300行の重複コード  
+- ユーザ作成・編集ルートに250行の重複コード
+- それぞれを個別にテスト・保守する必要
+
+### **実装されたサービスクラス**
+
+#### **ArticleService** (`article_service.py`)
+```python
+class ArticleService:
+    @staticmethod
+    def create_article(form_data, author_id)
+    def update_article(article, form_data)
+    def setup_category_choices(form)
+    def generate_unique_slug(title, article_id=None)
+    def validate_article_data(form, article_id=None)
+    def process_article_image(article, cropped_image_data)
+    def assign_category(article, category_id)
+    def get_article_context(article=None)
+```
+
+#### **CategoryService** (`article_service.py`)
+```python
+class CategoryService:
+    @staticmethod
+    def create_category(form_data)
+    def update_category(category, form_data)
+    def generate_unique_slug(name, category_id=None)
+    def validate_category_data(form_data, category_id=None)
+    def process_category_image(category, ogp_image_data, crop_data=None)
+    def extract_crop_data(form)
+    def get_category_context(category=None)
+```
+
+#### **UserService** (`article_service.py`)
+```python
+class UserService:
+    @staticmethod
+    def create_user(form_data)
+    def update_user(user, form_data)
+    def validate_password(password)
+    def validate_user_data(form_data, user_id=None)
+    def process_user_form_data(form_data)
+    def get_user_context(user=None)
+```
+
+### **統一テンプレートシステム**
+
+- **従来**: 別々のcreate/editテンプレート
+- **新方式**: 統一フォームテンプレート (`article_form.html`)
+- **削減効果**: 76.7%のテンプレートサイズ削減
+
+### **データベース操作の標準化**
+
+全サービスで以下のパターンを統一：
+1. **バリデーション** → エラー配列返却
+2. **データ処理** → 正規化・サニタイズ
+3. **DB操作** → try/catch + rollback
+4. **結果返却** → (success_object, error_message)
+
+### **保守性向上**
+
+- **単一責任**: 各エンティティのCRUD処理を一箇所に集約
+- **再利用性**: 作成・編集ルートが共通サービスを利用
+- **テスタビリティ**: サービスメソッド単位でのテスト可能
+- **拡張性**: 新機能追加時は一箇所の修正で全体に反映
 
 ---

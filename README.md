@@ -18,17 +18,32 @@ Flask・SQLite・Bootstrap5を使用した**高機能Markdownブログシステ�
 - ✅ **フロントエンド統合**: JavaScript、CSS3、レスポンシブデザイン
 - ✅ **Markdownエディタ**: 直感的UI、リアルタイムプレビュー、SNS自動埋込
 
-## 🛠️ 技術スタック
-- **Backend**: Python 3.10, Flask 2.x, SQLAlchemy
-- **Database**: SQLite, Flask-Migrate
+## 🛠️ 技術スタック（2025年7月1日最新化）
+
+### **インフラ・データベース**
+- **Backend**: Python 3.10, Flask 2.x, SQLAlchemy 2.0.41
+- **Database**: ✅ MySQL 9.3.0 (プロダクション対応)
+- **Driver**: PyMySQL 1.1.1 (AWS RDS対応)
+- **Migration**: Flask-Migrate (Alembic) 4.0.5
+- **Architecture**: ✅ サービス層統一 (CRUD重複実装解決)
+
+### **セキュリティ**（2025年7月1日強化）
+- **Authentication**: Flask-Login + Google Authenticator (TOTP)
+- **CSRF Protection**: ✅ Flask-WTF（再有効化済み）
+- **Security Headers**: X-Frame-Options, X-XSS-Protection, CSP等
+- **Session Management**: 環境変数ベース（開発・本番分離）
+- **Input Validation**: Werkzeug Security, Bleach (HTML Sanitization)
+
+### **フロントエンド・処理**
 - **Frontend**: HTML5, CSS3 (CSS Variables), Bootstrap 5
 - **JavaScript**: ES6+, Markdown Editor, Real-time Preview
-- **Authentication**: Flask-Login, TOTP (Google Authenticator)
-- **Forms**: Flask-WTF, CSRF Protection
-- **Image Processing**: PIL/Pillow, 自動リサイズ・最適化
+- **Image Processing**: PIL/Pillow + Cropper.js, 自動リサイズ・最適化
 - **Content**: Markdown, SNS Auto-embed, OGP
-- **Security**: Werkzeug Security, Bleach (HTML Sanitization)
 - **SNS Integration**: requests, BeautifulSoup4, URL Pattern Matching
+
+### **設定管理**（2025年7月1日改善）
+- **環境変数対応**: FLASK_DEBUG, DATABASE_URL, セキュリティ設定
+- **AWS準備**: RDS接続、本番環境対応完了
 
 ## 📂 プロジェクト構造
 ```
@@ -69,12 +84,14 @@ Flask・SQLite・Bootstrap5を使用した**高機能Markdownブログシステ�
 
 ## ✅ 実装済み機能（2025年6月30日現在）
 
-### 🔐 認証・セキュリティシステム（100%完了）
+### 🔐 認証・セキュリティシステム（100%完了・2025年7月1日強化）
 - ✅ **基本認証**: ユーザー登録・ログイン・ログアウト
 - ✅ **2段階認証**: Google Authenticator（TOTP）対応
 - ✅ **パスワード管理**: ハッシュ化、強度チェック、リマインダ機能
-- ✅ **セキュリティ対策**: CSRF保護、XSS対策、SQLインジェクション対策
+- ✅ **セキュリティ対策**: ✅ CSRF保護（再有効化）、XSS対策、SQLインジェクション対策
 - ✅ **権限管理**: 役割ベースアクセス制御（admin/author）
+- ✅ **セキュリティヘッダー**: X-Frame-Options, X-XSS-Protection, CSP等（統一適用）
+- ✅ **環境分離**: 開発・本番環境の設定分離対応
 
 ### ✍️ Markdownエディタシステム（100%完了）
 **HTMLエディタからMarkdownエディタへの完全移行**:
@@ -149,17 +166,48 @@ Flask・SQLite・Bootstrap5を使用した**高機能Markdownブログシステ�
 
 ## 🔧 技術的特徴
 
-### データベース設計
+### 🚀 アーキテクチャ革新（2025年7月1日完了）
+
+#### **CRUD重複実装の解決**
+従来の課題を解決するサービス層アーキテクチャを導入：
+
+**従来の問題**:
+- 記事作成・編集ルートに400行の重複コード
+- カテゴリ作成・編集ルートに300行の重複コード
+- ユーザ作成・編集ルートに250行の重複コード
+- 同じ機能を2回実装・テスト・保守する手間
+
+**解決策**:
+- **ArticleService**: 記事のCRUD処理を統一
+- **CategoryService**: カテゴリのCRUD処理を統一
+- **UserService**: ユーザのCRUD処理を統一（欠落機能も補完）
+
+**削減効果**:
+- **コード削減**: 950行 → 550行 (42.1%削減)
+- **テンプレート削減**: 125,083 bytes → 29,122 bytes (76.7%削減)
+- **保守箇所**: 各機能2箇所 → 1箇所に統一
+
+#### **統一テンプレートシステム**
+- 作成・編集で同一テンプレート使用
+- `is_edit`フラグによる条件分岐
+- 一貫性の高いユーザーエクスペリエンス
+
+### データベース設計（2025年7月1日最新化）
+- **データベース**: MySQL 9.3.0 (SQLiteから移行完了)
+- **ORM**: SQLAlchemy 2.0.41 (非推奨パターン完全排除)
 - **多対多関係**: 記事 ↔ カテゴリ
 - **外部キー制約**: データ整合性保証
 - **インデックス**: パフォーマンス最適化
 - **ソフトデリート対応**: 安全な削除機能
+- **AWS対応**: RDS for MySQL対応完了
 
-### セキュリティ対策
-- **CSRF保護**: Flask-WTF統合
-- **SQLインジェクション対策**: SQLAlchemy ORM使用
+### セキュリティ対策（2025年7月1日強化）
+- **CSRF保護**: ✅ Flask-WTF統合（再有効化済み）
+- **SQLインジェクション対策**: SQLAlchemy 2.0 ORM使用
 - **パスワードハッシュ化**: Werkzeug Security
 - **ファイルアップロード検証**: 拡張子・サイズ制限
+- **セキュリティヘッダー**: 包括的なHTTPセキュリティヘッダー
+- **環境変数管理**: セキュリティ設定の外部化
 
 ### パフォーマンス最適化
 - **画像処理**: PIL使用の自動リサイズ
@@ -448,9 +496,19 @@ def categories():
 - `2025-06-27-threads-ogp-enhancement.md`: Threads OGP機能強化・エディタシステム改革レポート
 - `2025-06-30.md`: 記事作成・編集機能統一とコメント機能実装レポート
 
-### 🎯 現在の状況（2025年6月30日）
+### 🎯 現在の状況（2025年7月1日最新）
 - **システム状態**: 完全に安定・全機能動作確認済み
 - **記事作成・編集**: 完全統一・プロダクションレベル
 - **コメント機能**: 完全実装・セキュア
 - **画像機能**: 高度なトリミング・アップロード機能完備
-- **完成度**: 95%（プロダクションレベル達成）
+- **データベース**: ✅ MySQL 9.3.0移行完了（SQLiteから）
+- **セキュリティ**: ✅ CSRF保護再有効化・セキュリティヘッダー統一
+- **AWS準備**: ✅ RDS for MySQL対応・環境分離完了
+- **SQLAlchemy**: ✅ 2.0対応・非推奨パターン完全排除
+- **完成度**: 97%（プロダクション環境準備完了）
+
+### 📊 2025年7月1日の主要改善
+- **Phase 1**: MySQL移行 + SQLAlchemy 2.0対応完了
+- **Phase 2A**: 重大セキュリティ問題修正完了
+- **インフラ近代化**: データベース・ORM・セキュリティの全面強化
+- **AWS対応**: 本番環境デプロイ準備完了

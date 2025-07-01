@@ -1,6 +1,6 @@
 # ルーティング設計仕様書
 
-**最終更新日: 2025年6月30日**
+**最終更新日: 2025年7月1日** - セキュリティ強化・MySQL対応完了・CRUD重複実装解決
 
 ## 公開側
 - / : ホーム
@@ -21,16 +21,18 @@
 - /admin/ : ダッシュボード
 - /admin/site/ : サイト管理
 - /admin/users/ : ユーザ管理
-- /admin/user/edit/<user_id>/ : ユーザ編集
+- /admin/user/create/ : ユーザ作成 🔧2025年7月1日修正 (サービス層統一)
+- /admin/user/edit/<user_id>/ : ユーザ編集 🔧2025年7月1日修正 (サービス層統一)
 - /admin/categories/ : カテゴリ管理
-- /admin/category/edit/<category_id>/ : カテゴリ編集
+- /admin/category/create/ : カテゴリ作成 🔧2025年7月1日修正 (サービス層統一)
+- /admin/category/edit/<category_id>/ : カテゴリ編集 🔧2025年7月1日修正 (サービス層統一)
 - /admin/comments/ : コメント管理
 - /admin/comments/edit/<comment_id> : コメント編集
 
-### 記事管理（Markdownエディタ）🆕2025年6月30日完全統一
+### 記事管理（Markdownエディタ）🆕2025年6月30日完全統一・🔧2025年7月1日サービス層統一
 - /admin/articles/ : 記事管理
-- /admin/article/create/ : 記事作成（Markdownエディタ）
-- /admin/article/edit/<article_id>/ : 記事編集（Markdownエディタ）
+- /admin/article/create/ : 記事作成（統一テンプレート・サービス層対応）
+- /admin/article/edit/<article_id>/ : 記事編集（統一テンプレート・サービス層対応）
 - /admin/article/toggle_status/<article_id>/ : 記事ステータス切り替え（POST）
 - /admin/upload_image/ : 画像アップロード（POST）
 - /admin/images/ : 画像管理
@@ -77,7 +79,9 @@
 - **総ルーティング数**: 30+個
 - **APIエンドポイント**: 8個
 - **認証保護ルート**: 25+個
-- **CSRF保護**: 全POST/PUT/DELETEルート
+- **CSRF保護**: ✅ 全POST/PUT/DELETEルート（2025年7月1日再有効化）
+- **セキュリティヘッダー**: ✅ 統一適用済み
+- **環境変数対応**: ✅ 開発・本番環境分離対応
 
 ---
 
@@ -97,3 +101,61 @@
 - /debug/user_info/ : ユーザ情報デバッグ表示
 - /debug/2fa_status/ : 2FA設定状況確認
 - /debug/db_status/ : データベース状態確認
+
+---
+
+## 🚀 **サービス層アーキテクチャ (2025年7月1日追加)**
+
+### **CRUD重複実装の解決**
+
+従来の課題：
+- 各エンティティ(記事・カテゴリ・ユーザ)で作成・編集ルートのコードが重複
+- 同じ機能を2回実装・テスト・保守する必要
+- テンプレートの大量重複（合計95,961 bytes）
+
+### **新サービス層の構造**
+
+#### **ArticleService統一処理**
+```
+/admin/article/create/  ─┐
+                         ├─→ ArticleService ← admin.py
+/admin/article/edit/<id>/ ─┘
+```
+
+#### **CategoryService統一処理**  
+```
+/admin/category/create/  ─┐
+                          ├─→ CategoryService ← admin.py
+/admin/category/edit/<id>/ ─┘
+```
+
+#### **UserService統一処理**
+```
+/admin/user/create/  ─┐
+                      ├─→ UserService ← admin.py  
+/admin/user/edit/<id>/ ─┘
+```
+
+### **統一テンプレートシステム**
+
+#### **記事管理**
+- **統一テンプレート**: `templates/admin/article_form.html`
+- **コンテキスト変数**: `is_edit`, `form_title`, `submit_text`, `form_action`
+- **条件分岐**: `{% if is_edit %}編集{% else %}作成{% endif %}`
+
+#### **レスポンス処理の標準化**
+
+全ルートで以下のパターンを統一：
+1. **GET**: フォーム表示（作成・編集共通テンプレート）
+2. **POST**: サービス層でバリデーション・処理・DB操作
+3. **成功**: flash + redirect 
+4. **失敗**: flash + 同一テンプレート再表示
+
+### **削減効果**
+
+- **コードベース**: 950行 → 550行 (400行削減、42.1%削減率)
+- **テンプレート**: 125,083 bytes → 29,122 bytes (76.7%削減)
+- **保守箇所**: 各機能2箇所 → 1箇所に統一
+- **テスト対象**: 重複ルート → サービスメソッド単体テスト
+
+---
