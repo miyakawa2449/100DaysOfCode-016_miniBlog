@@ -1,0 +1,774 @@
+{% extends "admin/layout.html" %}
+
+{% block title %}{{ form_title }}{% endblock %}
+{% block page_title %}{{ form_title }}{% endblock %}
+
+{% block breadcrumb %}
+{{ super() }}
+<li><a href="{{ url_for('admin.articles') }}">記事管理</a></li>
+<li>{{ '編集' if is_edit else '新規作成' }}</li>
+{% endblock %}
+
+{% block head_extra %}
+<!-- Cropper.js CSS -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" rel="stylesheet">
+<!-- Markdown Editor Styles -->
+<style>
+.preview-container {
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    background-color: #f8f9fa;
+    transition: all 0.3s ease;
+}
+
+.preview-container:hover {
+    border-color: var(--primary-color);
+    background-color: #e3f2fd;
+}
+
+.current-image-preview {
+    border: 2px solid #28a745;
+    border-radius: 8px;
+    padding: 15px;
+    background-color: #f8fff9;
+}
+
+.image-preview {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.required-field::after {
+    content: " *";
+    color: #dc3545;
+}
+
+/* Markdown Editor Styles */
+.markdown-editor {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    background: #fff;
+    overflow: hidden;
+}
+
+.editor-toolbar {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    padding: 8px 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.toolbar-btn {
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #495057;
+    transition: all 0.2s;
+}
+
+.toolbar-btn:hover {
+    background-color: #e9ecef;
+    border-color: #adb5bd;
+}
+
+.toolbar-btn:active,
+.toolbar-btn.active {
+    background-color: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.editor-tabs {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    padding: 0;
+    display: flex;
+}
+
+.tab-btn {
+    background: none;
+    border: none;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-weight: 500;
+    color: #6c757d;
+    transition: all 0.2s;
+    border-bottom: 3px solid transparent;
+}
+
+.tab-btn.active {
+    color: #007bff;
+    border-bottom-color: #007bff;
+    background-color: #fff;
+}
+
+.tab-btn:hover:not(.active) {
+    color: #495057;
+    background-color: #e9ecef;
+}
+
+.editor-content {
+    position: relative;
+    height: 400px;
+}
+
+.editor-textarea {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    padding: 15px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    resize: vertical;
+}
+
+.preview-content {
+    height: 100%;
+    padding: 15px;
+    overflow-y: auto;
+    background-color: #fff;
+    display: none;
+}
+
+.preview-content.active {
+    display: block;
+}
+
+.preview-content h1,
+.preview-content h2,
+.preview-content h3,
+.preview-content h4,
+.preview-content h5,
+.preview-content h6 {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.preview-content h1 { font-size: 2rem; }
+.preview-content h2 { font-size: 1.75rem; }
+.preview-content h3 { font-size: 1.5rem; }
+.preview-content h4 { font-size: 1.25rem; }
+.preview-content h5 { font-size: 1.125rem; }
+.preview-content h6 { font-size: 1rem; }
+
+.preview-content p {
+    margin-bottom: 15px;
+    line-height: 1.6;
+}
+
+.preview-content ul,
+.preview-content ol {
+    margin-bottom: 15px;
+    padding-left: 30px;
+}
+
+.preview-content blockquote {
+    border-left: 4px solid #007bff;
+    margin: 15px 0;
+    padding: 10px 20px;
+    background-color: #f8f9fa;
+    font-style: italic;
+}
+
+.preview-content code {
+    background-color: #f8f9fa;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.9em;
+    color: #e83e8c;
+}
+
+.preview-content pre {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 15px;
+    overflow-x: auto;
+    margin-bottom: 15px;
+}
+
+.preview-content pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+}
+
+/* SEO Section */
+.seo-section {
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+    border: 1px solid #e9ecef;
+}
+
+.seo-section h5 {
+    color: #495057;
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+/* Image Upload Modal Styles */
+.modal-lg {
+    max-width: 900px;
+}
+
+.cropper-container {
+    max-height: 400px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+}
+
+.crop-controls {
+    margin-top: 15px;
+    text-align: center;
+}
+
+.crop-controls .btn {
+    margin: 0 5px;
+}
+
+.aspect-ratio-note {
+    background-color: #e3f2fd;
+    border: 1px solid #bbdefb;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 15px;
+    font-size: 0.9em;
+    color: #1565c0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .editor-toolbar {
+        justify-content: flex-start;
+    }
+    
+    .toolbar-btn {
+        padding: 8px;
+        font-size: 12px;
+    }
+    
+    .editor-content {
+        height: 300px;
+    }
+    
+    .editor-textarea {
+        font-size: 16px; /* Prevents zoom on iOS */
+    }
+}
+
+/* Form Validation States */
+.is-invalid {
+    border-color: #dc3545;
+}
+
+.invalid-feedback {
+    color: #dc3545;
+    font-size: 0.875em;
+    margin-top: 0.25rem;
+}
+
+.is-valid {
+    border-color: #28a745;
+}
+
+.valid-feedback {
+    color: #28a745;
+    font-size: 0.875em;
+    margin-top: 0.25rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">{{ form_title }}</h5>
+                    <div>
+                        <a href="{{ url_for('admin.articles') }}" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-arrow-left"></i> 記事一覧に戻る
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="card-body">
+                    <form method="POST" action="{{ form_action }}" enctype="multipart/form-data" id="articleForm">
+                        {{ form.hidden_tag() }}
+                        
+                        <!-- 基本情報セクション -->
+                        <div class="row mb-4">
+                            <div class="col-md-8">
+                                <div class="mb-3">
+                                    {{ form.title.label(class="form-label required-field") }}
+                                    {{ form.title(class="form-control", placeholder="記事のタイトルを入力してください") }}
+                                    {% if form.title.errors %}
+                                        <div class="invalid-feedback d-block">
+                                            {% for error in form.title.errors %}{{ error }}{% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="mb-3">
+                                    {{ form.slug.label(class="form-label") }}
+                                    {{ form.slug(class="form-control", placeholder="URL用スラッグ（自動生成）") }}
+                                    <div class="form-text">記事のURLに使用されます。空欄の場合はタイトルから自動生成されます。</div>
+                                    {% if form.slug.errors %}
+                                        <div class="invalid-feedback d-block">
+                                            {% for error in form.slug.errors %}{{ error }}{% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="mb-3">
+                                    {{ form.summary.label(class="form-label") }}
+                                    {{ form.summary(class="form-control", rows="3", placeholder="記事の要約を入力してください（省略可）") }}
+                                    {% if form.summary.errors %}
+                                        <div class="invalid-feedback d-block">
+                                            {% for error in form.summary.errors %}{{ error }}{% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <!-- 公開設定 -->
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">公開設定</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <div class="form-check">
+                                                {{ form.is_published(class="form-check-input") }}
+                                                {{ form.is_published.label(class="form-check-label") }}
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <div class="form-check">
+                                                {{ form.allow_comments(class="form-check-input") }}
+                                                {{ form.allow_comments.label(class="form-check-label") }}
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            {{ form.category_id.label(class="form-label") }}
+                                            {{ form.category_id(class="form-select") }}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- アイキャッチ画像 -->
+                                <div class="card mt-3">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">アイキャッチ画像</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        {% if article and article.featured_image %}
+                                        <div class="current-image-preview mb-3">
+                                            <img src="{{ url_for('static', filename='uploads/' ~ article.featured_image) }}" 
+                                                 alt="現在のアイキャッチ画像" class="image-preview">
+                                            <div class="mt-2">
+                                                <small class="text-muted">現在の画像</small>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                        
+                                        <div class="preview-container" id="imagePreviewContainer">
+                                            <i class="fas fa-image fa-3x text-muted mb-3"></i>
+                                            <p class="text-muted mb-2">クリックして画像をアップロード</p>
+                                            <p class="small text-muted">推奨サイズ: 800×450px (16:9)</p>
+                                            <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+                                        </div>
+                                        
+                                        <button type="button" class="btn btn-primary btn-sm mt-2 w-100" 
+                                                onclick="document.getElementById('imageUpload').click()">
+                                            <i class="fas fa-upload"></i> 画像をアップロード
+                                        </button>
+                                        
+                                        <button type="button" class="btn btn-success btn-sm mt-2 w-100" 
+                                                id="cropImageBtn" style="display: none;">
+                                            <i class="fas fa-crop"></i> 画像をトリミング
+                                        </button>
+                                        
+                                        <!-- Hidden field for cropped image data -->
+                                        <input type="hidden" name="cropped_image_data" id="croppedImageData">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Markdownエディタ -->
+                        <div class="mb-4">
+                            <label for="body" class="form-label required-field">記事本文</label>
+                            <div class="markdown-editor">
+                                <!-- ツールバー -->
+                                <div class="editor-toolbar">
+                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('**', '**')" title="太字">
+                                        <i class="fas fa-bold"></i>
+                                    </button>
+                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('*', '*')" title="斜体">
+                                        <i class="fas fa-italic"></i>
+                                    </button>
+                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('# ', '')" title="見出し1">
+                                        H1
+                                    </button>
+                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('## ', '')" title="見出し2">
+                                        H2
+                                    </button>
+                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('### ', '')" title="見出し3">
+                                        H3
+                                    </button>
+                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('- ', '')" title="リスト">
+                                        <i class="fas fa-list-ul"></i>
+                                    </button>
+                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('1. ', '')" title="番号リスト">
+                                        <i class="fas fa-list-ol"></i>
+                                    </button>
+                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('[', '](URL)')" title="リンク">
+                                        <i class="fas fa-link"></i>
+                                    </button>
+                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('`', '`')" title="コード">
+                                        <i class="fas fa-code"></i>
+                                    </button>
+                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('> ', '')" title="引用">
+                                        <i class="fas fa-quote-right"></i>
+                                    </button>
+                                </div>
+                                
+                                <!-- タブ -->
+                                <div class="editor-tabs">
+                                    <button type="button" class="tab-btn active" onclick="switchTab('edit')">編集</button>
+                                    <button type="button" class="tab-btn" onclick="switchTab('preview')">プレビュー</button>
+                                </div>
+                                
+                                <!-- エディタコンテンツ -->
+                                <div class="editor-content">
+                                    {{ form.body(class="editor-textarea", id="markdownEditor", placeholder="Markdownで記事を書いてください...") }}
+                                    <div class="preview-content" id="previewContent"></div>
+                                </div>
+                            </div>
+                            {% if form.body.errors %}
+                                <div class="invalid-feedback d-block">
+                                    {% for error in form.body.errors %}{{ error }}{% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- SEO設定 -->
+                        <div class="seo-section mb-4">
+                            <h5><i class="fas fa-search"></i> SEO設定</h5>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        {{ form.meta_title.label(class="form-label") }}
+                                        {{ form.meta_title(class="form-control", placeholder="SEO用タイトル（省略可）") }}
+                                        <div class="form-text">検索結果に表示されるタイトルです。空欄の場合は記事タイトルが使用されます。</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        {{ form.meta_description.label(class="form-label") }}
+                                        {{ form.meta_description(class="form-control", rows="3", placeholder="SEO用説明文（省略可）") }}
+                                        <div class="form-text">検索結果に表示される説明文です。</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        {{ form.meta_keywords.label(class="form-label") }}
+                                        {{ form.meta_keywords(class="form-control", placeholder="キーワード1, キーワード2, ...") }}
+                                        <div class="form-text">カンマ区切りでキーワードを入力してください。</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        {{ form.canonical_url.label(class="form-label") }}
+                                        {{ form.canonical_url(class="form-control", placeholder="正規URL（省略可）") }}
+                                        <div class="form-text">正規URLが異なる場合のみ入力してください。</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 送信ボタン -->
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('admin.articles') }}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times"></i> キャンセル
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> {{ submit_text }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Image Crop Modal -->
+<div class="modal fade" id="imageCropModal" tabindex="-1" aria-labelledby="imageCropModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imageCropModalLabel">画像トリミング</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="aspect-ratio-note">
+                    <i class="fas fa-info-circle"></i>
+                    アイキャッチ画像は16:9の比率でトリミングされます。
+                </div>
+                <div class="cropper-container">
+                    <img id="cropperImage" style="max-width: 100%;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                <button type="button" class="btn btn-primary" onclick="applyCrop()">
+                    <i class="fas fa-crop"></i> トリミングを適用
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Cropper.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+<!-- Markdown Processing -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+
+<script>
+// Global variables
+let cropper = null;
+let currentImageFile = null;
+
+// Initialize markdown editor
+document.addEventListener('DOMContentLoaded', function() {
+    const editor = document.getElementById('markdownEditor');
+    if (editor) {
+        editor.addEventListener('input', updatePreview);
+        // Initial preview update
+        updatePreview();
+    }
+    
+    // Setup image upload
+    setupImageUpload();
+});
+
+// Tab switching
+function switchTab(tab) {
+    const editTab = document.querySelector('.tab-btn[onclick="switchTab(\'edit\')"]');
+    const previewTab = document.querySelector('.tab-btn[onclick="switchTab(\'preview\')"]');
+    const editor = document.getElementById('markdownEditor');
+    const preview = document.getElementById('previewContent');
+    
+    if (tab === 'edit') {
+        editTab.classList.add('active');
+        previewTab.classList.remove('active');
+        editor.style.display = 'block';
+        preview.classList.remove('active');
+    } else {
+        editTab.classList.remove('active');
+        previewTab.classList.add('active');
+        editor.style.display = 'none';
+        preview.classList.add('active');
+        updatePreview();
+    }
+}
+
+// Markdown toolbar functions
+function insertMarkdown(startTag, endTag) {
+    const editor = document.getElementById('markdownEditor');
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const selectedText = editor.value.substring(start, end);
+    const beforeText = editor.value.substring(0, start);
+    const afterText = editor.value.substring(end);
+    
+    editor.value = beforeText + startTag + selectedText + endTag + afterText;
+    
+    // Set cursor position
+    const newCursorPos = start + startTag.length + selectedText.length + endTag.length;
+    editor.focus();
+    editor.setSelectionRange(newCursorPos, newCursorPos);
+    
+    updatePreview();
+}
+
+// Update markdown preview
+function updatePreview() {
+    const editor = document.getElementById('markdownEditor');
+    const preview = document.getElementById('previewContent');
+    
+    if (editor && preview) {
+        const markdownText = editor.value;
+        if (markdownText.trim() === '') {
+            preview.innerHTML = '<p class="text-muted">プレビューを表示するには左側でMarkdownを入力してください。</p>';
+        } else {
+            try {
+                preview.innerHTML = marked.parse(markdownText);
+            } catch (error) {
+                preview.innerHTML = '<p class="text-danger">Markdownの解析エラーが発生しました。</p>';
+            }
+        }
+    }
+}
+
+// Image upload setup
+function setupImageUpload() {
+    const uploadInput = document.getElementById('imageUpload');
+    const previewContainer = document.getElementById('imagePreviewContainer');
+    const cropBtn = document.getElementById('cropImageBtn');
+    
+    if (uploadInput && previewContainer) {
+        uploadInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                currentImageFile = file;
+                previewImage(file);
+                cropBtn.style.display = 'block';
+            }
+        });
+        
+        previewContainer.addEventListener('click', function() {
+            uploadInput.click();
+        });
+    }
+}
+
+// Preview uploaded image
+function previewImage(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const container = document.getElementById('imagePreviewContainer');
+        container.innerHTML = `
+            <img src="${e.target.result}" alt="プレビュー" class="image-preview">
+            <div class="mt-2">
+                <small class="text-muted">アップロード済み - トリミングボタンをクリックしてください</small>
+            </div>
+        `;
+    };
+    reader.readAsDataURL(file);
+}
+
+// Show crop modal
+function showCropModal() {
+    if (!currentImageFile) return;
+    
+    const modal = new bootstrap.Modal(document.getElementById('imageCropModal'));
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+        const cropperImage = document.getElementById('cropperImage');
+        cropperImage.src = e.target.result;
+        
+        // Initialize cropper
+        if (cropper) {
+            cropper.destroy();
+        }
+        
+        cropper = new Cropper(cropperImage, {
+            aspectRatio: 16 / 9,
+            viewMode: 1,
+            dragMode: 'move',
+            autoCropArea: 0.8,
+            responsive: true,
+            restore: false,
+            guides: true,
+            center: true,
+            highlight: false,
+            cropBoxMovable: true,
+            cropBoxResizable: true,
+            toggleDragModeOnDblclick: false
+        });
+        
+        modal.show();
+    };
+    
+    reader.readAsDataURL(currentImageFile);
+}
+
+// Apply crop
+function applyCrop() {
+    if (!cropper) return;
+    
+    const canvas = cropper.getCroppedCanvas({
+        width: 800,
+        height: 450,
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high'
+    });
+    
+    canvas.toBlob(function(blob) {
+        const reader = new FileReader();
+        reader.onload = function() {
+            const base64data = reader.result;
+            document.getElementById('croppedImageData').value = base64data;
+            
+            // Update preview
+            const container = document.getElementById('imagePreviewContainer');
+            container.innerHTML = `
+                <img src="${base64data}" alt="トリミング済み" class="image-preview">
+                <div class="mt-2">
+                    <small class="text-success">✓ トリミング完了</small>
+                </div>
+            `;
+        };
+        reader.readAsDataURL(blob);
+    }, 'image/jpeg', 0.9);
+    
+    // Close modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('imageCropModal'));
+    modal.hide();
+}
+
+// Crop button click handler
+document.addEventListener('DOMContentLoaded', function() {
+    const cropBtn = document.getElementById('cropImageBtn');
+    if (cropBtn) {
+        cropBtn.addEventListener('click', showCropModal);
+    }
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+    if (e.ctrlKey || e.metaKey) {
+        const editor = document.getElementById('markdownEditor');
+        if (document.activeElement === editor) {
+            switch(e.key) {
+                case 'b':
+                    e.preventDefault();
+                    insertMarkdown('**', '**');
+                    break;
+                case 'i':
+                    e.preventDefault();
+                    insertMarkdown('*', '*');
+                    break;
+                case 'k':
+                    e.preventDefault();
+                    insertMarkdown('[', '](URL)');
+                    break;
+            }
+        }
+    }
+});
+</script>
+{% endblock %}
