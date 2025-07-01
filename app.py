@@ -4,6 +4,7 @@ from flask_wtf.csrf import CSRFProtect
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, login_user, logout_user, current_user, login_required
+from datetime import datetime, timedelta
 import os
 from admin import admin_bp
 import logging
@@ -17,6 +18,10 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
+# MySQL対応: PyMySQLをmysqldbとして登録
+import pymysql
+pymysql.install_as_MySQLdb()
+
 # models.py から db インスタンスとモデルクラスをインポートします
 from models import db, User, Article, Category, Comment
 # forms.py からフォームクラスをインポート
@@ -24,13 +29,22 @@ from forms import LoginForm, TOTPVerificationForm, TOTPSetupForm, PasswordResetR
 
 app = Flask(__name__)
 
-# 開発時のみ：静的ファイルのキャッシュを無効化
+# セキュリティヘッダーとキャッシュ制御の統合設定
 @app.after_request
 def after_request(response):
+    # セキュリティヘッダーの追加
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://platform.twitter.com https://www.instagram.com https://*.instagram.com https://connect.facebook.net https://*.facebook.com https://threads.com https://threads.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.instagram.com; img-src 'self' data: https://*.twimg.com https://*.instagram.com https://*.youtube.com https://*.fbcdn.net https://*.threads.com https://*.ytimg.com https://*.cdninstagram.com; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://platform.twitter.com https://www.instagram.com https://www.facebook.com https://threads.net https://threads.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://*.instagram.com https://*.facebook.com"
+    
+    # 開発時のみ：静的ファイルのキャッシュを無効化
     if app.debug:
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+    
     return response
 
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your_default_secret_key')
@@ -40,11 +54,15 @@ app.config['UPLOAD_FOLDER'] = 'static/uploads' # staticフォルダ内のuploads
 app.config['CATEGORY_OGP_UPLOAD_FOLDER'] = os.path.join(app.config['UPLOAD_FOLDER'], 'category_ogp')
 app.config['BLOCK_IMAGE_UPLOAD_FOLDER'] = os.path.join(app.config['UPLOAD_FOLDER'], 'blocks')
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
-app.config['WTF_CSRF_TIME_LIMIT'] = 3600  # CSRFトークンの有効期限を1時間に設定
-app.config['SESSION_COOKIE_SECURE'] = False  # 開発環境用（本番ではTrue）
+app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH', 16 * 1024 * 1024))  # デフォルト: 16MB
+app.config['WTF_CSRF_TIME_LIMIT'] = int(os.environ.get('WTF_CSRF_TIME_LIMIT', 3600))  # デフォルト: 1時間
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'false').lower() == 'true'
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # XSS対策でJavaScriptからのアクセスを禁止
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'  # CSRF対策
+
+# セキュリティ強化設定
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=int(os.environ.get('SESSION_LIFETIME_HOURS', 24)))
+app.config['WTF_CSRF_ENABLED'] = os.environ.get('WTF_CSRF_ENABLED', 'true').lower() == 'true'
 
 # メール設定
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'localhost')
@@ -54,7 +72,8 @@ app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@miniblog.local')
 
-app.debug = True  # デバッグモードを有効にする
+# デバッグモードの設定（環境変数ベース）
+app.debug = os.environ.get('FLASK_DEBUG', 'true').lower() == 'true'
 
 # --- ロガー設定を追加 ---
 if app.debug:
@@ -84,12 +103,7 @@ login_manager.login_message_category = "info"
 db.init_app(app)
 # migrate も同様に、インポートした db を使用します
 migrate.init_app(app, db)
-# csrf.init_app(app)  # CSRF保護を一時的に無効化（ブロックエディタのテスト用）
-
-# CSRF無効化中の暫定対応：テンプレートでエラーにならないようにダミー関数を提供
-@app.template_global()
-def csrf_token():
-    return "dummy_token"
+csrf.init_app(app)  # CSRF保護を有効化
 
 # Markdownフィルターを追加
 @app.template_filter('markdown')
@@ -151,7 +165,7 @@ login_manager.init_app(app)
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))  # User.query は models.py からインポートした db に紐づく
+    return db.session.get(User, int(user_id))  # SQLAlchemy 2.0 対応
 
 # HTMLサニタイゼーション用ヘルパー関数
 def sanitize_html(content):
@@ -499,15 +513,6 @@ def generate_threads_embed(url):
     </div>
 </div>'''
 
-# セキュリティヘッダーの追加
-@app.after_request
-def after_request(response):
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
-    response.headers['X-XSS-Protection'] = '1; mode=block'
-    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://platform.twitter.com https://www.instagram.com https://*.instagram.com https://connect.facebook.net https://*.facebook.com https://threads.com https://threads.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.instagram.com; img-src 'self' data: https://*.twimg.com https://*.instagram.com https://*.youtube.com https://*.fbcdn.net https://*.threads.com https://*.ytimg.com https://*.cdninstagram.com; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://platform.twitter.com https://www.instagram.com https://www.facebook.com https://threads.net https://threads.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://*.instagram.com https://*.facebook.com"
-    return response
 
 # CSRF トークンをテンプレートで利用可能にする
 @app.context_processor
@@ -686,7 +691,7 @@ def totp_verify():
         flash('不正なアクセスです。', 'danger')
         return redirect(url_for('login'))
     
-    user = User.query.get(temp_user_id)
+    user = db.session.get(User, temp_user_id)
     if not user or not user.totp_enabled:
         flash('2段階認証が設定されていません。', 'danger')
         return redirect(url_for('login'))
@@ -959,5 +964,9 @@ def profile(handle_name):
     return render_template('profile.html', user=user, articles=articles)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    # 本番環境では通常WSGI サーバー（Gunicorn等）を使用
+    host = os.environ.get('FLASK_HOST', '0.0.0.0')
+    port = int(os.environ.get('FLASK_PORT', 5001))
+    debug = os.environ.get('FLASK_DEBUG', 'true').lower() == 'true'
+    app.run(host=host, port=port, debug=debug)
 

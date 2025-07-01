@@ -4,7 +4,7 @@ from models import db, User, Article, Category, Comment, SiteSetting, UploadedIm
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
-from sqlalchemy import func
+from sqlalchemy import func, select
 import os
 from PIL import Image
 import time
@@ -19,6 +19,9 @@ try:
 except ImportError as e:
     print(f"Block editor modules not available: {e}")
     BLOCK_EDITOR_AVAILABLE = False
+
+# 新しいサービスクラスをインポート
+from article_service import ArticleService, CategoryService, ImageProcessingService, UserService
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -349,9 +352,9 @@ def debug_simple():
     from flask import current_app
     try:
         with current_app.app_context():
-            user_count = db.session.query(User).count()
-            article_count = db.session.query(Article).count()
-            category_count = db.session.query(Category).count()
+            user_count = db.session.execute(select(func.count(User.id))).scalar()
+            article_count = db.session.execute(select(func.count(Article.id))).scalar()
+            category_count = db.session.execute(select(func.count(Category.id))).scalar()
             
             return f"""
             <h2>簡単なデータベーステスト</h2>
@@ -404,9 +407,9 @@ def debug_stats():
     
     try:
         # 直接クエリでテスト
-        debug_info['user_count_direct'] = db.session.query(User).count()
-        debug_info['article_count_direct'] = db.session.query(Article).count()
-        debug_info['category_count_direct'] = db.session.query(Category).count()
+        debug_info['user_count_direct'] = db.session.execute(select(func.count(User.id))).scalar()
+        debug_info['article_count_direct'] = db.session.execute(select(func.count(Article.id))).scalar()
+        debug_info['category_count_direct'] = db.session.execute(select(func.count(Category.id))).scalar()
         
         # モデル経由でテスト
         debug_info['user_count_model'] = User.query.count()
@@ -707,114 +710,67 @@ def articles():
 @admin_bp.route('/article/create/', methods=['GET', 'POST'])
 @admin_required
 def create_article():
-    """記事作成"""
+    """記事作成（統一版）"""
     form = ArticleForm()
-    all_categories = Category.query.order_by(Category.name).all()
     
-    # カテゴリの選択肢を設定
-    form.category_id.choices = [(0, 'カテゴリを選択してください')] + [(cat.id, cat.name) for cat in all_categories]
+    # カテゴリ選択肢を設定
+    ArticleService.setup_category_choices(form)
     
     if form.validate_on_submit():
-        # デバッグ: ファイルが送信されているかチェック
-        current_app.logger.info(f"Featured image data: {form.featured_image.data}")
-        current_app.logger.info(f"Featured image filename: {form.featured_image.data.filename if form.featured_image.data else 'No file'}")
+        # バリデーション
+        validation_errors = ArticleService.validate_article_data(form)
+        if validation_errors:
+            for error in validation_errors:
+                flash(error, 'danger')
+            return render_template('admin/article_form.html', 
+                                 form=form, 
+                                 **ArticleService.get_article_context())
         
-        # スラッグ重複チェック
-        if Article.query.filter_by(slug=form.slug.data).first():
-            flash('そのスラッグは既に使用されています。', 'danger')
+        # フォームデータ準備
+        form_data = {
+            'title': form.title.data,
+            'slug': form.slug.data,
+            'summary': form.summary.data,
+            'body': form.body.data,
+            'is_published': form.is_published.data,
+            'allow_comments': form.allow_comments.data,
+            'meta_title': form.meta_title.data,
+            'meta_description': form.meta_description.data,
+            'meta_keywords': form.meta_keywords.data,
+            'canonical_url': form.canonical_url.data,
+            'category_id': form.category_id.data,
+            'cropped_image_data': request.form.get('cropped_image_data')
+        }
+        
+        # 記事作成
+        article, error = ArticleService.create_article(form_data, current_user.id)
+        
+        if article:
+            flash('記事が作成されました。', 'success')
+            return redirect(url_for('admin.articles'))
         else:
-            try:
-                new_article = Article(
-                    title=form.title.data,
-                    slug=form.slug.data,
-                    summary=form.summary.data,
-                    body=form.body.data,
-                    meta_title=form.meta_title.data,
-                    meta_description=form.meta_description.data,
-                    meta_keywords=form.meta_keywords.data,
-                    canonical_url=form.canonical_url.data,
-                    is_published=form.is_published.data,
-                    allow_comments=form.allow_comments.data,
-                    author_id=current_user.id,
-                    created_at=datetime.utcnow()
-                )
-                
-                # 公開日時の設定
-                if form.is_published.data:
-                    new_article.published_at = datetime.utcnow()
-                
-                # カテゴリ関連付け
-                if form.category_id.data and form.category_id.data != 0:
-                    category = Category.query.get(form.category_id.data)
-                    if category:
-                        new_article.categories.append(category)
-                
-                db.session.add(new_article)
-                db.session.flush()  # IDを取得するためにflush
-                
-                # アイキャッチ画像の処理（IDが確定した後）
-                cropped_image_data = request.form.get('cropped_image_data')
-                
-                if cropped_image_data:
-                    # トリミング後の画像データがある場合
-                    try:
-                        current_app.logger.info(f"Processing cropped image data for new article ID: {new_article.id}")
-                        featured_image = process_cropped_image(cropped_image_data, new_article.id)
-                        if featured_image:
-                            new_article.featured_image = featured_image
-                            current_app.logger.info(f"New cropped featured image saved: {featured_image}")
-                        else:
-                            current_app.logger.error("Failed to process cropped featured image")
-                    except Exception as img_error:
-                        current_app.logger.error(f"Cropped image processing error: {img_error}")
-                        flash('トリミング画像の処理中にエラーが発生しましたが、記事は作成されました。', 'warning')
-                        
-                elif form.featured_image.data and form.featured_image.data.filename:
-                    # 通常の画像アップロード
-                    try:
-                        current_app.logger.info(f"Processing featured image for article ID: {new_article.id}")
-                        featured_image = process_featured_image(form.featured_image.data, new_article.id)
-                        if featured_image:
-                            new_article.featured_image = featured_image
-                            current_app.logger.info(f"Featured image saved: {featured_image}")
-                        else:
-                            current_app.logger.warning("Featured image processing failed, but continuing with article creation")
-                    except Exception as img_error:
-                        current_app.logger.error(f"Featured image processing error: {img_error}")
-                        flash('画像の処理中にエラーが発生しましたが、記事は作成されました。', 'warning')
-                
-                db.session.commit()
-                current_app.logger.info(f"Article created with featured_image: {new_article.featured_image}")
-                flash('記事が作成されました。', 'success')
-                return redirect(url_for('admin.articles'))
-            except Exception as e:
-                db.session.rollback()
-                current_app.logger.error(f"Article creation error: {e}")
-                flash(f'記事の作成に失敗しました: {str(e)}', 'danger')
-    else:
-        # バリデーションエラーがある場合
-        if form.errors:
-            for field, errors in form.errors.items():
-                for error in errors:
-                    flash(f'{field}: {error}', 'danger')
+            flash(f'記事の作成に失敗しました: {error}', 'danger')
     
-    return render_template('admin/create_article.html', form=form, all_categories=all_categories)
+    # フォーム表示
+    return render_template('admin/article_form.html', 
+                         form=form, 
+                         **ArticleService.get_article_context())
 
 @admin_bp.route('/article/edit/<int:article_id>/', methods=['GET', 'POST'])
 @admin_required
 def edit_article(article_id):
-    """記事編集（従来型エディタ）"""
+    """記事編集（統一版）"""
     article = Article.query.get_or_404(article_id)
     
     # ブロック型記事の場合はブロック型エディタにリダイレクト
     if article.use_block_editor:
         flash('この記事はブロック型エディタで作成されています。ブロック型エディタで編集してください。', 'info')
         return redirect(url_for('admin.edit_article_block_editor', article_id=article_id))
-    form = ArticleForm(obj=article)
-    all_categories = Category.query.order_by(Category.name).all()
     
-    # カテゴリの選択肢を設定
-    form.category_id.choices = [(0, 'カテゴリを選択してください')] + [(cat.id, cat.name) for cat in all_categories]
+    form = ArticleForm(obj=article)
+    
+    # カテゴリ選択肢を設定
+    ArticleService.setup_category_choices(form)
     
     # 現在のカテゴリを設定
     current_category = article.categories.first()
@@ -822,85 +778,41 @@ def edit_article(article_id):
         form.category_id.data = current_category.id
     
     if form.validate_on_submit():
-        # スラッグ重複チェック（自分以外）
-        existing = Article.query.filter(Article.id != article_id, Article.slug == form.slug.data).first()
-        if existing:
-            flash('そのスラッグは既に使用されています。', 'danger')
+        # バリデーション
+        validation_errors = ArticleService.validate_article_data(form, article_id)
+        if validation_errors:
+            for error in validation_errors:
+                flash(error, 'danger')
         else:
-            try:
-                # 基本フィールドの更新
-                article.title = form.title.data
-                article.slug = form.slug.data
-                article.summary = form.summary.data
-                article.body = form.body.data
-                article.meta_title = form.meta_title.data
-                article.meta_description = form.meta_description.data
-                article.meta_keywords = form.meta_keywords.data
-                article.canonical_url = form.canonical_url.data
-                article.allow_comments = form.allow_comments.data
-                article.updated_at = datetime.utcnow()
-                
-                # 公開状態の更新
-                was_published = article.is_published
-                article.is_published = form.is_published.data
-                if form.is_published.data and not was_published:
-                    article.published_at = datetime.utcnow()
-                
-                # アイキャッチ画像の処理
-                cropped_image_data = request.form.get('cropped_image_data')
-                
-                if cropped_image_data:
-                    # トリミング後の画像データがある場合
-                    current_app.logger.info(f"Processing cropped image data for article ID: {article.id}")
-                    # 古い画像削除
-                    if article.featured_image:
-                        current_app.logger.info(f"Deleting old image: {article.featured_image}")
-                        delete_old_image(article.featured_image)
-                    
-                    featured_image = process_cropped_image(cropped_image_data, article.id)
-                    if featured_image:
-                        article.featured_image = featured_image
-                        current_app.logger.info(f"New cropped featured image saved: {featured_image}")
-                    else:
-                        current_app.logger.error("Failed to process cropped featured image")
-                        
-                elif form.featured_image.data and form.featured_image.data.filename:
-                    # 通常の画像アップロード
-                    current_app.logger.info(f"Processing new featured image for article ID: {article.id}")
-                    # 古い画像削除
-                    if article.featured_image:
-                        current_app.logger.info(f"Deleting old image: {article.featured_image}")
-                        delete_old_image(article.featured_image)
-                    
-                    featured_image = process_featured_image(form.featured_image.data, article.id)
-                    if featured_image:
-                        article.featured_image = featured_image
-                        current_app.logger.info(f"New featured image saved: {featured_image}")
-                    else:
-                        current_app.logger.error("Failed to process new featured image")
-                
-                # カテゴリ更新
-                # dynamic relationshipの場合は直接clearできないため、手動で削除
-                current_category_ids = [cat.id for cat in article.categories.all()]
-                for cat_id in current_category_ids:
-                    category_to_remove = Category.query.get(cat_id)
-                    if category_to_remove:
-                        article.categories.remove(category_to_remove)
-                        
-                if form.category_id.data and form.category_id.data != 0:
-                    category = Category.query.get(form.category_id.data)
-                    if category:
-                        article.categories.append(category)
-                
-                db.session.commit()
+            # フォームデータ準備
+            form_data = {
+                'title': form.title.data,
+                'slug': form.slug.data,
+                'summary': form.summary.data,
+                'body': form.body.data,
+                'is_published': form.is_published.data,
+                'allow_comments': form.allow_comments.data,
+                'meta_title': form.meta_title.data,
+                'meta_description': form.meta_description.data,
+                'meta_keywords': form.meta_keywords.data,
+                'canonical_url': form.canonical_url.data,
+                'category_id': form.category_id.data,
+                'cropped_image_data': request.form.get('cropped_image_data')
+            }
+            
+            # 記事更新
+            updated_article, error = ArticleService.update_article(article, form_data)
+            
+            if updated_article:
                 flash('記事が更新されました。', 'success')
                 return redirect(url_for('admin.articles'))
-            except Exception as e:
-                db.session.rollback()
-                current_app.logger.error(f"Article update error: {e}")
-                flash('記事の更新に失敗しました。', 'danger')
+            else:
+                flash(f'記事の更新に失敗しました: {error}', 'danger')
     
-    return render_template('admin/edit_article.html', form=form, article=article, all_categories=all_categories)
+    # フォーム表示
+    return render_template('admin/article_form.html', 
+                         form=form, 
+                         **ArticleService.get_article_context(article))
 
 
 @admin_bp.route('/article/toggle_status/<int:article_id>/', methods=['POST'])
@@ -1154,7 +1066,7 @@ def bulk_delete_categories():
     try:
         deleted_count = 0
         for category_id in category_ids:
-            category = Category.query.get(category_id)
+            category = db.session.get(Category, category_id)
             if category:
                 # 関連記事のカテゴリ関連付けを削除
                 for article in category.articles:
@@ -1394,7 +1306,7 @@ def create_article_block_editor():
             
             # カテゴリ関連付け
             if form.category_id.data and form.category_id.data != 0:
-                category = Category.query.get(form.category_id.data)
+                category = db.session.get(Category, form.category_id.data)
                 if category:
                     article.categories.append(category)
             
@@ -1466,7 +1378,7 @@ def edit_article_block_editor(article_id):
             block_type = BlockType.query.filter_by(type_name=add_block_type).first()
             if block_type:
                 # 最大順序番号を取得
-                max_order = db.session.query(func.max(ArticleBlock.sort_order)).filter_by(article_id=article.id).scalar() or 0
+                max_order = db.session.execute(select(func.max(ArticleBlock.sort_order)).where(ArticleBlock.article_id == article.id)).scalar() or 0
                 
                 # 新しいブロックを作成
                 new_block = ArticleBlock(
@@ -1513,12 +1425,12 @@ def edit_article_block_editor(article_id):
             # dynamic relationshipの場合は直接clearできないため、手動で削除
             current_category_ids = [cat.id for cat in article.categories.all()]
             for cat_id in current_category_ids:
-                category_to_remove = Category.query.get(cat_id)
+                category_to_remove = db.session.get(Category, cat_id)
                 if category_to_remove:
                     article.categories.remove(category_to_remove)
                     
             if form.category_id.data and form.category_id.data != 0:
-                category = Category.query.get(form.category_id.data)
+                category = db.session.get(Category, form.category_id.data)
                 if category:
                     article.categories.append(category)
             
@@ -1570,7 +1482,7 @@ def add_block():
         if not article_id or not block_type_name:
             return jsonify({'success': False, 'error': '必要なパラメータが不足しています'})
         
-        article = Article.query.get(article_id)
+        article = db.session.get(Article, article_id)
         if not article:
             return jsonify({'success': False, 'error': '記事が見つかりません'})
         
@@ -1579,7 +1491,7 @@ def add_block():
             return jsonify({'success': False, 'error': 'ブロックタイプが見つかりません'})
         
         # 最大順序番号を取得
-        max_order = db.session.query(func.max(ArticleBlock.sort_order)).filter_by(article_id=article_id).scalar() or 0
+        max_order = db.session.execute(select(func.max(ArticleBlock.sort_order)).where(ArticleBlock.article_id == article_id)).scalar() or 0
         
         # 新しいブロックを作成
         new_block = ArticleBlock(
@@ -1654,7 +1566,7 @@ def save_block():
             return jsonify({'success': False, 'error': 'ブロックIDが指定されていません'})
         
         try:
-            block = ArticleBlock.query.get(block_id)
+            block = db.session.get(ArticleBlock, block_id)
             if not block:
                 current_app.logger.error(f"Block not found: {block_id}")
                 return jsonify({'success': False, 'error': f'ブロック（ID: {block_id}）が見つかりません'})
@@ -1959,7 +1871,7 @@ def reorder_blocks():
         block_ids = data.get('block_ids', [])
         
         for index, block_id in enumerate(block_ids, 1):
-            block = ArticleBlock.query.get(block_id)
+            block = db.session.get(ArticleBlock, block_id)
             if block:
                 block.sort_order = index
         
@@ -2516,7 +2428,7 @@ def seo_batch_analyze():
             optimizer = SEOOptimizer()
             
             for article_id in article_ids:
-                article = Article.query.get(int(article_id))
+                article = db.session.get(Article, int(article_id))
                 if not article:
                     continue
                 
@@ -2860,7 +2772,7 @@ def images_manager():
         
         # 統計情報
         total_images = UploadedImage.query.filter_by(is_active=True).count()
-        total_size = db.session.query(func.sum(UploadedImage.file_size)).filter_by(is_active=True).scalar() or 0
+        total_size = db.session.execute(select(func.sum(UploadedImage.file_size)).where(UploadedImage.is_active == True)).scalar() or 0
         
         stats = {
             'total_images': total_images,
