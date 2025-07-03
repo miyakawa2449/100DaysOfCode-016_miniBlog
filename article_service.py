@@ -86,6 +86,43 @@ class ArticleService:
             return None
     
     @staticmethod
+    def process_featured_image_with_crop(article, form_data):
+        """新しいアイキャッチ画像処理（ファイル + クロップデータ）"""
+        try:
+            from admin import process_featured_image_with_crop
+            
+            # クロップデータを準備
+            crop_data = None
+            if (form_data.get('featured_crop_x') and form_data.get('featured_crop_y') and 
+                form_data.get('featured_crop_width') and form_data.get('featured_crop_height')):
+                crop_data = {
+                    'x': int(float(form_data['featured_crop_x'])),
+                    'y': int(float(form_data['featured_crop_y'])),
+                    'width': int(float(form_data['featured_crop_width'])),
+                    'height': int(float(form_data['featured_crop_height']))
+                }
+            
+            # 画像処理
+            image_path = process_featured_image_with_crop(
+                form_data['featured_image'], 
+                article.id, 
+                crop_data
+            )
+            
+            if image_path:
+                current_app.logger.info(f"Featured image processed: {image_path}")
+                return image_path
+            else:
+                current_app.logger.error("Failed to process featured image")
+                flash('画像の処理中にエラーが発生しました', 'warning')
+                return None
+                
+        except Exception as e:
+            current_app.logger.error(f"Featured image processing error: {e}")
+            flash('画像の処理中にエラーが発生しました', 'warning')
+            return None
+    
+    @staticmethod
     def assign_category(article, category_id):
         """カテゴリの割り当て（作成・編集共通）"""
         if not category_id or category_id == 0:
@@ -136,8 +173,15 @@ class ArticleService:
             # カテゴリ割り当て
             ArticleService.assign_category(article, form_data.get('category_id'))
             
-            # アイキャッチ画像処理
-            if form_data.get('cropped_image_data'):
+            # アイキャッチ画像処理（新しい方式）
+            if form_data.get('featured_image') and form_data['featured_image'].filename:
+                featured_image_path = ArticleService.process_featured_image_with_crop(
+                    article, form_data
+                )
+                if featured_image_path:
+                    article.featured_image = featured_image_path
+            # 古い方式のサポート（後方互換性）
+            elif form_data.get('cropped_image_data'):
                 featured_image = ArticleService.process_article_image(
                     article, form_data['cropped_image_data']
                 )
@@ -180,8 +224,15 @@ class ArticleService:
             # カテゴリ更新
             ArticleService.assign_category(article, form_data.get('category_id'))
             
-            # アイキャッチ画像処理
-            if form_data.get('cropped_image_data'):
+            # アイキャッチ画像処理（新しい方式）
+            if form_data.get('featured_image') and form_data['featured_image'].filename:
+                featured_image_path = ArticleService.process_featured_image_with_crop(
+                    article, form_data
+                )
+                if featured_image_path:
+                    article.featured_image = featured_image_path
+            # 古い方式のサポート（後方互換性）
+            elif form_data.get('cropped_image_data'):
                 featured_image = ArticleService.process_article_image(
                     article, form_data['cropped_image_data']
                 )

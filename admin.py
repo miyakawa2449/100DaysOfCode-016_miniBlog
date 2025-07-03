@@ -182,6 +182,74 @@ def process_featured_image(image_file, article_id=None):
                 pass
         return None
 
+def process_featured_image_with_crop(image_file, article_id, crop_data=None):
+    """アイキャッチ画像の処理（クロップ対応版）"""
+    if not image_file or not image_file.filename:
+        current_app.logger.info("No image file provided")
+        return None
+    
+    try:
+        current_app.logger.info(f"Processing featured image with crop: {image_file.filename}")
+        
+        timestamp = int(time.time())
+        file_ext = os.path.splitext(secure_filename(image_file.filename))[1]
+        if not file_ext:
+            file_ext = '.jpg'
+        
+        filename = f"featured_cropped_{article_id or 'new'}_{timestamp}{file_ext}"
+        
+        upload_folder = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'static/uploads'), 'articles')
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder, exist_ok=True)
+            current_app.logger.info(f"Created upload directory: {upload_folder}")
+        
+        image_path = os.path.join(upload_folder, filename)
+        temp_path = os.path.join(upload_folder, f"temp_{filename}")
+        
+        current_app.logger.info(f"Saving image to: {image_path}")
+        
+        # 一時保存
+        image_file.save(temp_path)
+        current_app.logger.info(f"Saved temp file: {temp_path}")
+        
+        # 画像処理
+        with Image.open(temp_path) as img:
+            # RGB変換（JPEG保存のため）
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
+            
+            # クロップ処理（データがある場合）
+            if crop_data:
+                current_app.logger.info(f"Applying crop: {crop_data}")
+                cropped_img = img.crop((
+                    crop_data['x'],
+                    crop_data['y'],
+                    crop_data['x'] + crop_data['width'],
+                    crop_data['y'] + crop_data['height']
+                ))
+                # 16:9比率で800x450にリサイズ
+                resized_img = cropped_img.resize((800, 450), Image.Resampling.LANCZOS)
+            else:
+                # クロップなしの場合は16:9比率で800x450にリサイズ
+                resized_img = img.resize((800, 450), Image.Resampling.LANCZOS)
+            
+            resized_img.save(image_path, format='JPEG', quality=85)
+            current_app.logger.info(f"Processed and saved image: {image_path}")
+        
+        # 一時ファイル削除
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            current_app.logger.info(f"Removed temp file: {temp_path}")
+        
+        # 相対パスを返す
+        relative_path = os.path.relpath(image_path, current_app.static_folder)
+        current_app.logger.info(f"Returning relative path: {relative_path}")
+        return relative_path.replace('\\', '/')
+        
+    except Exception as e:
+        current_app.logger.error(f"Featured image with crop processing error: {e}")
+        return None
+
 def process_cropped_image(cropped_data, article_id=None):
     """トリミング後の画像データの処理"""
     import base64
@@ -739,7 +807,12 @@ def create_article():
             'meta_keywords': form.meta_keywords.data,
             'canonical_url': form.canonical_url.data,
             'category_id': form.category_id.data,
-            'cropped_image_data': request.form.get('cropped_image_data')
+            'cropped_image_data': request.form.get('cropped_image_data'),
+            'featured_image': request.files.get('featured_image'),
+            'featured_crop_x': request.form.get('featured_crop_x'),
+            'featured_crop_y': request.form.get('featured_crop_y'),
+            'featured_crop_width': request.form.get('featured_crop_width'),
+            'featured_crop_height': request.form.get('featured_crop_height')
         }
         
         # 記事作成
@@ -797,7 +870,12 @@ def edit_article(article_id):
                 'meta_keywords': form.meta_keywords.data,
                 'canonical_url': form.canonical_url.data,
                 'category_id': form.category_id.data,
-                'cropped_image_data': request.form.get('cropped_image_data')
+                'cropped_image_data': request.form.get('cropped_image_data'),
+                'featured_image': request.files.get('featured_image'),
+                'featured_crop_x': request.form.get('featured_crop_x'),
+                'featured_crop_y': request.form.get('featured_crop_y'),
+                'featured_crop_width': request.form.get('featured_crop_width'),
+                'featured_crop_height': request.form.get('featured_crop_height')
             }
             
             # 記事更新
