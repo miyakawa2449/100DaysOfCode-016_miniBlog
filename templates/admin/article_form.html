@@ -47,12 +47,54 @@
     color: #dc3545;
 }
 
+/* 共通クロップモーダルのスタイル */
+#cropModal .crop-container {
+    position: relative;
+    width: 100%;
+    height: auto;
+    min-height: 300px;
+    max-height: 50vh;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#cropModal .modal-dialog {
+    width: 90vw !important;
+    max-width: 1200px !important;
+    margin: 1rem auto !important;
+}
+
+#cropModal .modal-content {
+    max-height: 90vh !important;
+    overflow: hidden !important;
+    display: flex;
+    flex-direction: column;
+}
+
+#cropModal .modal-body {
+    padding: 1rem !important;
+    overflow-y: auto !important;
+    max-height: calc(90vh - 140px) !important;
+    flex: 1;
+}
+
+#cropModal #cropImage {
+    max-width: 100%;
+    max-height: 50vh;
+    object-fit: contain;
+}
+
 /* Markdown Editor Styles */
 .markdown-editor {
     border: 1px solid #dee2e6;
     border-radius: 8px;
     background: #fff;
     overflow: hidden;
+    width: 100%;
+    height: 100%;
+    resize: vertical;
 }
 
 .editor-toolbar {
@@ -118,7 +160,7 @@
 
 .editor-content {
     position: relative;
-    height: 400px;
+    height: 600px;
 }
 
 .editor-textarea {
@@ -220,13 +262,97 @@
     font-weight: 600;
 }
 
+/* Markdown Editor Styles from 7/1 version */
+.markdown-toolbar {
+    background: #f8f9fa;
+    border: 1px solid #ced4da;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    padding: 0.5rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.markdown-button {
+    background: #e9ecef;
+    border: 1px solid #adb5bd;
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.markdown-button:hover {
+    background: #dee2e6;
+}
+
+.editor-tabs {
+    display: flex;
+    border-bottom: 1px solid #dee2e6;
+    margin-bottom: 1rem;
+}
+
+.editor-tab {
+    padding: 0.5rem 1rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.editor-tab.active {
+    border-bottom-color: #0d6efd;
+    color: #0d6efd;
+    font-weight: 500;
+}
+
+.editor-tab:hover {
+    background: #f8f9fa;
+}
+
+.editor-content {
+    display: none;
+}
+
+.editor-content.active {
+    display: block;
+}
+
+.markdown-preview {
+    border: 1px solid #ced4da;
+    border-radius: 8px;
+    padding: 1rem;
+    background-color: white;
+    min-height: 600px;
+    max-height: 800px;
+    overflow-y: auto;
+}
+
+.sns-embed-help {
+    background: #e7f3ff;
+    border: 1px solid #b8daff;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
+.image-upload-helper {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+}
+
 /* Image Upload Modal Styles */
 .modal-lg {
     max-width: 900px;
 }
 
 .cropper-container {
-    max-height: 400px;
     background-color: #f8f9fa;
     border-radius: 8px;
 }
@@ -262,7 +388,7 @@
     }
     
     .editor-content {
-        height: 300px;
+        height: 450px;
     }
     
     .editor-textarea {
@@ -382,7 +508,7 @@
                                     <div class="card-body">
                                         {% if article and article.featured_image %}
                                         <div class="current-image-preview mb-3">
-                                            <img src="{{ url_for('static', filename='uploads/' ~ article.featured_image) }}" 
+                                            <img src="{{ url_for('static', filename=article.featured_image) }}" 
                                                  alt="現在のアイキャッチ画像" class="image-preview">
                                             <div class="mt-2">
                                                 <small class="text-muted">現在の画像</small>
@@ -390,25 +516,111 @@
                                         </div>
                                         {% endif %}
                                         
-                                        <div class="preview-container" id="imagePreviewContainer">
-                                            <i class="fas fa-image fa-3x text-muted mb-3"></i>
-                                            <p class="text-muted mb-2">クリックして画像をアップロード</p>
-                                            <p class="small text-muted">推奨サイズ: 800×450px (16:9)</p>
-                                            <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+                                        <div class="mb-3">
+                                            <label for="featuredImageUpload" class="form-label">画像ファイル</label>
+                                            <input type="file" name="featured_image" id="featuredImageUpload" class="form-control" accept="image/*" onchange="previewFeaturedImage(event)">
+                                            <div class="form-text">
+                                                推奨サイズ: 800×450px（16:9比率、JPG/PNG形式）
+                                            </div>
                                         </div>
                                         
-                                        <button type="button" class="btn btn-primary btn-sm mt-2 w-100" 
-                                                onclick="document.getElementById('imageUpload').click()">
-                                            <i class="fas fa-upload"></i> 画像をアップロード
-                                        </button>
+                                        <div id="featuredImagePreviewContainer" class="preview-container" style="display: none;">
+                                            <img id="featuredImagePreview" class="image-preview" alt="プレビュー">
+                                            <div class="mt-2">
+                                                <small class="text-muted">画像プレビュー</small>
+                                            </div>
+                                            
+                                            <!-- クロップボタン -->
+                                            <div class="mt-3">
+                                                <button type="button" class="btn btn-primary btn-sm w-100" onclick="startFeaturedCropping()">
+                                                    <i class="fa fa-crop"></i> 画像をトリミング
+                                                </button>
+                                            </div>
+                                        </div>
                                         
-                                        <button type="button" class="btn btn-success btn-sm mt-2 w-100" 
-                                                id="cropImageBtn" style="display: none;">
-                                            <i class="fas fa-crop"></i> 画像をトリミング
-                                        </button>
+                                        <!-- 共通クロップモーダル -->
+                                        <div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
+                                            <div class="modal-dialog modal-xl" style="max-width: 90vw; margin: 1rem auto;">
+                                                <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+                                                    <div class="modal-header" style="flex-shrink: 0;">
+                                                        <h5 class="modal-title" id="cropModalLabel">画像トリミング</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                                    </div>
+                                                    <div class="modal-body" style="flex: 1; overflow-y: auto; max-height: calc(90vh - 120px);">
+                                                        <div class="mb-3">
+                                                            <div class="alert alert-info">
+                                                                <i class="fa fa-info-circle me-2"></i>
+                                                                <strong>トリミング方法:</strong>
+                                                                <ul class="mb-0 mt-2">
+                                                                    <li>選択範囲をドラッグして移動できます</li>
+                                                                    <li>角や辺をドラッグしてサイズを調整できます</li>
+                                                                    <li>マウスホイールで拡大・縮小できます</li>
+                                                                    <li id="cropModalAspectInfo">アスペクト比が自動設定されます</li>
+                                                                </ul>
+                                                            </div>
+                                                        </div>
+                                                        <div class="crop-container" style="max-height: 50vh; overflow: hidden; display: flex; justify-content: center; align-items: center;">
+                                                            <img id="cropImage" style="max-width: 100%; max-height: 50vh; object-fit: contain;">
+                                                        </div>
+                                                        <div class="mt-3">
+                                                            <div class="row">
+                                                                <div class="col-md-6">
+                                                                    <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="cropperZoomIn()">
+                                                                        <i class="fa fa-search-plus"></i> 拡大
+                                                                    </button>
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="cropperZoomOut()">
+                                                                        <i class="fa fa-search-minus"></i> 縮小
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div class="row mt-2">
+                                                                <div class="col-md-6">
+                                                                    <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="cropperMoveLeft()">
+                                                                        <i class="fa fa-arrow-left"></i> 左移動
+                                                                    </button>
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="cropperMoveRight()">
+                                                                        <i class="fa fa-arrow-right"></i> 右移動
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div class="row mt-2">
+                                                                <div class="col-md-6">
+                                                                    <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="cropperMoveUp()">
+                                                                        <i class="fa fa-arrow-up"></i> 上移動
+                                                                    </button>
+                                                                </div>
+                                                                <div class="col-md-6">
+                                                                    <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="cropperMoveDown()">
+                                                                        <i class="fa fa-arrow-down"></i> 下移動
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div class="row mt-2">
+                                                                <div class="col-12">
+                                                                    <button type="button" class="btn btn-outline-warning btn-sm w-100" onclick="cropperReset()">
+                                                                        <i class="fa fa-refresh"></i> リセット
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer" style="flex-shrink: 0;">
+                                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                                                        <button type="button" class="btn btn-primary" onclick="applyCrop()">トリミングを適用</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                         
-                                        <!-- Hidden field for cropped image data -->
-                                        <input type="hidden" name="cropped_image_data" id="croppedImageData">
+                                        <!-- Hidden fields for crop data -->
+                                        <input type="hidden" name="featured_crop_x" id="featured_crop_x">
+                                        <input type="hidden" name="featured_crop_y" id="featured_crop_y">
+                                        <input type="hidden" name="featured_crop_width" id="featured_crop_width">
+                                        <input type="hidden" name="featured_crop_height" id="featured_crop_height">
                                     </div>
                                 </div>
                             </div>
@@ -417,51 +629,87 @@
                         <!-- Markdownエディタ -->
                         <div class="mb-4">
                             <label for="body" class="form-label required-field">記事本文</label>
-                            <div class="markdown-editor">
-                                <!-- ツールバー -->
-                                <div class="editor-toolbar">
-                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('**', '**')" title="太字">
-                                        <i class="fas fa-bold"></i>
-                                    </button>
-                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('*', '*')" title="斜体">
-                                        <i class="fas fa-italic"></i>
-                                    </button>
-                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('# ', '')" title="見出し1">
-                                        H1
-                                    </button>
-                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('## ', '')" title="見出し2">
-                                        H2
-                                    </button>
-                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('### ', '')" title="見出し3">
-                                        H3
-                                    </button>
-                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('- ', '')" title="リスト">
-                                        <i class="fas fa-list-ul"></i>
-                                    </button>
-                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('1. ', '')" title="番号リスト">
-                                        <i class="fas fa-list-ol"></i>
-                                    </button>
-                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('[', '](URL)')" title="リンク">
-                                        <i class="fas fa-link"></i>
-                                    </button>
-                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('`', '`')" title="コード">
-                                        <i class="fas fa-code"></i>
-                                    </button>
-                                    <button type="button" class="toolbar-btn" onclick="insertMarkdown('> ', '')" title="引用">
-                                        <i class="fas fa-quote-right"></i>
-                                    </button>
-                                </div>
-                                
-                                <!-- タブ -->
-                                <div class="editor-tabs">
-                                    <button type="button" class="tab-btn active" onclick="switchTab('edit')">編集</button>
-                                    <button type="button" class="tab-btn" onclick="switchTab('preview')">プレビュー</button>
-                                </div>
-                                
-                                <!-- エディタコンテンツ -->
-                                <div class="editor-content">
-                                    {{ form.body(class="editor-textarea", id="markdownEditor", placeholder="Markdownで記事を書いてください...") }}
-                                    <div class="preview-content" id="previewContent"></div>
+                            <!-- SNS自動埋込機能の説明 -->
+                            <div class="sns-embed-help">
+                                <h6><i class="fa fa-info-circle me-2"></i>SNS自動埋込機能</h6>
+                                <p class="mb-2">以下の形式のURLを貼り付けると自動的に埋込表示されます：</p>
+                                <ul class="mb-0">
+                                    <li><strong>YouTube:</strong> https://youtu.be/VIDEO_ID または https://www.youtube.com/watch?v=VIDEO_ID</li>
+                                    <li><strong>X (Twitter):</strong> https://x.com/username/status/POST_ID</li>
+                                    <li><strong>Instagram:</strong> https://www.instagram.com/p/POST_ID/</li>
+                                    <li><strong>Facebook:</strong> https://www.facebook.com/post/POST_ID</li>
+                                    <li><strong>Threads:</strong> https://www.threads.net/@username/post/POST_ID （コメント、いいね、リポストを除く）</li>
+                                </ul>
+                            </div>
+                            
+                            <!-- 画像の挿入方法 -->
+                            <div class="image-upload-helper">
+                                <h6><i class="fa fa-upload me-2"></i>画像の挿入方法</h6>
+                                <p class="mb-2">Markdownで画像を挿入する方法：</p>
+                                <ul class="mb-2">
+                                    <li><strong>画像ボタン</strong>を使用して、ファイルをアップロードして自動挿入</li>
+                                    <li><strong>手動記述:</strong> <code>![代替テキスト](画像URL)</code> の形式で直接記述</li>
+                                    <li><strong>キャプション付き:</strong> <code>![代替テキスト](画像URL "キャプション")</code> でキャプション付き画像</li>
+                                </ul>
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="showImageUploadModal()">
+                                    <i class="fa fa-upload me-1"></i>画像をアップロード
+                                </button>
+                            </div>
+                            
+                            <!-- エディタタブ -->
+                            <div class="editor-tabs">
+                                <button type="button" class="editor-tab active" onclick="switchTab('edit')">編集</button>
+                                <button type="button" class="editor-tab" onclick="switchTab('preview')">プレビュー</button>
+                            </div>
+                            
+                            <!-- ツールバー -->
+                            <div class="markdown-toolbar">
+                                <button type="button" class="markdown-button" onclick="insertMarkdown('**', '**')" title="太字">
+                                    <i class="fa fa-bold"></i>
+                                </button>
+                                <button type="button" class="markdown-button" onclick="insertMarkdown('*', '*')" title="斜体">
+                                    <i class="fa fa-italic"></i>
+                                </button>
+                                <button type="button" class="markdown-button" onclick="insertMarkdown('# ', '')" title="見出し1">
+                                    H1
+                                </button>
+                                <button type="button" class="markdown-button" onclick="insertMarkdown('## ', '')" title="見出し2">
+                                    H2
+                                </button>
+                                <button type="button" class="markdown-button" onclick="insertMarkdown('### ', '')" title="見出し3">
+                                    H3
+                                </button>
+                                <button type="button" class="markdown-button" onclick="insertMarkdown('- ', '')" title="リスト">
+                                    <i class="fa fa-list"></i>
+                                </button>
+                                <button type="button" class="markdown-button" onclick="insertMarkdown('1. ', '')" title="番号付きリスト">
+                                    <i class="fa fa-list-ol"></i>
+                                </button>
+                                <button type="button" class="markdown-button" onclick="insertMarkdown('[', '](URL)')" title="リンク">
+                                    <i class="fa fa-link"></i>
+                                </button>
+                                <button type="button" class="markdown-button" onclick="showImageUploadModal()" title="画像をアップロード">
+                                    <i class="fa fa-image"></i>
+                                </button>
+                                <button type="button" class="markdown-button" onclick="insertMarkdown('`', '`')" title="インラインコード">
+                                    <i class="fa fa-code"></i>
+                                </button>
+                                <button type="button" class="markdown-button" onclick="insertMarkdown('```\n', '\n```')" title="コードブロック">
+                                    <i class="fa fa-file-code"></i>
+                                </button>
+                                <button type="button" class="markdown-button" onclick="insertMarkdown('> ', '')" title="引用">
+                                    <i class="fa fa-quote-left"></i>
+                                </button>
+                            </div>
+                            
+                            <!-- エディタコンテンツ -->
+                            <div class="editor-content active" id="edit-content">
+                                {{ form.body(class="markdown-editor" + (" is-invalid" if form.body.errors else ""), placeholder="Markdownで記事の本文を入力してください...\n\n例:\n# 見出し1\n## 見出し2\n\n**太字**や*斜体*を使えます。\n\nSNS URLを貼り付けると自動的に埋込表示されます:\nhttps://youtu.be/VIDEO_ID", id="body") }}
+                            </div>
+                            
+                            <div class="editor-content" id="preview-content">
+                                <div class="markdown-preview" id="markdown-preview">
+                                    プレビューを表示するには「プレビュー」タブをクリックしてください。
                                 </div>
                             </div>
                             {% if form.body.errors %}
@@ -547,228 +795,882 @@
         </div>
     </div>
 </div>
+
+<!-- 画像アップロードモーダル -->
+<div class="modal fade" id="imageUploadModal" tabindex="-1" aria-labelledby="imageUploadModalLabel">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="imageUploadModalLabel">
+                    <i class="fa fa-cloud-upload me-2"></i>画像をアップロード
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="imageUploadForm" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <!-- ファイル選択 -->
+                    <div class="mb-3">
+                        <label for="imageFile" class="form-label required-field">画像ファイル</label>
+                        <input type="file" class="form-control" id="imageFile" name="image" accept="image/*" required>
+                        <div class="form-text">
+                            <i class="fa fa-info-circle me-1"></i>
+                            対応形式: JPEG, PNG, GIF（最大サイズ: 10MB）
+                        </div>
+                    </div>
+                    
+                    <!-- プレビュー -->
+                    <div class="mb-3" id="uploadPreviewContainer" style="display: none;">
+                        <label class="form-label">プレビュー</label>
+                        <div class="border rounded p-3 text-center">
+                            <img id="uploadPreview" class="img-fluid" style="max-height: 200px;">
+                        </div>
+                        <div class="mt-2 text-center">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="startUploadImageCropping()">
+                                <i class="fa fa-crop me-1"></i>4:3でトリミング（推奨）
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Alt属性 -->
+                    <div class="mb-3">
+                        <label for="imageAlt" class="form-label required-field">Alt属性（代替テキスト）</label>
+                        <input type="text" class="form-control" id="imageAlt" name="alt_text" placeholder="画像の内容を説明してください" required>
+                        <div class="form-text">
+                            <i class="fa fa-universal-access me-1"></i>
+                            視覚障害者向けの画像説明文です。具体的に記述してください。
+                        </div>
+                    </div>
+                    
+                    <!-- キャプション -->
+                    <div class="mb-3">
+                        <label for="imageCaption" class="form-label">キャプション（任意）</label>
+                        <textarea class="form-control" id="imageCaption" name="caption" rows="2" placeholder="画像のキャプションや追加説明"></textarea>
+                        <div class="form-text">
+                            <i class="fa fa-comment me-1"></i>
+                            画像下に表示される説明文です（省略可能）
+                        </div>
+                    </div>
+                    
+                    <!-- 説明 -->
+                    <div class="mb-3">
+                        <label for="imageDescription" class="form-label">説明（管理用）</label>
+                        <textarea class="form-control" id="imageDescription" name="description" rows="2" placeholder="管理者向けの画像説明"></textarea>
+                        <div class="form-text">
+                            <i class="fa fa-sticky-note me-1"></i>
+                            画像管理で検索に使用されます（省略可能）
+                        </div>
+                    </div>
+                </form>
+                
+                <!-- アップロード状況 -->
+                <div class="mt-3" id="uploadProgress" style="display: none;">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div>
+                    </div>
+                    <div class="text-center mt-2">
+                        <small class="text-muted">画像をアップロード中...</small>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fa fa-times me-1"></i>キャンセル
+                </button>
+                <button type="button" class="btn btn-primary" id="uploadImageBtn">
+                    <i class="fa fa-cloud-upload me-1"></i>アップロードして挿入
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- アップロード画像用トリミングモーダル -->
+<div class="modal fade" id="uploadCropModal" tabindex="-1" aria-labelledby="uploadCropModalLabel">
+    <div class="modal-dialog modal-xl" style="max-width: 90vw; margin: 1rem auto;">
+        <div class="modal-content" style="max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header" style="flex-shrink: 0;">
+                <h5 class="modal-title" id="uploadCropModalLabel">画像トリミング（4:3比率）</h5>
+                <button type="button" class="btn-close" onclick="closeUploadCropModal()" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="flex: 1; overflow-y: auto; max-height: calc(90vh - 120px);">
+                <div class="mb-3">
+                    <div class="alert alert-info">
+                        <i class="fa fa-info-circle me-2"></i>
+                        <strong>トリミング方法:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li>選択範囲をドラッグして移動できます</li>
+                            <li>角や辺をドラッグしてサイズを調整できます</li>
+                            <li>マウスホイールで拡大・縮小できます</li>
+                            <li>4:3の比率でトリミングされます（800×600px）</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="crop-container" style="max-height: 50vh; overflow: hidden; display: flex; justify-content: center; align-items: center;">
+                    <img id="uploadCropImage" style="max-width: 100%; max-height: 50vh; object-fit: contain;">
+                </div>
+                <div class="mt-3">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="uploadCropperZoomIn()">
+                                <i class="fa fa-search-plus"></i> 拡大
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="uploadCropperZoomOut()">
+                                <i class="fa fa-search-minus"></i> 縮小
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="uploadCropperMoveLeft()">
+                                <i class="fa fa-arrow-left"></i> 左移動
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="uploadCropperMoveRight()">
+                                <i class="fa fa-arrow-right"></i> 右移動
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="uploadCropperMoveUp()">
+                                <i class="fa fa-arrow-up"></i> 上移動
+                            </button>
+                        </div>
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-outline-secondary btn-sm w-100" onclick="uploadCropperMoveDown()">
+                                <i class="fa fa-arrow-down"></i> 下移動
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-12">
+                            <button type="button" class="btn btn-outline-warning btn-sm w-100" onclick="uploadCropperReset()">
+                                <i class="fa fa-refresh"></i> リセット
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="flex-shrink: 0;">
+                <button type="button" class="btn btn-secondary me-2" onclick="closeUploadCropModal()">キャンセル</button>
+                <button type="button" class="btn btn-primary" onclick="applyUploadCrop()">トリミングを適用</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
-{% block scripts %}
+{% block scripts_extra %}
 <!-- Cropper.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
-<!-- Markdown Processing -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
 
 <script>
-// Global variables
-let cropper = null;
-let currentImageFile = null;
+// 画像アップロード関連の変数
+let uploadCropper = null;
+let croppedUploadImageData = null;
 
-// Initialize markdown editor
+// アイキャッチ画像関連の変数
+let featuredCropper = null;
+let cropper = null; // 共通Cropper変数
+let cropperMode = 'featured'; // 'featured' または 'category'
+
+// ページ読み込み時の初期化
 document.addEventListener('DOMContentLoaded', function() {
-    const editor = document.getElementById('markdownEditor');
-    if (editor) {
-        editor.addEventListener('input', updatePreview);
-        // Initial preview update
-        updatePreview();
-    }
+    console.log('DOMContentLoaded - initializing image upload functionality');
+    setupImageUploadHandlers();
+    setupMarkdownEditor();
     
-    // Setup image upload
-    setupImageUpload();
+    // 関数の存在確認
+    console.log('showImageUploadModal function available:', typeof showImageUploadModal);
+    console.log('Bootstrap available:', typeof bootstrap);
 });
 
-// Tab switching
-function switchTab(tab) {
-    const editTab = document.querySelector('.tab-btn[onclick="switchTab(\'edit\')"]');
-    const previewTab = document.querySelector('.tab-btn[onclick="switchTab(\'preview\')"]');
-    const editor = document.getElementById('markdownEditor');
-    const preview = document.getElementById('previewContent');
+// 画像アップロードモーダル関連
+function showImageUploadModal() {
+    console.log('showImageUploadModal called');
+    console.log('bootstrap available:', typeof bootstrap);
     
-    if (tab === 'edit') {
-        editTab.classList.add('active');
-        previewTab.classList.remove('active');
-        editor.style.display = 'block';
-        preview.classList.remove('active');
-    } else {
-        editTab.classList.remove('active');
-        previewTab.classList.add('active');
-        editor.style.display = 'none';
-        preview.classList.add('active');
-        updatePreview();
+    const modalElement = document.getElementById('imageUploadModal');
+    console.log('modal element found:', modalElement);
+    
+    if (typeof bootstrap === 'undefined') {
+        alert('Bootstrap が読み込まれていません。ページを再読み込みしてください。');
+        return;
+    }
+    
+    if (!modalElement) {
+        alert('画像アップロードモーダルが見つかりません。');
+        return;
+    }
+    
+    try {
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+        resetImageUploadForm();
+    } catch (error) {
+        console.error('Modal creation error:', error);
+        alert('モーダルの初期化に失敗しました: ' + error.message);
     }
 }
 
-// Markdown toolbar functions
-function insertMarkdown(startTag, endTag) {
-    const editor = document.getElementById('markdownEditor');
-    const start = editor.selectionStart;
-    const end = editor.selectionEnd;
-    const selectedText = editor.value.substring(start, end);
-    const beforeText = editor.value.substring(0, start);
-    const afterText = editor.value.substring(end);
+function resetImageUploadForm() {
+    document.getElementById('imageUploadForm').reset();
+    document.getElementById('uploadPreviewContainer').style.display = 'none';
+    document.getElementById('uploadProgress').style.display = 'none';
+    document.querySelector('#uploadProgress .progress-bar').style.width = '0%';
     
-    editor.value = beforeText + startTag + selectedText + endTag + afterText;
+    const uploadBtn = document.getElementById('uploadImageBtn');
+    if (uploadBtn) {
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fa fa-cloud-upload me-1"></i>アップロードして挿入';
+    }
     
-    // Set cursor position
-    const newCursorPos = start + startTag.length + selectedText.length + endTag.length;
-    editor.focus();
-    editor.setSelectionRange(newCursorPos, newCursorPos);
-    
-    updatePreview();
-}
-
-// Update markdown preview
-function updatePreview() {
-    const editor = document.getElementById('markdownEditor');
-    const preview = document.getElementById('previewContent');
-    
-    if (editor && preview) {
-        const markdownText = editor.value;
-        if (markdownText.trim() === '') {
-            preview.innerHTML = '<p class="text-muted">プレビューを表示するには左側でMarkdownを入力してください。</p>';
-        } else {
-            try {
-                preview.innerHTML = marked.parse(markdownText);
-            } catch (error) {
-                preview.innerHTML = '<p class="text-danger">Markdownの解析エラーが発生しました。</p>';
-            }
-        }
+    if (window.croppedUploadImageData) {
+        window.croppedUploadImageData = null;
     }
 }
 
-// Image upload setup
-function setupImageUpload() {
-    const uploadInput = document.getElementById('imageUpload');
-    const previewContainer = document.getElementById('imagePreviewContainer');
-    const cropBtn = document.getElementById('cropImageBtn');
+function setupImageUploadHandlers() {
+    // 記事本文の画像アップロード（モーダル用）
+    const imageFileInput = document.getElementById('imageFile');
+    const uploadPreview = document.getElementById('uploadPreview');
+    const uploadPreviewContainer = document.getElementById('uploadPreviewContainer');
     
-    if (uploadInput && previewContainer) {
-        uploadInput.addEventListener('change', function(e) {
+    if (imageFileInput) {
+        imageFileInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
-                currentImageFile = file;
-                previewImage(file);
-                cropBtn.style.display = 'block';
+                if (file.size > 10 * 1024 * 1024) {
+                    alert('ファイルサイズが大きすぎます。10MB以下の画像を選択してください。');
+                    this.value = '';
+                    uploadPreviewContainer.style.display = 'none';
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    uploadPreview.src = e.target.result;
+                    uploadPreviewContainer.style.display = 'block';
+                    
+                    const altInput = document.getElementById('imageAlt');
+                    if (!altInput.value) {
+                        const filename = file.name.replace(/\.[^/.]+$/, '');
+                        altInput.value = filename;
+                    }
+                };
+                reader.readAsDataURL(file);
+            } else {
+                uploadPreviewContainer.style.display = 'none';
             }
         });
-        
-        previewContainer.addEventListener('click', function() {
-            uploadInput.click();
-        });
+    }
+    
+    const uploadBtn = document.getElementById('uploadImageBtn');
+    if (uploadBtn) {
+        uploadBtn.addEventListener('click', handleImageUpload);
     }
 }
 
-// Preview uploaded image
-function previewImage(file) {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const container = document.getElementById('imagePreviewContainer');
-        container.innerHTML = `
-            <img src="${e.target.result}" alt="プレビュー" class="image-preview">
-            <div class="mt-2">
-                <small class="text-muted">アップロード済み - トリミングボタンをクリックしてください</small>
-            </div>
-        `;
-    };
-    reader.readAsDataURL(file);
-}
-
-// Show crop modal
-function showCropModal() {
-    if (!currentImageFile) return;
+function handleImageUpload() {
+    const form = document.getElementById('imageUploadForm');
+    let formData = new FormData(form);
+    const progressContainer = document.getElementById('uploadProgress');
+    const progressBar = document.querySelector('#uploadProgress .progress-bar');
+    const uploadBtn = document.getElementById('uploadImageBtn');
     
-    const modal = new bootstrap.Modal(document.getElementById('imageCropModal'));
-    const reader = new FileReader();
+    const fileInput = document.getElementById('imageFile');
+    const altInput = document.getElementById('imageAlt');
     
-    reader.onload = function(e) {
-        const cropperImage = document.getElementById('cropperImage');
-        cropperImage.src = e.target.result;
-        
-        // Initialize cropper
-        if (cropper) {
-            cropper.destroy();
+    if (!fileInput.files[0]) {
+        alert('画像ファイルを選択してください。');
+        return;
+    }
+    
+    if (!altInput.value.trim()) {
+        alert('Alt属性（代替テキスト）を入力してください。');
+        altInput.focus();
+        return;
+    }
+    
+    const csrfToken = document.querySelector('meta[name=csrf-token]')?.getAttribute('content');
+    if (csrfToken) {
+        formData.append('csrf_token', csrfToken);
+    }
+    
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i>アップロード中...';
+    progressContainer.style.display = 'block';
+    
+    // トリミング画像がある場合はそれを使用
+    if (window.croppedUploadImageData) {
+        try {
+            const base64Data = window.croppedUploadImageData.split(',')[1];
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], {type: 'image/jpeg'});
+            
+            formData = new FormData();
+            formData.append('image', blob, 'cropped_image.jpg');
+            formData.append('alt_text', altInput.value);
+            formData.append('caption', document.getElementById('imageCaption').value);
+            formData.append('description', document.getElementById('imageDescription').value);
+            if (csrfToken) {
+                formData.append('csrf_token', csrfToken);
+            }
+            
+        } catch (error) {
+            console.error('Error converting cropped image:', error);
+            alert('トリミング画像の処理でエラーが発生しました。元の画像でアップロードします。');
         }
         
-        cropper = new Cropper(cropperImage, {
-            aspectRatio: 16 / 9,
+        window.croppedUploadImageData = null;
+    }
+    
+    const xhr = new XMLHttpRequest();
+    xhr.timeout = 30000;
+    
+    xhr.upload.addEventListener('progress', function(e) {
+        if (e.lengthComputable) {
+            const percentComplete = (e.loaded / e.total) * 100;
+            progressBar.style.width = percentComplete + '%';
+        }
+    });
+    
+    xhr.addEventListener('load', function() {
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fa fa-cloud-upload me-1"></i>アップロードして挿入';
+        progressContainer.style.display = 'none';
+        
+        if (xhr.status === 200) {
+            try {
+                const response = JSON.parse(xhr.responseText);
+                if (response.success) {
+                    insertUploadedImageMarkdown(response.image);
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('imageUploadModal'));
+                    if (modal) {
+                        modal.hide();
+                        setTimeout(() => {
+                            const bodyTextarea = document.getElementById('body');
+                            if (bodyTextarea) {
+                                bodyTextarea.focus();
+                            }
+                        }, 300);
+                    }
+                    showUploadSuccessMessage(response.image.filename);
+                } else {
+                    alert('アップロードに失敗しました: ' + (response.error || '不明なエラー'));
+                }
+            } catch (e) {
+                console.error('Response parsing error:', e);
+                alert('サーバーからの応答を解析できませんでした。');
+            }
+        } else {
+            alert('アップロードに失敗しました。ステータス: ' + xhr.status);
+        }
+    });
+    
+    xhr.addEventListener('error', function() {
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fa fa-cloud-upload me-1"></i>アップロードして挿入';
+        progressContainer.style.display = 'none';
+        alert('ネットワークエラーが発生しました。');
+    });
+    
+    xhr.addEventListener('timeout', function() {
+        uploadBtn.disabled = false;
+        uploadBtn.innerHTML = '<i class="fa fa-cloud-upload me-1"></i>アップロードして挿入';
+        progressContainer.style.display = 'none';
+        alert('アップロードがタイムアウトしました。');
+    });
+    
+    xhr.open('POST', '/admin/upload_image', true);
+    xhr.send(formData);
+}
+
+function insertUploadedImageMarkdown(image) {
+    const textarea = document.getElementById('body');
+    if (!textarea) return;
+    
+    let markdown;
+    const imageUrl = image.url || image.file_url;
+    if (image.caption && image.caption.trim()) {
+        markdown = `![${image.alt_text}](${imageUrl} "${image.caption}")`;
+    } else {
+        markdown = `![${image.alt_text}](${imageUrl})`;
+    }
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const currentValue = textarea.value;
+    
+    textarea.value = currentValue.substring(0, start) + markdown + currentValue.substring(end);
+    textarea.focus();
+    textarea.setSelectionRange(start + markdown.length, start + markdown.length);
+}
+
+function showUploadSuccessMessage(filename) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed';
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alertDiv.innerHTML = `
+        <i class="fa fa-check-circle me-2"></i>画像「${filename}」をアップロードしました
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    document.body.appendChild(alertDiv);
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 4000);
+}
+
+// トリミング関連
+function startUploadImageCropping() {
+    const uploadPreview = document.getElementById('uploadPreview');
+    const cropImage = document.getElementById('uploadCropImage');
+    
+    if (!uploadPreview.src) {
+        alert('まず画像を選択してください。');
+        return;
+    }
+    
+    cropImage.src = uploadPreview.src;
+    
+    const modalElement = document.getElementById('uploadCropModal');
+    const cropModal = new bootstrap.Modal(modalElement, {
+        backdrop: 'static',
+        keyboard: false
+    });
+    cropModal.show();
+    
+    modalElement.addEventListener('shown.bs.modal', function() {
+        initializeUploadCropper();
+    }, { once: true });
+}
+
+function initializeUploadCropper() {
+    const cropImage = document.getElementById('uploadCropImage');
+    
+    if (uploadCropper) {
+        uploadCropper.destroy();
+        uploadCropper = null;
+    }
+    
+    if (typeof Cropper === 'undefined') {
+        console.error('Cropper.js is not loaded');
+        alert('画像編集ライブラリが読み込まれていません。');
+        return;
+    }
+    
+    try {
+        uploadCropper = new Cropper(cropImage, {
+            aspectRatio: 4 / 3,
             viewMode: 1,
-            dragMode: 'move',
+            dragMode: 'crop',
             autoCropArea: 0.8,
             responsive: true,
             restore: false,
             guides: true,
             center: true,
-            highlight: false,
+            highlight: true,
             cropBoxMovable: true,
             cropBoxResizable: true,
-            toggleDragModeOnDblclick: false
+            toggleDragModeOnDblclick: false,
+            ready: function () {
+                console.log('Upload cropper initialized successfully');
+            }
+        });
+    } catch (error) {
+        console.error('Failed to initialize upload cropper:', error);
+        alert('画像編集ツールの初期化に失敗しました。');
+    }
+}
+
+function closeUploadCropModal() {
+    if (uploadCropper) {
+        uploadCropper.destroy();
+        uploadCropper = null;
+    }
+    
+    const modal = bootstrap.Modal.getInstance(document.getElementById('uploadCropModal'));
+    if (modal) {
+        modal.hide();
+    }
+}
+
+function uploadCropperZoomIn() {
+    if (uploadCropper) {
+        uploadCropper.zoom(0.1);
+    }
+}
+
+function uploadCropperZoomOut() {
+    if (uploadCropper) {
+        uploadCropper.zoom(-0.1);
+    }
+}
+
+function uploadCropperMoveLeft() {
+    if (uploadCropper) {
+        uploadCropper.move(-10, 0);
+    }
+}
+
+function uploadCropperMoveRight() {
+    if (uploadCropper) {
+        uploadCropper.move(10, 0);
+    }
+}
+
+function uploadCropperMoveUp() {
+    if (uploadCropper) {
+        uploadCropper.move(0, -10);
+    }
+}
+
+function uploadCropperMoveDown() {
+    if (uploadCropper) {
+        uploadCropper.move(0, 10);
+    }
+}
+
+function uploadCropperReset() {
+    if (uploadCropper) {
+        uploadCropper.reset();
+    }
+}
+
+function applyUploadCrop() {
+    if (!uploadCropper) {
+        alert('トリミングツールが初期化されていません。');
+        return;
+    }
+    
+    try {
+        const canvas = uploadCropper.getCroppedCanvas({
+            width: 800,
+            height: 600,
+            imageSmoothingEnabled: true,
+            imageSmoothingQuality: 'high'
         });
         
-        modal.show();
-    };
-    
-    reader.readAsDataURL(currentImageFile);
-}
-
-// Apply crop
-function applyCrop() {
-    if (!cropper) return;
-    
-    const canvas = cropper.getCroppedCanvas({
-        width: 800,
-        height: 450,
-        imageSmoothingEnabled: true,
-        imageSmoothingQuality: 'high'
-    });
-    
-    canvas.toBlob(function(blob) {
-        const reader = new FileReader();
-        reader.onload = function() {
-            const base64data = reader.result;
-            document.getElementById('croppedImageData').value = base64data;
-            
-            // Update preview
-            const container = document.getElementById('imagePreviewContainer');
-            container.innerHTML = `
-                <img src="${base64data}" alt="トリミング済み" class="image-preview">
-                <div class="mt-2">
-                    <small class="text-success">✓ トリミング完了</small>
-                </div>
-            `;
-        };
-        reader.readAsDataURL(blob);
-    }, 'image/jpeg', 0.9);
-    
-    // Close modal
-    const modal = bootstrap.Modal.getInstance(document.getElementById('imageCropModal'));
-    modal.hide();
-}
-
-// Crop button click handler
-document.addEventListener('DOMContentLoaded', function() {
-    const cropBtn = document.getElementById('cropImageBtn');
-    if (cropBtn) {
-        cropBtn.addEventListener('click', showCropModal);
+        if (!canvas) {
+            throw new Error('Canvas creation failed');
+        }
+        
+        window.croppedUploadImageData = canvas.toDataURL('image/jpeg', 0.9);
+        
+        const uploadPreview = document.getElementById('uploadPreview');
+        uploadPreview.src = window.croppedUploadImageData;
+        
+        closeUploadCropModal();
+        
+        alert('画像のトリミングが完了しました。');
+        
+    } catch (error) {
+        console.error('Crop processing error:', error);
+        alert('トリミング処理中にエラーが発生しました。');
     }
-});
+}
 
-// Keyboard shortcuts
-document.addEventListener('keydown', function(e) {
-    if (e.ctrlKey || e.metaKey) {
-        const editor = document.getElementById('markdownEditor');
-        if (document.activeElement === editor) {
-            switch(e.key) {
-                case 'b':
-                    e.preventDefault();
-                    insertMarkdown('**', '**');
-                    break;
-                case 'i':
-                    e.preventDefault();
-                    insertMarkdown('*', '*');
-                    break;
-                case 'k':
-                    e.preventDefault();
-                    insertMarkdown('[', '](URL)');
-                    break;
+// Markdownエディタ関連
+function setupMarkdownEditor() {
+    const textarea = document.getElementById('body');
+    if (textarea) {
+        textarea.addEventListener('input', function() {
+            // プレビューが表示されている場合は更新
+            if (document.querySelector('.editor-tab[onclick="switchTab(\'preview\')"]')?.classList.contains('active')) {
+                updatePreview();
+            }
+        });
+    }
+}
+
+function switchTab(tab) {
+    // タブボタンの状態変更
+    document.querySelectorAll('.editor-tab').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`button[onclick="switchTab('${tab}')"]`).classList.add('active');
+    
+    // コンテンツの表示切り替え
+    document.querySelectorAll('.editor-content').forEach(content => content.classList.remove('active'));
+    
+    if (tab === 'edit') {
+        document.getElementById('edit-content').classList.add('active');
+    } else if (tab === 'preview') {
+        document.getElementById('preview-content').classList.add('active');
+        updatePreview();
+    }
+}
+
+function updatePreview() {
+    const markdownText = document.getElementById('body').value;
+    const previewDiv = document.getElementById('markdown-preview');
+    
+    if (!markdownText.trim()) {
+        previewDiv.innerHTML = '<p class="text-muted">プレビューを表示するには本文を入力してください。</p>';
+        return;
+    }
+    
+    // サーバーサイドでMarkdownを処理するため、フォームデータを送信
+    const formData = new FormData();
+    formData.append('markdown_text', markdownText);
+    
+    fetch('/admin/preview_markdown', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || ''
+        }
+    })
+    .then(response => response.text())
+    .then(html => {
+        previewDiv.innerHTML = html;
+    })
+    .catch(error => {
+        console.error('Preview error:', error);
+        previewDiv.innerHTML = '<p class="text-danger">プレビューの表示に失敗しました。</p>';
+    });
+}
+
+function insertMarkdown(before, after) {
+    const textarea = document.getElementById('body');
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = textarea.value.substring(start, end);
+    
+    const replacement = before + selectedText + after;
+    
+    textarea.value = textarea.value.substring(0, start) + replacement + textarea.value.substring(end);
+    
+    // カーソル位置を調整
+    const newCursorPos = start + before.length + selectedText.length;
+    textarea.focus();
+    textarea.setSelectionRange(newCursorPos, newCursorPos);
+}
+
+// アイキャッチ画像関連の関数群
+function previewFeaturedImage(event) {
+    const file = event.target.files[0];
+    if (file) {
+        if (file.size > 10 * 1024 * 1024) {
+            alert('ファイルサイズが大きすぎます。10MB以下の画像を選択してください。');
+            event.target.value = '';
+            return;
+        }
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const preview = document.getElementById('featuredImagePreview');
+            const container = document.getElementById('featuredImagePreviewContainer');
+            if (preview && container) {
+                preview.src = e.target.result;
+                container.style.display = 'block';
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+// アイキャッチ画像用のクロップ開始（共通モーダルを使用）
+function startFeaturedCropping() {
+    const preview = document.getElementById('featuredImagePreview');
+    const cropImage = document.getElementById('cropImage');
+    
+    if (preview.src) {
+        cropperMode = 'featured';
+        cropImage.src = preview.src;
+        
+        // モーダルタイトルとメッセージを変更
+        document.getElementById('cropModalLabel').textContent = 'アイキャッチ画像トリミング (16:9)';
+        document.getElementById('cropModalAspectInfo').textContent = '16:9の比率でトリミングされます（800×450px）';
+        
+        // Bootstrapがロードされるまで待機
+        if (typeof bootstrap !== 'undefined') {
+            const modal = new bootstrap.Modal(document.getElementById('cropModal'));
+            modal.show();
+        } else {
+            // フォールバック: 直接モーダルを表示
+            const modalElement = document.getElementById('cropModal');
+            modalElement.style.display = 'block';
+            modalElement.classList.add('show');
+            document.body.classList.add('modal-open');
+        }
+        
+        // モーダルが完全に表示された後にCropperを初期化
+        const initCropper = () => {
+            if (cropper) {
+                cropper.destroy();
+            }
+            cropper = new Cropper(cropImage, {
+                aspectRatio: 16 / 9, // アイキャッチ画像は16:9
+                viewMode: 1, // 画像がコンテナを超えないように制限
+                dragMode: 'crop', // ドラッグでクロップボックスを移動
+                autoCropArea: 0.7, // 初期クロップエリアを少し小さく
+                responsive: true,
+                restore: false,
+                checkCrossOrigin: false,
+                checkOrientation: false,
+                modal: true, // マスクを表示（選択外を半透明にする）
+                guides: true, // ガイドラインを表示
+                center: true, // 中央線を表示
+                highlight: true, // ハイライト表示
+                background: true, // グリッド背景を表示
+                autoCrop: true, // 自動でクロップエリアを作成
+                movable: true, // 画像の移動を許可
+                rotatable: false, // 回転は無効化
+                scalable: true, // 拡大縮小を許可
+                zoomable: true, // ズーム機能を有効
+                zoomOnTouch: true, // タッチでズーム
+                zoomOnWheel: true, // マウスホイールでズーム
+                wheelZoomRatio: 0.1,
+                cropBoxMovable: true, // クロップボックスの移動を許可
+                cropBoxResizable: true, // クロップボックスのリサイズを許可
+                toggleDragModeOnDblclick: false, // ダブルクリックでのモード切替を無効化
+                // 最小クロップボックスサイズ
+                minCropBoxWidth: 100,
+                minCropBoxHeight: 56, // 100 * (9/16) = 56.25
+                ready: function () {
+                    console.log('Cropper ready for featured image');
+                }
+            });
+        };
+        
+        // Bootstrap modalイベントかタイムアウトでCropper初期化
+        if (typeof bootstrap !== 'undefined') {
+            document.getElementById('cropModal').addEventListener('shown.bs.modal', initCropper, { once: true });
+        } else {
+            // フォールバック: 少し待ってから初期化
+            setTimeout(initCropper, 300);
+        }
+    }
+}
+
+// 共通のクロップ適用関数（カテゴリーOGPと同じ関数名）
+function applyCrop() {
+    if (cropper) {
+        // getData()メソッドでより正確なクロップデータを取得
+        const cropData = cropper.getData();
+        
+        if (cropperMode === 'featured') {
+            // アイキャッチ画像の場合
+            
+            // クロップデータを隠しフィールドに設定（画像の実際のサイズに対する値）
+            document.getElementById('featured_crop_x').value = Math.round(cropData.x);
+            document.getElementById('featured_crop_y').value = Math.round(cropData.y);
+            document.getElementById('featured_crop_width').value = Math.round(cropData.width);
+            document.getElementById('featured_crop_height').value = Math.round(cropData.height);
+            
+            console.log('Featured crop data:', cropData);
+            
+            // クロップされた画像をプレビューに表示
+            const canvas = cropper.getCroppedCanvas({
+                width: 400,
+                height: 225 // 16:9の比率を維持
+            });
+            
+            document.getElementById('featuredImagePreview').src = canvas.toDataURL();
+        } else {
+            // カテゴリーOGPの場合（元の処理）
+            // クロップデータを隠しフィールドに設定（画像の実際のサイズに対する値）
+            if (document.getElementById('ogp_crop_x')) {
+                document.getElementById('ogp_crop_x').value = Math.round(cropData.x);
+                document.getElementById('ogp_crop_y').value = Math.round(cropData.y);
+                document.getElementById('ogp_crop_width').value = Math.round(cropData.width);
+                document.getElementById('ogp_crop_height').value = Math.round(cropData.height);
+                
+                console.log('OGP crop data:', cropData);
+                
+                // クロップされた画像をプレビューに表示
+                const canvas = cropper.getCroppedCanvas({
+                    width: 400,
+                    height: 210 // 1200:630の比率を維持
+                });
+                
+                document.getElementById('imagePreview').src = canvas.toDataURL();
             }
         }
+        
+        // モーダルを閉じる
+        if (typeof bootstrap !== 'undefined') {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('cropModal'));
+            if (modal) {
+                modal.hide();
+            }
+        } else {
+            // フォールバック
+            const modalElement = document.getElementById('cropModal');
+            modalElement.style.display = 'none';
+            modalElement.classList.remove('show');
+            document.body.classList.remove('modal-open');
+        }
+        
+        // Cropperを破棄
+        cropper.destroy();
+        cropper = null;
+    }
+}
+
+// 共通Cropperコントロール関数群
+function cropperZoomIn() {
+    if (cropper) {
+        cropper.zoom(0.1);
+    }
+}
+
+function cropperZoomOut() {
+    if (cropper) {
+        cropper.zoom(-0.1);
+    }
+}
+
+function cropperMoveLeft() {
+    if (cropper) {
+        cropper.move(-10, 0);
+    }
+}
+
+function cropperMoveRight() {
+    if (cropper) {
+        cropper.move(10, 0);
+    }
+}
+
+function cropperMoveUp() {
+    if (cropper) {
+        cropper.move(0, -10);
+    }
+}
+
+function cropperMoveDown() {
+    if (cropper) {
+        cropper.move(0, 10);
+    }
+}
+
+function cropperReset() {
+    if (cropper) {
+        cropper.reset();
+    }
+}
+
+// モーダルが閉じられた時にCropperを破棄
+document.getElementById('cropModal').addEventListener('hidden.bs.modal', function () {
+    if (cropper) {
+        cropper.destroy();
+        cropper = null;
     }
 });
 </script>
+<!-- Markdown Processing -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
 {% endblock %}
