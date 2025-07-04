@@ -180,19 +180,25 @@
     <div class="row">
         <!-- メインエディタエリア -->
         <div class="col-lg-8">
-            <!-- 記事基本情報 -->
-            <div class="card mb-4">
+            <!-- 記事基本情報とブロックエディタ -->
+            <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fa fa-edit me-2"></i>記事基本情報</h5>
-                    {% if article %}
-                    <a href="{{ url_for('admin.edit_article', article_id=article.id) }}" 
-                       class="btn btn-outline-secondary btn-sm">
-                        <i class="fa fa-edit me-1"></i>従来型エディタに切り替え
-                    </a>
-                    {% endif %}
+                    <h5 class="mb-0"><i class="fa fa-edit me-2"></i>記事作成・編集</h5>
+                    <div class="d-flex gap-2">
+                        {% if article %}
+                        <a href="{{ url_for('admin.edit_article', article_id=article.id) }}" 
+                           class="btn btn-outline-secondary btn-sm">
+                            <i class="fa fa-edit me-1"></i>従来型エディタに切り替え
+                        </a>
+                        {% endif %}
+                        <button type="button" class="btn btn-outline-info btn-sm" onclick="previewArticle()">
+                            <i class="fa fa-eye me-1"></i>プレビュー
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body">
-                    <div class="row">
+                    <!-- 記事基本情報 -->
+                    <div class="row mb-4">
                         <div class="col-md-8">
                             <div class="form-floating mb-3">
                                 {{ form.title(class="form-control", placeholder="記事タイトル", required=true) }}
@@ -207,56 +213,49 @@
                         </div>
                     </div>
                     
-                    <div class="form-floating mb-3">
+                    <div class="form-floating mb-4">
                         {{ form.summary(class="form-control", placeholder="記事の概要を入力してください", rows="3") }}
                         <label for="summary">記事概要</label>
                     </div>
-                </div>
-            </div>
-            
-            <!-- ブロックエディタ -->
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fa fa-th-list me-2"></i>記事コンテンツ (ブロック)</h5>
-                    <button type="button" class="btn btn-outline-info btn-sm" onclick="previewArticle()">
-                        <i class="fa fa-eye me-1"></i>プレビュー
-                    </button>
-                </div>
-                <div class="card-body">
-                    <div id="blockEditor" class="block-editor-container">
-                        {% if blocks %}
-                            {% for block in blocks %}
-                            {% if block.block_type.type_name != 'featured_image' %}
-                            <div class="block-item" data-block-id="{{ block.id }}" data-block-type="{{ block.block_type.type_name }}">
-                                <div class="block-header">
-                                    <div>
-                                        <i class="fa fa-bars block-handle"></i>
-                                        <span class="block-type-label">{{ block.block_type.type_label }}</span>
-                                        <span class="block-title-text">{{ block.title or '無題' }}</span>
+                    
+                    <!-- ブロックエディタ -->
+                    <div class="border-top pt-4">
+                        <h6 class="mb-3"><i class="fa fa-th-list me-2"></i>記事コンテンツ (ブロック)</h6>
+                        <div id="blockEditor" class="block-editor-container">
+                            {% if blocks %}
+                                {% for block in blocks %}
+                                {% if block.block_type.type_name != 'featured_image' %}
+                                <div class="block-item" data-block-id="{{ block.id }}" data-block-type="{{ block.block_type.type_name }}">
+                                    <div class="block-header">
+                                        <div>
+                                            <i class="fa fa-bars block-handle"></i>
+                                            <span class="block-type-label">{{ block.block_type.type_label }}</span>
+                                            <span class="block-title-text">{{ block.title or '無題' }}</span>
+                                        </div>
+                                        <div class="block-controls">
+                                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="editBlock({{ block.id }})">
+                                                <i class="fa fa-edit"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteBlock({{ block.id }})">
+                                                <i class="fa fa-trash"></i>
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div class="block-controls">
-                                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="editBlock({{ block.id }})">
-                                            <i class="fa fa-edit"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteBlock({{ block.id }})">
-                                            <i class="fa fa-trash"></i>
-                                        </button>
+                                    
+                                    <div class="block-content-preview">
+                                        {% include 'blocks/' + block.block_type.type_name + '_block.html' %}
                                     </div>
                                 </div>
-                                
-                                <div class="block-content-preview">
-                                    {% include 'blocks/' + block.block_type.type_name + '_block.html' %}
+                                {% endif %}
+                                {% endfor %}
+                            {% else %}
+                                <div class="block-editor-empty">
+                                    <i class="fa fa-plus-circle fa-3x mb-3"></i>
+                                    <h5>最初のブロックを追加してください</h5>
+                                    <p class="text-muted">右側のパネルからブロックタイプを選択して記事を作成しましょう</p>
                                 </div>
-                            </div>
                             {% endif %}
-                            {% endfor %}
-                        {% else %}
-                            <div class="block-editor-empty">
-                                <i class="fa fa-plus-circle fa-3x mb-3"></i>
-                                <h5>最初のブロックを追加してください</h5>
-                                <p class="text-muted">右側のパネルからブロックタイプを選択して記事を作成しましょう</p>
-                            </div>
-                        {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>

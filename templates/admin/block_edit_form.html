@@ -2,7 +2,7 @@
 <form id="blockEditForm" enctype="multipart/form-data">
     <input type="hidden" name="block_id" value="{{ block.id }}">
     <input type="hidden" name="block_type" value="{{ block.block_type.type_name }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {{ csrf_token() }}
     
     <!-- ブロック共通フィールド -->
     <div class="mb-3">

@@ -437,8 +437,8 @@
                     <form method="POST" action="{{ form_action }}" enctype="multipart/form-data" id="articleForm">
                         {{ form.hidden_tag() }}
                         
-                        <!-- 基本情報セクション -->
-                        <div class="row mb-4">
+                        <!-- 記事基本情報 -->
+                        <div class="row mb-3">
                             <div class="col-md-8">
                                 <div class="mb-3">
                                     {{ form.title.label(class="form-label required-field") }}
@@ -467,6 +467,99 @@
                                     {% if form.summary.errors %}
                                         <div class="invalid-feedback d-block">
                                             {% for error in form.summary.errors %}{{ error }}{% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                
+                                <!-- Markdownエディタ -->
+                                <div class="mb-3">
+                                    <label for="body" class="form-label required-field">記事本文</label>
+                                    <!-- SNS自動埋込機能の説明 -->
+                                    <div class="sns-embed-help">
+                                        <h6><i class="fa fa-info-circle me-2"></i>SNS自動埋込機能</h6>
+                                        <p class="mb-2">以下の形式のURLを貼り付けると自動的に埋込表示されます：</p>
+                                        <ul class="mb-0">
+                                            <li><strong>YouTube:</strong> https://youtu.be/VIDEO_ID または https://www.youtube.com/watch?v=VIDEO_ID</li>
+                                            <li><strong>X (Twitter):</strong> https://x.com/username/status/POST_ID</li>
+                                            <li><strong>Instagram:</strong> https://www.instagram.com/p/POST_ID/</li>
+                                            <li><strong>Facebook:</strong> https://www.facebook.com/post/POST_ID</li>
+                                            <li><strong>Threads:</strong> https://www.threads.net/@username/post/POST_ID （コメント、いいね、リポストを除く）</li>
+                                        </ul>
+                                    </div>
+                                    
+                                    <!-- 画像の挿入方法 -->
+                                    <div class="image-upload-helper">
+                                        <h6><i class="fa fa-upload me-2"></i>画像の挿入方法</h6>
+                                        <p class="mb-2">Markdownで画像を挿入する方法：</p>
+                                        <ul class="mb-2">
+                                            <li><strong>画像ボタン</strong>を使用して、ファイルをアップロードして自動挿入</li>
+                                            <li><strong>手動記述:</strong> <code>![代替テキスト](画像URL)</code> の形式で直接記述</li>
+                                            <li><strong>キャプション付き:</strong> <code>![代替テキスト](画像URL "キャプション")</code> でキャプション付き画像</li>
+                                        </ul>
+                                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="showImageUploadModal()">
+                                            <i class="fa fa-upload me-1"></i>画像をアップロード
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- エディタタブ -->
+                                    <div class="editor-tabs">
+                                        <button type="button" class="editor-tab active" onclick="switchTab('edit')">編集</button>
+                                        <button type="button" class="editor-tab" onclick="switchTab('preview')">プレビュー</button>
+                                    </div>
+                                    
+                                    <!-- ツールバー -->
+                                    <div class="markdown-toolbar">
+                                        <button type="button" class="markdown-button" onclick="insertMarkdown('**', '**')" title="太字">
+                                            <i class="fa fa-bold"></i>
+                                        </button>
+                                        <button type="button" class="markdown-button" onclick="insertMarkdown('*', '*')" title="斜体">
+                                            <i class="fa fa-italic"></i>
+                                        </button>
+                                        <button type="button" class="markdown-button" onclick="insertMarkdown('# ', '')" title="見出し1">
+                                            H1
+                                        </button>
+                                        <button type="button" class="markdown-button" onclick="insertMarkdown('## ', '')" title="見出し2">
+                                            H2
+                                        </button>
+                                        <button type="button" class="markdown-button" onclick="insertMarkdown('### ', '')" title="見出し3">
+                                            H3
+                                        </button>
+                                        <button type="button" class="markdown-button" onclick="insertMarkdown('- ', '')" title="リスト">
+                                            <i class="fa fa-list"></i>
+                                        </button>
+                                        <button type="button" class="markdown-button" onclick="insertMarkdown('1. ', '')" title="番号付きリスト">
+                                            <i class="fa fa-list-ol"></i>
+                                        </button>
+                                        <button type="button" class="markdown-button" onclick="insertMarkdown('[', '](URL)')" title="リンク">
+                                            <i class="fa fa-link"></i>
+                                        </button>
+                                        <button type="button" class="markdown-button" onclick="showImageUploadModal()" title="画像をアップロード">
+                                            <i class="fa fa-image"></i>
+                                        </button>
+                                        <button type="button" class="markdown-button" onclick="insertMarkdown('`', '`')" title="インラインコード">
+                                            <i class="fa fa-code"></i>
+                                        </button>
+                                        <button type="button" class="markdown-button" onclick="insertMarkdown('```\n', '\n```')" title="コードブロック">
+                                            <i class="fa fa-file-code"></i>
+                                        </button>
+                                        <button type="button" class="markdown-button" onclick="insertMarkdown('> ', '')" title="引用">
+                                            <i class="fa fa-quote-left"></i>
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- エディタコンテンツ -->
+                                    <div class="editor-content active" id="edit-content">
+                                        {{ form.body(class="markdown-editor" + (" is-invalid" if form.body.errors else ""), placeholder="Markdownで記事の本文を入力してください...\n\n例:\n# 見出し1\n## 見出し2\n\n**太字**や*斜体*を使えます。\n\nSNS URLを貼り付けると自動的に埋込表示されます:\nhttps://youtu.be/VIDEO_ID", id="body") }}
+                                    </div>
+                                    
+                                    <div class="editor-content" id="preview-content">
+                                        <div class="markdown-preview" id="markdown-preview">
+                                            プレビューを表示するには「プレビュー」タブをクリックしてください。
+                                        </div>
+                                    </div>
+                                    {% if form.body.errors %}
+                                        <div class="invalid-feedback d-block">
+                                            {% for error in form.body.errors %}{{ error }}{% endfor %}
                                         </div>
                                     {% endif %}
                                 </div>
@@ -626,99 +719,6 @@
                             </div>
                         </div>
                         
-                        <!-- Markdownエディタ -->
-                        <div class="mb-4">
-                            <label for="body" class="form-label required-field">記事本文</label>
-                            <!-- SNS自動埋込機能の説明 -->
-                            <div class="sns-embed-help">
-                                <h6><i class="fa fa-info-circle me-2"></i>SNS自動埋込機能</h6>
-                                <p class="mb-2">以下の形式のURLを貼り付けると自動的に埋込表示されます：</p>
-                                <ul class="mb-0">
-                                    <li><strong>YouTube:</strong> https://youtu.be/VIDEO_ID または https://www.youtube.com/watch?v=VIDEO_ID</li>
-                                    <li><strong>X (Twitter):</strong> https://x.com/username/status/POST_ID</li>
-                                    <li><strong>Instagram:</strong> https://www.instagram.com/p/POST_ID/</li>
-                                    <li><strong>Facebook:</strong> https://www.facebook.com/post/POST_ID</li>
-                                    <li><strong>Threads:</strong> https://www.threads.net/@username/post/POST_ID （コメント、いいね、リポストを除く）</li>
-                                </ul>
-                            </div>
-                            
-                            <!-- 画像の挿入方法 -->
-                            <div class="image-upload-helper">
-                                <h6><i class="fa fa-upload me-2"></i>画像の挿入方法</h6>
-                                <p class="mb-2">Markdownで画像を挿入する方法：</p>
-                                <ul class="mb-2">
-                                    <li><strong>画像ボタン</strong>を使用して、ファイルをアップロードして自動挿入</li>
-                                    <li><strong>手動記述:</strong> <code>![代替テキスト](画像URL)</code> の形式で直接記述</li>
-                                    <li><strong>キャプション付き:</strong> <code>![代替テキスト](画像URL "キャプション")</code> でキャプション付き画像</li>
-                                </ul>
-                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="showImageUploadModal()">
-                                    <i class="fa fa-upload me-1"></i>画像をアップロード
-                                </button>
-                            </div>
-                            
-                            <!-- エディタタブ -->
-                            <div class="editor-tabs">
-                                <button type="button" class="editor-tab active" onclick="switchTab('edit')">編集</button>
-                                <button type="button" class="editor-tab" onclick="switchTab('preview')">プレビュー</button>
-                            </div>
-                            
-                            <!-- ツールバー -->
-                            <div class="markdown-toolbar">
-                                <button type="button" class="markdown-button" onclick="insertMarkdown('**', '**')" title="太字">
-                                    <i class="fa fa-bold"></i>
-                                </button>
-                                <button type="button" class="markdown-button" onclick="insertMarkdown('*', '*')" title="斜体">
-                                    <i class="fa fa-italic"></i>
-                                </button>
-                                <button type="button" class="markdown-button" onclick="insertMarkdown('# ', '')" title="見出し1">
-                                    H1
-                                </button>
-                                <button type="button" class="markdown-button" onclick="insertMarkdown('## ', '')" title="見出し2">
-                                    H2
-                                </button>
-                                <button type="button" class="markdown-button" onclick="insertMarkdown('### ', '')" title="見出し3">
-                                    H3
-                                </button>
-                                <button type="button" class="markdown-button" onclick="insertMarkdown('- ', '')" title="リスト">
-                                    <i class="fa fa-list"></i>
-                                </button>
-                                <button type="button" class="markdown-button" onclick="insertMarkdown('1. ', '')" title="番号付きリスト">
-                                    <i class="fa fa-list-ol"></i>
-                                </button>
-                                <button type="button" class="markdown-button" onclick="insertMarkdown('[', '](URL)')" title="リンク">
-                                    <i class="fa fa-link"></i>
-                                </button>
-                                <button type="button" class="markdown-button" onclick="showImageUploadModal()" title="画像をアップロード">
-                                    <i class="fa fa-image"></i>
-                                </button>
-                                <button type="button" class="markdown-button" onclick="insertMarkdown('`', '`')" title="インラインコード">
-                                    <i class="fa fa-code"></i>
-                                </button>
-                                <button type="button" class="markdown-button" onclick="insertMarkdown('```\n', '\n```')" title="コードブロック">
-                                    <i class="fa fa-file-code"></i>
-                                </button>
-                                <button type="button" class="markdown-button" onclick="insertMarkdown('> ', '')" title="引用">
-                                    <i class="fa fa-quote-left"></i>
-                                </button>
-                            </div>
-                            
-                            <!-- エディタコンテンツ -->
-                            <div class="editor-content active" id="edit-content">
-                                {{ form.body(class="markdown-editor" + (" is-invalid" if form.body.errors else ""), placeholder="Markdownで記事の本文を入力してください...\n\n例:\n# 見出し1\n## 見出し2\n\n**太字**や*斜体*を使えます。\n\nSNS URLを貼り付けると自動的に埋込表示されます:\nhttps://youtu.be/VIDEO_ID", id="body") }}
-                            </div>
-                            
-                            <div class="editor-content" id="preview-content">
-                                <div class="markdown-preview" id="markdown-preview">
-                                    プレビューを表示するには「プレビュー」タブをクリックしてください。
-                                </div>
-                            </div>
-                            {% if form.body.errors %}
-                                <div class="invalid-feedback d-block">
-                                    {% for error in form.body.errors %}{{ error }}{% endfor %}
-                                </div>
-                            {% endif %}
-                        </div>
-                        
                         <!-- SEO設定 -->
                         <div class="seo-section mb-4">
                             <h5><i class="fas fa-search"></i> SEO設定</h5>
@@ -808,7 +808,7 @@
             </div>
             <div class="modal-body">
                 <form id="imageUploadForm" enctype="multipart/form-data">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    {{ csrf_token() }}
                     <!-- ファイル選択 -->
                     <div class="mb-3">
                         <label for="imageFile" class="form-label required-field">画像ファイル</label>
