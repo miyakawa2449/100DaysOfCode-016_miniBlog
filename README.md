@@ -18,7 +18,7 @@ Flask・SQLite・Bootstrap5を使用した**高機能Markdownブログシステ�
 - ✅ **フロントエンド統合**: JavaScript、CSS3、レスポンシブデザイン
 - ✅ **Markdownエディタ**: 直感的UI、リアルタイムプレビュー、SNS自動埋込
 
-## 🛠️ 技術スタック（2025年7月1日最新化）
+## 🛠️ 技術スタック（2025年7月4日最新化）
 
 ### **インフラ・データベース**
 - **Backend**: Python 3.10, Flask 2.x, SQLAlchemy 2.0.41
@@ -27,12 +27,13 @@ Flask・SQLite・Bootstrap5を使用した**高機能Markdownブログシステ�
 - **Migration**: Flask-Migrate (Alembic) 4.0.5
 - **Architecture**: ✅ サービス層統一 (CRUD重複実装解決)
 
-### **セキュリティ**（2025年7月1日強化）
+### **セキュリティ**（2025年7月4日強化）
 - **Authentication**: Flask-Login + Google Authenticator (TOTP)
-- **CSRF Protection**: ✅ Flask-WTF（再有効化済み）
+- **CSRF Protection**: ✅ Flask-WTF（重複問題修正済み・2025-07-04）
 - **Security Headers**: X-Frame-Options, X-XSS-Protection, CSP等
 - **Session Management**: 環境変数ベース（開発・本番分離）
 - **Input Validation**: Werkzeug Security, Bleach (HTML Sanitization)
+- **Form Security**: CSRFトークン入れ子問題解決済み
 
 ### **フロントエンド・処理**
 - **Frontend**: HTML5, CSS3 (CSS Variables), Bootstrap 5
@@ -96,13 +97,14 @@ Flask・SQLite・Bootstrap5を使用した**高機能Markdownブログシステ�
 ### ✍️ Markdownエディタシステム（100%完了）
 **HTMLエディタからMarkdownエディタへの完全移行**:
 
-#### 📝 Markdownエディタ機能
+#### 📝 Markdownエディタ機能（2025年7月4日UI改善）
 - ✅ **フルMarkdown対応**: 見出し、太字、斜体、リスト、コードブロック、引用等
 - ✅ **リアルタイムプレビュー**: 編集/プレビュータブ切り替え
 - ✅ **ツールバー**: 直感的なMarkdown挿入ボタン
 - ✅ **キーボードショートカット**: Ctrl+B（太字）、Ctrl+I（斜体）、Ctrl+K（リンク）
 - ✅ **HTMLサニタイゼーション**: XSS攻撃対策
 - ✅ **改行処理**: 自動改行機能（nl2br拡張）
+- ✅ **統合UI**: 記事概要とエディタの一体化レイアウト（画面領域効率化）
 
 #### 🚀 SNS自動埋込機能（完全実装）
 - ✅ **5プラットフォーム対応**: YouTube、Twitter/X、Instagram、Facebook、Threads
