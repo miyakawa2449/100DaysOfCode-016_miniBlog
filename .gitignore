@@ -89,4 +89,11 @@ miniblog/
 # その他
 admininfo.py
 reports/scrennshot/
+
+# バックアップファイル（プライベートリポジトリなので重要なバックアップは保存）
+# backups/ → コメントアウトしてバックアップフォルダを含める
 backup_current_20250703_063229.sql
+# *.sql → コメントアウトして今日のSQLバックアップを含める
+# instance/miniblog_backup_20250705.db → 個別DBバックアップは含める
+# backups/miniblog_20250705.sql → 今日のSQLダンプを含める
+../mini-blog_backup_20250705.tar.gz

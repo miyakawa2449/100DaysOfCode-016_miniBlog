@@ -6,7 +6,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, login_user, logout_user, current_user, login_required
 from datetime import datetime, timedelta
 import os
+from dotenv import load_dotenv
 from admin import admin_bp
+
+# .envファイルを読み込み
+load_dotenv()
 import logging
 import bleach
 import qrcode

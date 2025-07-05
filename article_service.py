@@ -317,9 +317,7 @@ class CategoryService:
         
         try:
             # 動的インポートによる循環参照回避
-            import sys
-            sys.path.append(os.path.join(os.path.dirname(__file__), 'app', 'utils'))
-            from helpers import process_ogp_image, delete_old_image
+            from admin import process_ogp_image, delete_old_image
             
             # 古い画像削除（編集時）
             if hasattr(category, 'ogp_image') and category.ogp_image:

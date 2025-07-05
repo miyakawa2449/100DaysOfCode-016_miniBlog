@@ -70,7 +70,7 @@ def generate_slug_from_name(name):
     slug = re.sub(r'[\s_-]+', '-', slug)
     return slug.strip('-')
 
-def process_ogp_image(image_file, category_id=None):
+def process_ogp_image(image_file, category_id=None, crop_data=None):
     """OGP画像の処理（アップロード、クロップ、リサイズ）"""
     if not image_file:
         return None
@@ -92,6 +92,22 @@ def process_ogp_image(image_file, category_id=None):
         
         # 画像処理
         with Image.open(temp_path) as img:
+            # クロップ処理
+            if crop_data:
+                # クロップ座標の範囲チェック
+                img_width, img_height = img.size
+                x = max(0, min(int(crop_data['x']), img_width))
+                y = max(0, min(int(crop_data['y']), img_height))
+                width = min(int(crop_data['width']), img_width - x)
+                height = min(int(crop_data['height']), img_height - y)
+                
+                crop_box = (x, y, x + width, y + height)
+                
+                # クロップボックスが有効かチェック
+                if width > 0 and height > 0:
+                    img = img.crop(crop_box)
+                    current_app.logger.info(f"OGP画像クロップ完了: {crop_box}")
+            
             # リサイズ（OGP画像の標準サイズ）
             resized_img = img.resize((1200, 630), Image.Resampling.LANCZOS)
             resized_img.save(image_path, format='JPEG', quality=85)
@@ -101,7 +117,9 @@ def process_ogp_image(image_file, category_id=None):
             os.remove(temp_path)
         
         # 相対パスを返す
-        return os.path.relpath(image_path, current_app.static_folder)
+        relative_path = os.path.relpath(image_path, current_app.static_folder)
+        current_app.logger.info(f"OGP画像保存完了: {relative_path}")
+        return relative_path
     
     except Exception as e:
         current_app.logger.error(f"OGP画像処理エラー: {e}")
@@ -1024,27 +1042,29 @@ def create_category():
             
             # OGP画像の処理
             if form.ogp_image.data:
-                import sys
-                sys.path.append(os.path.join(os.path.dirname(__file__), 'app', 'utils'))
-                from helpers import process_ogp_image
-                
-                # クロップデータの取得
-                crop_data = None
-                if all([form.ogp_crop_x.data, form.ogp_crop_y.data, form.ogp_crop_width.data, form.ogp_crop_height.data]):
-                    crop_data = {
-                        'x': form.ogp_crop_x.data,
-                        'y': form.ogp_crop_y.data,
-                        'width': form.ogp_crop_width.data,
-                        'height': form.ogp_crop_height.data
-                    }
-                    current_app.logger.info(f"Crop data: {crop_data}")
-                
-                ogp_image_path = process_ogp_image(form.ogp_image.data, new_category.id, crop_data)
-                if ogp_image_path:
-                    new_category.ogp_image = ogp_image_path
-                    current_app.logger.info(f"OGP image saved: {ogp_image_path}")
-                else:
-                    flash('画像の処理中にエラーが発生しました。', 'warning')
+                try:
+                    # クロップデータの取得
+                    crop_data = None
+                    if all([form.ogp_crop_x.data, form.ogp_crop_y.data, form.ogp_crop_width.data, form.ogp_crop_height.data]):
+                        crop_data = {
+                            'x': float(form.ogp_crop_x.data),
+                            'y': float(form.ogp_crop_y.data),
+                            'width': float(form.ogp_crop_width.data),
+                            'height': float(form.ogp_crop_height.data)
+                        }
+                        current_app.logger.info(f"OGP crop data for new category: {crop_data}")
+                    
+                    ogp_image_path = process_ogp_image(form.ogp_image.data, new_category.id, crop_data)
+                    if ogp_image_path:
+                        new_category.ogp_image = ogp_image_path
+                        current_app.logger.info(f"OGP image saved successfully: {ogp_image_path}")
+                    else:
+                        flash('OGP画像の処理中にエラーが発生しました。', 'warning')
+                        
+                except Exception as img_error:
+                    current_app.logger.error(f"OGP image processing error for new category: {img_error}")
+                    flash('OGP画像の処理中にエラーが発生しました。', 'warning')
+                    # 画像処理エラーでもカテゴリ作成は続行
             
             db.session.commit()
             flash('カテゴリが作成されました。', 'success')
@@ -1064,6 +1084,7 @@ def edit_category(category_id):
     form = CategoryForm(obj=category)
     
     if form.validate_on_submit():
+        
         try:
             # データ更新
             category.name = form.name.data
@@ -1072,33 +1093,36 @@ def edit_category(category_id):
             
             # OGP画像の処理
             if form.ogp_image.data:
-                import sys
-                sys.path.append(os.path.join(os.path.dirname(__file__), 'app', 'utils'))
-                from helpers import process_ogp_image, delete_old_image
-                
-                # 古い画像を削除
-                if category.ogp_image:
-                    old_image_path = os.path.join(current_app.static_folder, category.ogp_image)
-                    delete_old_image(old_image_path)
-                
-                # クロップデータの取得
-                crop_data = None
-                if all([form.ogp_crop_x.data, form.ogp_crop_y.data, form.ogp_crop_width.data, form.ogp_crop_height.data]):
-                    crop_data = {
-                        'x': form.ogp_crop_x.data,
-                        'y': form.ogp_crop_y.data,
-                        'width': form.ogp_crop_width.data,
-                        'height': form.ogp_crop_height.data
-                    }
-                    current_app.logger.info(f"Crop data: {crop_data}")
-                
-                # 新しい画像を処理
-                ogp_image_path = process_ogp_image(form.ogp_image.data, category.id, crop_data)
-                if ogp_image_path:
-                    category.ogp_image = ogp_image_path
-                    current_app.logger.info(f"OGP image updated: {ogp_image_path}")
-                else:
-                    flash('画像の処理中にエラーが発生しました。', 'warning')
+                try:
+                    # 古い画像を削除
+                    if category.ogp_image:
+                        old_image_path = os.path.join(current_app.static_folder, category.ogp_image)
+                        delete_old_image(old_image_path)
+                        current_app.logger.info(f"Old OGP image deleted: {old_image_path}")
+                    
+                    # クロップデータの取得
+                    crop_data = None
+                    if all([form.ogp_crop_x.data, form.ogp_crop_y.data, form.ogp_crop_width.data, form.ogp_crop_height.data]):
+                        crop_data = {
+                            'x': float(form.ogp_crop_x.data),
+                            'y': float(form.ogp_crop_y.data),
+                            'width': float(form.ogp_crop_width.data),
+                            'height': float(form.ogp_crop_height.data)
+                        }
+                        current_app.logger.info(f"OGP crop data: {crop_data}")
+                    
+                    # 新しい画像を処理
+                    ogp_image_path = process_ogp_image(form.ogp_image.data, category.id, crop_data)
+                    if ogp_image_path:
+                        category.ogp_image = ogp_image_path
+                        current_app.logger.info(f"OGP image updated successfully: {ogp_image_path}")
+                    else:
+                        flash('OGP画像の処理中にエラーが発生しました。', 'warning')
+                        
+                except Exception as img_error:
+                    current_app.logger.error(f"OGP image processing error: {img_error}")
+                    flash('OGP画像の処理中にエラーが発生しました。', 'warning')
+                    # 画像処理エラーでもカテゴリ情報は保存を続行
             
             db.session.commit()
             flash('カテゴリが正常に更新されました。', 'success')
@@ -1107,6 +1131,11 @@ def edit_category(category_id):
             db.session.rollback()
             current_app.logger.error(f"Category update error: {e}")
             flash('カテゴリの更新中にエラーが発生しました。', 'danger')
+    else:
+        if request.method == 'POST':
+            current_app.logger.warning(f"フォームバリデーション失敗: {form.errors}")
+            current_app.logger.info(f"受信データ: {dict(request.form)}")
+            current_app.logger.info(f"ファイルデータ: {dict(request.files)}")
     
     return render_template('admin/edit_category.html', form=form, category=category)
 
