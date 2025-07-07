@@ -122,8 +122,8 @@ class Article(db.Model):
     featured_image = db.Column(db.String(255), nullable=True)  # アイキャッチ画像
     featured_image_alt = db.Column(db.String(255), nullable=True)  # アイキャッチ画像のalt属性
     
-    # ブロック型エディタ関連
-    use_block_editor = db.Column(db.Boolean, default=False)  # ブロックエディタ使用フラグ
+    # Block Editor関連フィールドを削除
+    # legacy_body_backup は削除せず保持（データ保護のため）
     legacy_body_backup = db.Column(db.Text, nullable=True)  # 従来のbodyフィールドのバックアップ
     
     # 拡張用
@@ -137,81 +137,11 @@ class Article(db.Model):
         back_populates='articles'  # ★ 変更: Category.articles と紐づける
     )
     
-    # Article から ArticleBlock へのリレーションシップ
-    blocks = db.relationship(
-        'ArticleBlock',
-        backref='article',
-        lazy='select',
-        cascade='all, delete-orphan',  # 記事削除時にブロックも削除
-        order_by='ArticleBlock.sort_order'
-    )
-    
-    def get_visible_blocks(self):
-        """表示可能なブロックを順序付きで取得"""
-        if not hasattr(self, 'blocks') or self.blocks is None:
-            return []
-        return self.blocks.filter_by(is_visible=True).order_by(ArticleBlock.sort_order).all()
+    # Block Editor関連のリレーションシップを削除
     
     def get_text_content(self):
-        """ブロックからテキストコンテンツを抽出（検索用）"""
-        if not self.use_block_editor:
-            return self.body or ''
-        
-        text_parts = []
-        for block in self.get_visible_blocks():
-            if block.is_text_block and block.content:
-                text_parts.append(block.content)
-            elif block.title:
-                text_parts.append(block.title)
-            elif block.is_external_article_block and block.ogp_title:
-                text_parts.append(block.ogp_title)
-        
-        return '\n'.join(text_parts)
-    
-    def has_featured_image_block(self):
-        """アイキャッチ画像ブロックが存在するかチェック"""
-        return self.blocks.join(BlockType).filter(
-            BlockType.type_name == 'featured_image',
-            ArticleBlock.is_visible == True
-        ).first() is not None
-    
-    def convert_to_block_editor(self):
-        """従来形式からブロック型エディタに変換"""
-        if self.use_block_editor:
-            return False  # 既にブロック型
-        
-        # 従来のbodyをバックアップ
-        self.legacy_body_backup = self.body
-        
-        # アイキャッチ画像をブロックとして追加
-        if self.featured_image:
-            featured_block_type = db.session.execute(select(BlockType).where(BlockType.type_name == 'featured_image')).scalar_one_or_none()
-            if featured_block_type:
-                featured_block = ArticleBlock(
-                    article_id=self.id,
-                    block_type_id=featured_block_type.id,
-                    sort_order=1,
-                    image_path=self.featured_image,
-                    image_alt_text=f"{self.title}のアイキャッチ画像"
-                )
-                db.session.add(featured_block)
-        
-        # 本文をテキストブロックとして追加
-        if self.body:
-            text_block_type = db.session.execute(select(BlockType).where(BlockType.type_name == 'text')).scalar_one_or_none()
-            if text_block_type:
-                text_block = ArticleBlock(
-                    article_id=self.id,
-                    block_type_id=text_block_type.id,
-                    sort_order=2,
-                    content=self.body
-                )
-                db.session.add(text_block)
-        
-        self.use_block_editor = True
-        self.body = None  # 従来のbodyをクリア
-        db.session.commit()
-        return True
+        """記事のテキストコンテンツを取得（検索用）"""
+        return self.body or ''
 
 class Category(db.Model):
     __tablename__ = 'categories'
@@ -375,121 +305,4 @@ class UploadedImage(db.Model):
 
 # --- ブロック型エディタ用モデル ---
 
-class BlockType(db.Model):
-    """ブロックタイプ定義"""
-    __tablename__ = 'block_types'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    type_name = db.Column(db.String(50), nullable=False, unique=True)
-    type_label = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text)
-    settings_schema = db.Column(db.Text)  # JSONスキーマ
-    template_name = db.Column(db.String(100))
-    is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # リレーションシップ
-    blocks = db.relationship('ArticleBlock', backref='block_type', lazy='select')
-    
-    def __repr__(self):
-        return f'<BlockType {self.type_name}: {self.type_label}>'
-    
-    @staticmethod
-    def get_active_types():
-        """アクティブなブロックタイプを取得"""
-        return db.session.execute(select(BlockType).where(BlockType.is_active == True)).scalars().all()
-
-class ArticleBlock(db.Model):
-    """記事ブロック"""
-    __tablename__ = 'article_blocks'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    article_id = db.Column(db.Integer, db.ForeignKey('articles.id', ondelete='CASCADE'), nullable=False)
-    block_type_id = db.Column(db.Integer, db.ForeignKey('block_types.id'), nullable=False)
-    sort_order = db.Column(db.Integer, nullable=False, default=0)
-    
-    # ブロック共通フィールド
-    title = db.Column(db.String(255))
-    content = db.Column(db.Text)
-    
-    # 画像ブロック用
-    image_path = db.Column(db.String(500))
-    image_alt_text = db.Column(db.String(255))
-    image_caption = db.Column(db.Text)
-    crop_data = db.Column(db.Text)
-    
-    # SNS埋込用
-    embed_url = db.Column(db.String(1000))
-    embed_platform = db.Column(db.String(50))
-    embed_id = db.Column(db.String(200))
-    embed_html = db.Column(db.Text)
-    
-    # 外部記事埋込用（OGP）
-    ogp_title = db.Column(db.String(500))
-    ogp_description = db.Column(db.Text)
-    ogp_image = db.Column(db.String(500))
-    ogp_site_name = db.Column(db.String(200))
-    ogp_url = db.Column(db.String(1000))
-    ogp_cached_at = db.Column(db.DateTime)
-    
-    # ブロック設定・表示制御
-    settings = db.Column(db.Text)  # JSON
-    css_classes = db.Column(db.String(500))
-    is_visible = db.Column(db.Boolean, default=True)
-    
-    # メタデータ
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # リレーションシップ（Articleから定義されるためここでは不要）
-    
-    def __repr__(self):
-        return f'<ArticleBlock {self.id}: {self.block_type.type_name if self.block_type else "Unknown"} in Article {self.article_id}>'
-    
-    @property
-    def is_text_block(self):
-        """テキストブロックかどうか"""
-        return self.block_type and self.block_type.type_name == 'text'
-    
-    @property
-    def is_image_block(self):
-        """画像ブロックかどうか"""
-        return self.block_type and self.block_type.type_name == 'image'
-    
-    @property
-    def is_sns_embed_block(self):
-        """SNS埋込ブロックかどうか"""
-        return self.block_type and self.block_type.type_name == 'sns_embed'
-    
-    @property
-    def is_external_article_block(self):
-        """外部記事埋込ブロックかどうか"""
-        return self.block_type and self.block_type.type_name == 'external_article'
-    
-    @property
-    def is_featured_image_block(self):
-        """アイキャッチ画像ブロックかどうか"""
-        return self.block_type and self.block_type.type_name == 'featured_image'
-    
-    def get_settings_json(self):
-        """設定をJSONとして取得"""
-        import json
-        try:
-            return json.loads(self.settings) if self.settings else {}
-        except (json.JSONDecodeError, TypeError):
-            return {}
-    
-    def set_settings_json(self, settings_dict):
-        """設定をJSONとして保存"""
-        import json
-        self.settings = json.dumps(settings_dict, ensure_ascii=False) if settings_dict else None
-    
-    @staticmethod
-    def reorder_blocks(article_id, block_ids):
-        """ブロックの順序を再設定"""
-        for order, block_id in enumerate(block_ids, 1):
-            block = db.session.execute(select(ArticleBlock).where(ArticleBlock.id == block_id, ArticleBlock.article_id == article_id)).scalar_one_or_none()
-            if block:
-                block.sort_order = order
-        db.session.commit()
+# Block Editor関連のモデルクラスを削除
