@@ -28,7 +28,7 @@ import pymysql
 pymysql.install_as_MySQLdb()
 
 # models.py から db インスタンスとモデルクラスをインポートします
-from models import db, User, Article, Category, Comment
+from models import db, User, Article, Category, Comment, article_categories
 # forms.py からフォームクラスをインポート
 from forms import LoginForm, TOTPVerificationForm, TOTPSetupForm, PasswordResetRequestForm, PasswordResetForm
 
@@ -882,14 +882,21 @@ def category_page(slug):
     if not category:
         abort(404)
     
-    if hasattr(category, 'articles') and category.articles is not None:
-        page = request.args.get('page', 1, type=int)
-        per_page = 10
-        # 公開済み記事のみ表示
-        articles_pagination = category.articles.filter_by(is_published=True).order_by(Article.created_at.desc()).paginate(page=page, per_page=per_page)
-    else:
-        from flask_sqlalchemy.pagination import Pagination
-        articles_pagination = Pagination(query=None, page=1, per_page=per_page, total=0, items=[])
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+    
+    # SQLAlchemy 2.0対応: カテゴリーの公開記事を取得
+    articles_query = select(Article).join(article_categories).where(
+        article_categories.c.category_id == category.id,
+        Article.is_published.is_(True)
+    ).order_by(Article.created_at.desc())
+    
+    articles_pagination = db.paginate(
+        articles_query,
+        page=page,
+        per_page=per_page,
+        error_out=False
+    )
 
     return render_template('category_page.html', category=category, articles_pagination=articles_pagination)
 
