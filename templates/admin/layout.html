@@ -55,10 +55,7 @@
                             <i class="fa fa-list"></i>記事一覧
                         </a></li>
                         <li><a href="{{ url_for('admin.create_article') }}" class="{{ 'active' if request.endpoint == 'admin.create_article' else '' }}">
-                            <i class="fa fa-plus"></i>新規作成（従来型）
-                        </a></li>
-                        <li><a href="{{ url_for('admin.create_article_block_editor') }}" class="{{ 'active' if request.endpoint == 'admin.create_article_block_editor' else '' }}">
-                            <i class="fa fa-cubes"></i>新規作成（ブロック型）
+                            <i class="fa fa-plus"></i>新規作成
                         </a></li>
                     </ul>
                 </li>

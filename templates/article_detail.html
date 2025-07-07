@@ -1,5 +1,5 @@
 {% extends "layout.html" %}
-{% from 'macros/block_macros.html' import render_block_content %}
+{# Block Editor機能削除により、block_macros.html参照を削除 #}
 
 {% block title %}{{ article.meta_title or article.title }} - ミニブログ{% endblock %}
 {% block description %}{{ article.meta_description or (article.summary | truncate(160, True) if article.summary else '') or (article.body | markdown | striptags | truncate(160, True) if article.body else '') or 'プログラミング、テック、ライフスタイルに関する最新記事をお届けします。' }}{% endblock %}
@@ -97,23 +97,8 @@
 
             <!-- 記事本文 -->
             <div class="article-body">
-                {% if article.use_block_editor %}
-                    <!-- ブロック型記事 -->
-                    {% set blocks = article.get_visible_blocks() %}
-                    {% if blocks %}
-                        {% for block in blocks %}
-                            {{ render_block_content(block) | safe }}
-                        {% endfor %}
-                    {% else %}
-                        <div class="alert alert-info">
-                            <i class="fa fa-info-circle me-2"></i>
-                            この記事にはまだコンテンツが追加されていません。
-                        </div>
-                    {% endif %}
-                {% else %}
-                    <!-- 従来型記事 -->
-                    {{ article.body | markdown | safe }}
-                {% endif %}
+                <!-- Markdownエディタ記事 -->
+                {{ article.body | markdown | safe }}
             </div>
 
             <!-- 記事フッター -->
