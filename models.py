@@ -8,6 +8,7 @@ from flask_login import UserMixin
 import pyotp
 import secrets
 from itsdangerous import URLSafeTimedSerializer
+from sqlalchemy import select, func
 
 db = SQLAlchemy()
 
@@ -132,7 +133,7 @@ class Article(db.Model):
     categories = db.relationship(
         'Category',
         secondary=article_categories,
-        lazy='dynamic',
+        lazy='select',
         back_populates='articles'  # ★ 変更: Category.articles と紐づける
     )
     
@@ -140,7 +141,7 @@ class Article(db.Model):
     blocks = db.relationship(
         'ArticleBlock',
         backref='article',
-        lazy='dynamic',
+        lazy='select',
         cascade='all, delete-orphan',  # 記事削除時にブロックも削除
         order_by='ArticleBlock.sort_order'
     )
@@ -184,7 +185,7 @@ class Article(db.Model):
         
         # アイキャッチ画像をブロックとして追加
         if self.featured_image:
-            featured_block_type = BlockType.query.filter_by(type_name='featured_image').first()
+            featured_block_type = db.session.execute(select(BlockType).where(BlockType.type_name == 'featured_image')).scalar_one_or_none()
             if featured_block_type:
                 featured_block = ArticleBlock(
                     article_id=self.id,
@@ -197,7 +198,7 @@ class Article(db.Model):
         
         # 本文をテキストブロックとして追加
         if self.body:
-            text_block_type = BlockType.query.filter_by(type_name='text').first()
+            text_block_type = db.session.execute(select(BlockType).where(BlockType.type_name == 'text')).scalar_one_or_none()
             if text_block_type:
                 text_block = ArticleBlock(
                     article_id=self.id,
@@ -231,13 +232,13 @@ class Category(db.Model):
     json_ld = db.Column(db.Text, nullable=True)
     ext_json = db.Column(db.Text, nullable=True)
 
-    parent = db.relationship('Category', remote_side=[id], backref=db.backref('children', lazy='dynamic'))
+    parent = db.relationship('Category', remote_side=[id], backref=db.backref('children', lazy='select'))
 
     # Category から Article へのリレーションシップ
     articles = db.relationship(
         'Article',
         secondary=article_categories,
-        lazy='dynamic',
+        lazy='select',
         back_populates='categories' # ★ 変更: Article.categories と紐づける
     )
 
@@ -260,8 +261,8 @@ class Comment(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # リレーションシップ
-    article = db.relationship('Article', backref=db.backref('comments', lazy='dynamic'))
-    parent = db.relationship('Comment', remote_side=[id], backref=db.backref('replies', lazy='dynamic'))
+    article = db.relationship('Article', backref=db.backref('comments', lazy='select'))
+    parent = db.relationship('Comment', remote_side=[id], backref=db.backref('replies', lazy='select'))
     
     def __repr__(self):
         return f'<Comment {self.id}: {self.author_name} on Article {self.article_id}>'
@@ -283,13 +284,13 @@ class SiteSetting(db.Model):
     @staticmethod
     def get_setting(key, default=None):
         """設定値を取得"""
-        setting = SiteSetting.query.filter_by(key=key).first()
+        setting = db.session.execute(select(SiteSetting).where(SiteSetting.key == key)).scalar_one_or_none()
         return setting.value if setting else default
     
     @staticmethod
     def set_setting(key, value, description=None, setting_type='text', is_public=False):
         """設定値を保存または更新"""
-        setting = SiteSetting.query.filter_by(key=key).first()
+        setting = db.session.execute(select(SiteSetting).where(SiteSetting.key == key)).scalar_one_or_none()
         if setting:
             setting.value = value
             setting.description = description or setting.description
@@ -342,7 +343,7 @@ class UploadedImage(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # リレーションシップ
-    uploader = db.relationship('User', backref=db.backref('uploaded_images', lazy='dynamic'))
+    uploader = db.relationship('User', backref=db.backref('uploaded_images', lazy='select'))
     
     def __repr__(self):
         return f'<UploadedImage {self.filename}: {self.alt_text or "No alt"}>'
@@ -389,7 +390,7 @@ class BlockType(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # リレーションシップ
-    blocks = db.relationship('ArticleBlock', backref='block_type', lazy='dynamic')
+    blocks = db.relationship('ArticleBlock', backref='block_type', lazy='select')
     
     def __repr__(self):
         return f'<BlockType {self.type_name}: {self.type_label}>'
@@ -397,7 +398,7 @@ class BlockType(db.Model):
     @staticmethod
     def get_active_types():
         """アクティブなブロックタイプを取得"""
-        return BlockType.query.filter_by(is_active=True).all()
+        return db.session.execute(select(BlockType).where(BlockType.is_active == True)).scalars().all()
 
 class ArticleBlock(db.Model):
     """記事ブロック"""
@@ -488,7 +489,7 @@ class ArticleBlock(db.Model):
     def reorder_blocks(article_id, block_ids):
         """ブロックの順序を再設定"""
         for order, block_id in enumerate(block_ids, 1):
-            block = ArticleBlock.query.filter_by(id=block_id, article_id=article_id).first()
+            block = db.session.execute(select(ArticleBlock).where(ArticleBlock.id == block_id, ArticleBlock.article_id == article_id)).scalar_one_or_none()
             if block:
                 block.sort_order = order
         db.session.commit()
