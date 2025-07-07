@@ -46,17 +46,22 @@ def allowed_file(filename):
         filename.rsplit('.', 1)[1].lower() in current_app.config.get('ALLOWED_EXTENSIONS', {'png', 'jpg', 'jpeg', 'gif'})
 
 def get_safe_count(query_or_model):
-    """安全にカウントを取得（デバッグ情報付き）"""
+    """安全にカウントを取得（SQLAlchemy 2.0対応）"""
     try:
-        if hasattr(query_or_model, 'count'):
-            # クエリオブジェクトの場合
-            count = query_or_model.count()
-            current_app.logger.info(f"Query count: {count}")
+        if hasattr(query_or_model, '__name__'):
+            # モデルクラスの場合
+            count = db.session.execute(select(func.count(query_or_model.id))).scalar()
+            current_app.logger.info(f"Model {query_or_model.__name__} count: {count}")
+            return count
+        elif hasattr(query_or_model, '__len__'):
+            # リストやInstrumentedListの場合
+            count = len(query_or_model)
+            current_app.logger.info(f"Collection count: {count}")
             return count
         else:
-            # モデルクラスの場合
-            count = query_or_model.query.count()
-            current_app.logger.info(f"Model {query_or_model.__name__} count: {count}")
+            # SQLAlchemy 2.0 select statement の場合
+            count = db.session.execute(query_or_model).scalar()
+            current_app.logger.info(f"Query count: {count}")
             return count
     except Exception as e:
         current_app.logger.error(f"Count query failed for {query_or_model}: {e}")
@@ -458,11 +463,19 @@ def debug_simple():
 def debug_template():
     """テンプレート描画テスト"""
     try:
+        # フォールバック時も実際のデータを取得
+        try:
+            comment_count = db.session.execute(select(func.count(Comment.id))).scalar() if hasattr(Comment, 'id') else 0
+            pending_comments = db.session.execute(select(func.count(Comment.id)).where(Comment.is_approved.is_(False))).scalar() if hasattr(Comment, 'is_approved') else 0
+        except:
+            comment_count = 0
+            pending_comments = 0
+            
         stats = {
             'user_count': 1,
             'article_count': 6,
             'category_count': 2,
-            'comment_count': 0
+            'comment_count': comment_count
         }
         
         monthly_stats = {
@@ -473,7 +486,7 @@ def debug_template():
         
         recent_data = {
             'recent_articles': [],
-            'pending_comments': 0
+            'pending_comments': pending_comments
         }
         
         return render_template('admin/dashboard.html', 
@@ -498,17 +511,17 @@ def debug_stats():
         debug_info['category_count_direct'] = db.session.execute(select(func.count(Category.id))).scalar()
         
         # モデル経由でテスト
-        debug_info['user_count_model'] = User.query.count()
-        debug_info['article_count_model'] = Article.query.count()
-        debug_info['category_count_model'] = Category.query.count()
+        debug_info['user_count_model'] = db.session.execute(select(func.count(User.id))).scalar()
+        debug_info['article_count_model'] = db.session.execute(select(func.count(Article.id))).scalar()
+        debug_info['category_count_model'] = db.session.execute(select(func.count(Category.id))).scalar()
         
         # 実際のデータ一覧
-        debug_info['users'] = [{'id': u.id, 'name': u.name, 'email': u.email} for u in User.query.all()]
-        debug_info['articles'] = [{'id': a.id, 'title': a.title, 'author_id': a.author_id} for a in Article.query.all()]
-        debug_info['categories'] = [{'id': c.id, 'name': c.name, 'slug': c.slug} for c in Category.query.all()]
+        debug_info['users'] = [{'id': u.id, 'name': u.name, 'email': u.email} for u in db.session.execute(select(User)).scalars().all()]
+        debug_info['articles'] = [{'id': a.id, 'title': a.title, 'author_id': a.author_id} for a in db.session.execute(select(Article)).scalars().all()]
+        debug_info['categories'] = [{'id': c.id, 'name': c.name, 'slug': c.slug} for c in db.session.execute(select(Category)).scalars().all()]
         
         # 記事の状態チェック（エラー回避のため簡略化）
-        articles = Article.query.all()
+        articles = db.session.execute(select(Article)).scalars().all()
         debug_info['article_details'] = []
         for article in articles:
             article_info = {
@@ -546,10 +559,10 @@ def dashboard():
     """管理者ダッシュボード（シンプル版）"""
     # 基本的な統計のみ
     stats = {
-        'user_count': User.query.count(),
-        'article_count': Article.query.count(),
-        'category_count': Category.query.count(),
-        'comment_count': 0
+        'user_count': db.session.execute(select(func.count(User.id))).scalar(),
+        'article_count': db.session.execute(select(func.count(Article.id))).scalar(),
+        'category_count': db.session.execute(select(func.count(Category.id))).scalar(),
+        'comment_count': db.session.execute(select(func.count(Comment.id))).scalar() if hasattr(Comment, 'id') else 0
     }
     
     # 今月の統計を計算
@@ -564,32 +577,56 @@ def dashboard():
     last_day = datetime(current_year, current_month, calendar.monthrange(current_year, current_month)[1], 23, 59, 59)
     
     # 今月作成された記事数
-    articles_this_month = Article.query.filter(
-        Article.created_at >= first_day,
-        Article.created_at <= last_day
-    ).count()
+    articles_this_month = db.session.execute(
+        select(func.count(Article.id)).where(
+            Article.created_at >= first_day,
+            Article.created_at <= last_day
+        )
+    ).scalar()
     
     # 今月作成されたユーザー数（created_atフィールドがある場合）
     users_this_month = 0
     if hasattr(User, 'created_at'):
-        users_this_month = User.query.filter(
-            User.created_at >= first_day,
-            User.created_at <= last_day
-        ).count()
+        users_this_month = db.session.execute(
+            select(func.count(User.id)).where(
+                User.created_at >= first_day,
+                User.created_at <= last_day
+            )
+        ).scalar()
     
     current_app.logger.info(f"Monthly stats calculation: articles_this_month={articles_this_month}, period={first_day} to {last_day}")
+    
+    # 今月のコメント数
+    comments_this_month = 0
+    if hasattr(Comment, 'created_at'):
+        comments_this_month = db.session.execute(
+            select(func.count(Comment.id)).where(
+                Comment.created_at >= first_day,
+                Comment.created_at <= last_day
+            )
+        ).scalar()
     
     monthly_stats = {
         'articles_this_month': articles_this_month,
         'users_this_month': users_this_month,
-        'comments_this_month': 0  # コメント機能が実装されたら修正
+        'comments_this_month': comments_this_month
     }
     
     # 最近の記事
-    recent_articles = Article.query.order_by(Article.created_at.desc()).limit(5).all()
+    recent_articles = db.session.execute(select(Article).order_by(Article.created_at.desc()).limit(5)).scalars().all()
+    
+    # 承認待ちコメント数
+    pending_comments = 0
+    if hasattr(Comment, 'is_approved'):
+        pending_comments = db.session.execute(
+            select(func.count(Comment.id)).where(
+                Comment.is_approved.is_(False)
+            )
+        ).scalar()
+    
     recent_data = {
         'recent_articles': recent_articles,
-        'pending_comments': 0
+        'pending_comments': pending_comments
     }
     
     return render_template('admin/dashboard.html', 
@@ -604,7 +641,7 @@ def dashboard():
 def users():
     """ユーザー一覧"""
     try:
-        users = User.query.all()
+        users = db.session.execute(select(User)).scalars().all()
         return render_template('admin/users.html', users=users)
     except Exception as e:
         current_app.logger.error(f"Users page error: {e}")
@@ -630,7 +667,7 @@ def create_user():
             flash('パスワードは8文字以上である必要があります。', 'danger')
             return render_template('admin/create_user.html')
         
-        if User.query.filter_by(email=email).first():
+        if db.session.execute(select(User).where(User.email == email)).scalar_one_or_none():
             flash('このメールアドレスは既に使用されています。', 'danger')
             return render_template('admin/create_user.html')
         
@@ -659,7 +696,7 @@ def create_user():
 @admin_required
 def edit_user(user_id):
     """ユーザー編集"""
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     
     if request.method == 'POST':
         # 自分自身の管理者権限削除チェック
@@ -725,21 +762,21 @@ def edit_user(user_id):
 @admin_required
 def delete_user(user_id):
     """ユーザー削除"""
-    user = User.query.get_or_404(user_id)
+    user = db.get_or_404(User, user_id)
     
     # 削除制限チェック
     if user.id == current_user.id:
         flash('自分自身を削除することはできません。', 'danger')
         return redirect(url_for('admin.users'))
     
-    admin_count = User.query.filter_by(role='admin').count()
+    admin_count = db.session.execute(select(func.count(User.id)).where(User.role == 'admin')).scalar()
     if user.role == 'admin' and admin_count <= 1:
         flash('最後の管理者を削除することはできません。', 'danger')
         return redirect(url_for('admin.users'))
     
     try:
         # 関連記事の処理
-        user_articles = Article.query.filter_by(author_id=user.id).all()
+        user_articles = db.session.execute(select(Article).where(Article.author_id == user.id)).scalars().all()
         if user_articles:
             action = request.form.get('article_action', 'keep')
             if action == 'delete':
@@ -770,21 +807,22 @@ def articles():
     per_page = 10
     
     # ページネーション
-    articles_pagination = Article.query.order_by(Article.created_at.desc()).paginate(
+    articles_pagination = db.paginate(
+        select(Article).order_by(Article.created_at.desc()),
         page=page, 
         per_page=per_page, 
         error_out=False
     )
     
     # 基本統計
-    total_articles = Article.query.count()
-    published_articles = Article.query.filter_by(is_published=True).count()
-    draft_articles = Article.query.filter_by(is_published=False).count()
+    total_articles = db.session.execute(select(func.count(Article.id))).scalar()
+    published_articles = db.session.execute(select(func.count(Article.id)).where(Article.is_published.is_(True))).scalar()
+    draft_articles = db.session.execute(select(func.count(Article.id)).where(Article.is_published.is_(False))).scalar()
     
     # 今月の記事数
     from datetime import datetime
     current_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    this_month_articles = Article.query.filter(Article.created_at >= current_month).count()
+    this_month_articles = db.session.execute(select(func.count(Article.id)).where(Article.created_at >= current_month)).scalar()
     
     return render_template('admin/articles.html', 
                          articles_list=articles_pagination,
@@ -851,7 +889,7 @@ def create_article():
 @admin_required
 def edit_article(article_id):
     """記事編集（統一版）"""
-    article = Article.query.get_or_404(article_id)
+    article = db.get_or_404(Article, article_id)
     
     # ブロック型記事の場合はブロック型エディタにリダイレクト
     if article.use_block_editor:
@@ -864,7 +902,7 @@ def edit_article(article_id):
     ArticleService.setup_category_choices(form)
     
     # 現在のカテゴリを設定
-    current_category = article.categories.first()
+    current_category = article.categories[0] if article.categories else None
     if current_category:
         form.category_id.data = current_category.id
     
@@ -919,7 +957,7 @@ def toggle_article_status(article_id):
     from flask_wtf.csrf import validate_csrf
     from werkzeug.exceptions import BadRequest
     
-    article = Article.query.get_or_404(article_id)
+    article = db.get_or_404(Article, article_id)
     
     try:
         # フォームデータから状態を取得
@@ -948,7 +986,7 @@ def toggle_article_status(article_id):
 @admin_required
 def delete_article(article_id):
     """記事削除"""
-    article = Article.query.get_or_404(article_id)
+    article = db.get_or_404(Article, article_id)
     article_title = article.title  # 削除前にタイトルを保存
     
     try:
@@ -971,28 +1009,29 @@ def delete_article(article_id):
 def categories():
     """カテゴリ一覧"""
     page = request.args.get('page', 1, type=int)
-    categories_list = Category.query.order_by(Category.name).paginate(
+    categories_list = db.paginate(
+        select(Category).order_by(Category.name),
         page=page, per_page=10, error_out=False
     )
     
     # 統計情報を計算
-    total_categories = Category.query.count()
+    total_categories = db.session.execute(select(func.count(Category.id))).scalar()
     
     # 現在ページのカテゴリに関連する記事数
     current_page_articles = 0
     for category in categories_list.items:
-        current_page_articles += category.articles.count() if category.articles else 0
+        current_page_articles += len(category.articles) if category.articles else 0
     
     # 全カテゴリの記事数
     total_articles_in_categories = 0
-    all_categories = Category.query.all()
+    all_categories = db.session.execute(select(Category)).scalars().all()
     for category in all_categories:
-        total_articles_in_categories += category.articles.count() if category.articles else 0
+        total_articles_in_categories += len(category.articles) if category.articles else 0
     
     # 記事が割り当てられていないカテゴリ数
     empty_categories = 0
     for category in all_categories:
-        if not category.articles or category.articles.count() == 0:
+        if not category.articles or len(category.articles) == 0:
             empty_categories += 1
     
     stats = {
@@ -1020,11 +1059,11 @@ def create_category():
             return render_template('admin/create_category.html', form=form)
         
         # 重複チェック
-        if Category.query.filter_by(slug=slug).first():
+        if db.session.execute(select(Category).where(Category.slug == slug)).scalar_one_or_none():
             flash('そのスラッグは既に使用されています。', 'danger')
             return render_template('admin/create_category.html', form=form)
         
-        if Category.query.filter_by(name=form.name.data).first():
+        if db.session.execute(select(Category).where(Category.name == form.name.data)).scalar_one_or_none():
             flash('そのカテゴリ名は既に使用されています。', 'danger')
             return render_template('admin/create_category.html', form=form)
         
@@ -1080,7 +1119,7 @@ def create_category():
 @admin_required
 def edit_category(category_id):
     """カテゴリ編集"""
-    category = Category.query.get_or_404(category_id)
+    category = db.get_or_404(Category, category_id)
     form = CategoryForm(obj=category)
     
     if form.validate_on_submit():
@@ -1143,7 +1182,7 @@ def edit_category(category_id):
 @admin_required
 def delete_category(category_id):
     """カテゴリ削除"""
-    category = Category.query.get_or_404(category_id)
+    category = db.get_or_404(Category, category_id)
     
     try:
         # 関連記事のカテゴリ関連付けを削除
@@ -1213,23 +1252,24 @@ def comments():
                                  approved=0,
                                  pending=0)
         
-        query = Comment.query
+        query_stmt = select(Comment)
         if status_filter == 'approved':
             if hasattr(Comment, 'is_approved'):
-                query = query.filter(Comment.is_approved == True)
+                query_stmt = query_stmt.where(Comment.is_approved.is_(True))
         elif status_filter == 'pending':
             if hasattr(Comment, 'is_approved'):
-                query = query.filter(Comment.is_approved == False)
+                query_stmt = query_stmt.where(Comment.is_approved.is_(False))
         
-        comments_pagination = query.order_by(Comment.created_at.desc()).paginate(
+        comments_pagination = db.paginate(
+            query_stmt.order_by(Comment.created_at.desc()),
             page=page, per_page=20, error_out=False
         )
         
         # 統計
         stats = {
             'total': get_safe_count(Comment),
-            'approved': get_safe_count(Comment.query.filter(Comment.is_approved == True)) if hasattr(Comment, 'is_approved') else 0,
-            'pending': get_safe_count(Comment.query.filter(Comment.is_approved == False)) if hasattr(Comment, 'is_approved') else 0
+            'approved': db.session.execute(select(func.count(Comment.id)).where(Comment.is_approved.is_(True))).scalar() if hasattr(Comment, 'is_approved') else 0,
+            'pending': db.session.execute(select(func.count(Comment.id)).where(Comment.is_approved.is_(False))).scalar() if hasattr(Comment, 'is_approved') else 0
         }
         
         return render_template('admin/comments.html',
@@ -1274,7 +1314,7 @@ def comments():
 def approve_comment(comment_id):
     """コメント承認"""
     try:
-        comment = Comment.query.get_or_404(comment_id)
+        comment = db.get_or_404(Comment, comment_id)
         if hasattr(comment, 'is_approved'):
             comment.is_approved = True
             db.session.commit()
@@ -1292,7 +1332,7 @@ def approve_comment(comment_id):
 def reject_comment(comment_id):
     """コメント拒否"""
     try:
-        comment = Comment.query.get_or_404(comment_id)
+        comment = db.get_or_404(Comment, comment_id)
         if hasattr(comment, 'is_approved'):
             comment.is_approved = False
             db.session.commit()
@@ -1310,7 +1350,7 @@ def reject_comment(comment_id):
 def delete_comment(comment_id):
     """コメント削除"""
     try:
-        comment = Comment.query.get_or_404(comment_id)
+        comment = db.get_or_404(Comment, comment_id)
         db.session.delete(comment)
         db.session.commit()
         flash('コメントを削除しました。', 'success')
@@ -1332,7 +1372,7 @@ def bulk_comment_action():
         return redirect(url_for('admin.comments'))
     
     try:
-        comments = Comment.query.filter(Comment.id.in_(comment_ids)).all()
+        comments = db.session.execute(select(Comment).where(Comment.id.in_(comment_ids))).scalars().all()
         
         if action == 'approve' and hasattr(Comment, 'is_approved'):
             for comment in comments:
@@ -1369,7 +1409,7 @@ def create_article_block_editor():
         return redirect(url_for('admin.create_article'))
     
     form = BlockEditorForm()
-    all_categories = Category.query.order_by(Category.name).all()
+    all_categories = db.session.execute(select(Category).order_by(Category.name)).scalars().all()
     
     # カテゴリの選択肢を設定
     form.category_id.choices = [(0, 'カテゴリを選択してください')] + [(cat.id, cat.name) for cat in all_categories]
@@ -1385,7 +1425,7 @@ def create_article_block_editor():
             counter = 1
             
             # スラッグの重複をチェックし、重複している場合は番号を追加
-            while Article.query.filter_by(slug=slug).first():
+            while db.session.execute(select(Article).where(Article.slug == slug)).scalar_one_or_none():
                 slug = f"{original_slug}-{counter}"
                 counter += 1
                 current_app.logger.info(f"Slug duplicated, trying: {slug}")
@@ -1447,7 +1487,7 @@ def edit_article_block_editor(article_id):
         flash('ブロックエディタが利用できません。', 'warning')
         return redirect(url_for('admin.edit_article', article_id=article_id))
     
-    article = Article.query.get_or_404(article_id)
+    article = db.get_or_404(Article, article_id)
     
     # 従来型記事の場合は従来型エディタにリダイレクト
     if not article.use_block_editor:
@@ -1457,13 +1497,13 @@ def edit_article_block_editor(article_id):
     # この記事は既にブロック型として設定済み
     
     form = BlockEditorForm(obj=article)
-    all_categories = Category.query.order_by(Category.name).all()
+    all_categories = db.session.execute(select(Category).order_by(Category.name)).scalars().all()
     
     # カテゴリの選択肢を設定
     form.category_id.choices = [(0, 'カテゴリを選択してください')] + [(cat.id, cat.name) for cat in all_categories]
     
     # 現在のカテゴリを設定
-    current_category = article.categories.first()
+    current_category = article.categories[0] if article.categories else None
     if current_category:
         form.category_id.data = current_category.id
     
@@ -1482,7 +1522,7 @@ def edit_article_block_editor(article_id):
     add_block_type = request.args.get('add_block')
     if add_block_type and BLOCK_EDITOR_AVAILABLE:
         try:
-            block_type = BlockType.query.filter_by(type_name=add_block_type).first()
+            block_type = db.session.execute(select(BlockType).where(BlockType.type_name == add_block_type)).scalar_one_or_none()
             if block_type:
                 # 最大順序番号を取得
                 max_order = db.session.execute(select(func.max(ArticleBlock.sort_order)).where(ArticleBlock.article_id == article.id)).scalar() or 0
@@ -1593,7 +1633,7 @@ def add_block():
         if not article:
             return jsonify({'success': False, 'error': '記事が見つかりません'})
         
-        block_type = BlockType.query.filter_by(type_name=block_type_name).first()
+        block_type = db.session.execute(select(BlockType).where(BlockType.type_name == block_type_name)).scalar_one_or_none()
         if not block_type:
             return jsonify({'success': False, 'error': 'ブロックタイプが見つかりません'})
         
@@ -1642,7 +1682,7 @@ def edit_block():
         if not block_id:
             return 'ブロックIDが指定されていません', 400
         
-        block = ArticleBlock.query.get_or_404(block_id)
+        block = db.get_or_404(ArticleBlock, block_id)
         form = create_block_form(block.block_type.type_name, obj=block)
         
         return render_template('admin/block_edit_form.html', block=block, form=form)
@@ -1952,7 +1992,7 @@ def delete_block():
         if not block_id:
             return jsonify({'success': False, 'error': 'ブロックIDが指定されていません'})
         
-        block = ArticleBlock.query.get_or_404(block_id)
+        block = db.get_or_404(ArticleBlock, block_id)
         
         # 画像ファイルが存在する場合は削除
         if block.image_path:
@@ -2044,7 +2084,7 @@ def remove_featured_image():
         if not article_id:
             return jsonify({'success': False, 'error': '記事IDが指定されていません'})
         
-        article = Article.query.get_or_404(article_id)
+        article = db.get_or_404(Article, article_id)
         
         # 画像ファイルを削除
         if article.featured_image:
@@ -2068,7 +2108,7 @@ def remove_featured_image():
 @admin_required
 def article_preview(article_id):
     """記事プレビュー（ブロックエディタ対応）"""
-    article = Article.query.get_or_404(article_id)
+    article = db.get_or_404(Article, article_id)
     
     if article.use_block_editor:
         blocks = article.get_visible_blocks()
@@ -2228,7 +2268,7 @@ def wordpress_import():
                     for category_data in categories:
                         try:
                             if self.skip_duplicates:
-                                existing = Category.query.filter_by(slug=category_data['slug']).first()
+                                existing = db.session.execute(select(Category).where(Category.slug == category_data['slug'])).scalar_one_or_none()
                                 if existing:
                                     self.stats['skipped'].append(f"カテゴリ: {category_data['name']}")
                                     continue
@@ -2253,7 +2293,7 @@ def wordpress_import():
                     for post_data in posts:
                         try:
                             if self.skip_duplicates:
-                                existing = Article.query.filter_by(slug=post_data['slug']).first()
+                                existing = db.session.execute(select(Article).where(Article.slug == post_data['slug'])).scalar_one_or_none()
                                 if existing:
                                     self.stats['skipped'].append(f"記事: {post_data['title']}")
                                     continue
@@ -2274,10 +2314,10 @@ def wordpress_import():
                                 
                                 # カテゴリ関連付け
                                 for category_name in post_data['categories']:
-                                    category = Category.query.filter_by(name=category_name).first()
+                                    category = db.session.execute(select(Category).where(Category.name == category_name)).scalar_one_or_none()
                                     if not category:
                                         category_slug = self._generate_slug(category_name)
-                                        category = Category.query.filter_by(slug=category_slug).first()
+                                        category = db.session.execute(select(Category).where(Category.slug == category_slug)).scalar_one_or_none()
                                     
                                     if category:
                                         article_category = ArticleCategory(
@@ -2468,7 +2508,7 @@ def download_log_report(log_file):
 def seo_tools():
     """SEO対策ツール画面"""
     # 最近の記事を取得（SEO分析対象）
-    recent_articles = Article.query.order_by(Article.created_at.desc()).limit(10).all()
+    recent_articles = db.session.execute(select(Article).order_by(Article.created_at.desc()).limit(10)).scalars().all()
     
     return render_template('admin/seo_tools.html', 
                          recent_articles=recent_articles)
@@ -2479,7 +2519,7 @@ def seo_analyze_article(article_id):
     """記事のSEO分析"""
     from seo_optimizer import SEOOptimizer
     
-    article = Article.query.get_or_404(article_id)
+    article = db.get_or_404(Article, article_id)
     analysis_result = None
     llm_suggestions = None
     
@@ -2561,7 +2601,7 @@ def seo_batch_analyze():
             flash(f'一括分析エラー: {str(e)}', 'danger')
     
     # 分析対象記事一覧
-    articles = Article.query.order_by(Article.created_at.desc()).limit(50).all()
+    articles = db.session.execute(select(Article).order_by(Article.created_at.desc()).limit(50)).scalars().all()
     
     return render_template('admin/seo_batch_analyze.html',
                          articles=articles,
@@ -2615,7 +2655,7 @@ def site_settings():
                 setting_value = request.form.get(setting_key, '')
                 
                 # 既存設定を取得または新規作成
-                setting = SiteSetting.query.filter_by(key=setting_key).first()
+                setting = db.session.execute(select(SiteSetting).where(SiteSetting.key == setting_key)).scalar_one_or_none()
                 if setting:
                     setting.value = setting_value
                 else:
@@ -2632,7 +2672,7 @@ def site_settings():
     
     # 現在の設定値を取得
     settings = {}
-    all_settings = SiteSetting.query.all()
+    all_settings = db.session.execute(select(SiteSetting)).scalars().all()
     for setting in all_settings:
         settings[setting.key] = setting.value
     
@@ -2718,7 +2758,7 @@ def list_images():
         search = request.args.get('search', '').strip()
         
         # 基本クエリ
-        query = UploadedImage.query.filter_by(is_active=True)
+        query = select(UploadedImage).where(UploadedImage.is_active == True)
         
         # 検索フィルター
         if search:
@@ -2779,7 +2819,7 @@ def list_images():
 def update_image(image_id):
     """画像情報更新API"""
     try:
-        image = UploadedImage.query.get_or_404(image_id)
+        image = db.get_or_404(UploadedImage, image_id)
         
         # フォームデータから取得
         alt_text = request.form.get('alt_text', '').strip()
@@ -2825,7 +2865,7 @@ def update_image(image_id):
 def delete_image(image_id):
     """画像削除API"""
     try:
-        image = UploadedImage.query.get_or_404(image_id)
+        image = db.get_or_404(UploadedImage, image_id)
         
         # ファイル削除
         file_path = os.path.join(current_app.static_folder, image.file_path)
@@ -2858,7 +2898,7 @@ def images_manager():
         per_page = 12  # グリッド表示のため12個ずつ
         
         # 基本クエリ
-        query = UploadedImage.query.filter_by(is_active=True)
+        query = select(UploadedImage).where(UploadedImage.is_active == True)
         
         # 検索フィルター
         if search:
@@ -2873,12 +2913,13 @@ def images_manager():
             )
         
         # ページネーション
-        images_pagination = query.order_by(UploadedImage.upload_date.desc()).paginate(
+        images_pagination = db.paginate(
+            query.order_by(UploadedImage.upload_date.desc()),
             page=page, per_page=per_page, error_out=False
         )
         
         # 統計情報
-        total_images = UploadedImage.query.filter_by(is_active=True).count()
+        total_images = db.session.execute(select(func.count(UploadedImage.id)).where(UploadedImage.is_active == True)).scalar()
         total_size = db.session.execute(select(func.sum(UploadedImage.file_size)).where(UploadedImage.is_active == True)).scalar() or 0
         
         stats = {

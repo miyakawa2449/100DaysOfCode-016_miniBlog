@@ -1,4 +1,4 @@
-from flask import Flask, render_template, redirect, url_for, flash, session, request, current_app
+from flask import Flask, render_template, redirect, url_for, flash, session, request, current_app, abort
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
 from flask_mail import Mail, Message
@@ -7,6 +7,7 @@ from flask_login import LoginManager, login_user, logout_user, current_user, log
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
+from sqlalchemy import select, func
 from admin import admin_bp
 
 # .envファイルを読み込み
@@ -656,7 +657,9 @@ app.register_blueprint(admin_bp, url_prefix='/admin')
 @app.route('/')
 def home():
     # 公開済み記事のみ表示
-    articles = Article.query.filter_by(is_published=True).order_by(Article.created_at.desc()).all()
+    articles = db.session.execute(
+        select(Article).where(Article.is_published.is_(True)).order_by(Article.created_at.desc())
+    ).scalars().all()
     return render_template('home.html', articles=articles)
 
 @app.route('/login/', methods=['GET', 'POST'])
@@ -668,7 +671,7 @@ def login():
     if form.validate_on_submit():
         email = form.email.data
         password = form.password.data
-        user = User.query.filter_by(email=email).first()
+        user = db.session.execute(select(User).where(User.email == email)).scalar_one_or_none()
         if user and check_password_hash(user.password_hash, password):
             # 2段階認証が有効な場合はTOTP画面へ
             if user.totp_enabled:
@@ -792,7 +795,7 @@ def password_reset_request():
     
     form = PasswordResetRequestForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data).first()
+        user = db.session.execute(select(User).where(User.email == form.email.data)).scalar_one_or_none()
         if user:
             token = user.generate_reset_token()
             db.session.commit()
@@ -809,7 +812,7 @@ def password_reset(token):
     if current_user.is_authenticated:
         return redirect(url_for('home'))
     
-    user = User.query.filter_by(reset_token=token).first()
+    user = db.session.execute(select(User).where(User.reset_token == token)).scalar_one_or_none()
     if not user or not user.verify_reset_token(token):
         flash('無効または期限切れのトークンです。', 'danger')
         return redirect(url_for('password_reset_request'))
@@ -875,7 +878,9 @@ def allowed_file(filename):
 
 @app.route('/category/<slug>/')
 def category_page(slug):
-    category = Category.query.filter_by(slug=slug).first_or_404()
+    category = db.session.execute(select(Category).where(Category.slug == slug)).scalar_one_or_none()
+    if not category:
+        abort(404)
     
     if hasattr(category, 'articles') and category.articles is not None:
         page = request.args.get('page', 1, type=int)
@@ -890,7 +895,9 @@ def category_page(slug):
 
 @app.route('/article/<slug>/')
 def article_detail(slug):
-    article = Article.query.filter_by(slug=slug).first_or_404()
+    article = db.session.execute(select(Article).where(Article.slug == slug)).scalar_one_or_none()
+    if not article:
+        abort(404)
     
     # 下書き記事の場合、管理者のみアクセス可能
     if not article.is_published:
@@ -898,7 +905,27 @@ def article_detail(slug):
             flash('この記事は公開されていません。', 'warning')
             return redirect(url_for('home'))
     
-    return render_template('article_detail.html', article=article)
+    # 承認済みコメントを取得（親コメントのみ）
+    approved_comments = []
+    if hasattr(article, 'comments') and article.allow_comments:
+        approved_comments = db.session.execute(
+            select(Comment).where(
+                Comment.article_id == article.id,
+                Comment.is_approved.is_(True),
+                Comment.parent_id.is_(None)
+            ).order_by(Comment.created_at.asc())
+        ).scalars().all()
+        
+        # 各コメントの承認済み返信も取得
+        for comment in approved_comments:
+            comment.approved_replies = db.session.execute(
+                select(Comment).where(
+                    Comment.parent_id == comment.id,
+                    Comment.is_approved.is_(True)
+                ).order_by(Comment.created_at.asc())
+            ).scalars().all()
+    
+    return render_template('article_detail.html', article=article, approved_comments=approved_comments)
 
 @app.route('/add_comment/<int:article_id>', methods=['POST'])
 def add_comment(article_id):
@@ -906,7 +933,7 @@ def add_comment(article_id):
     from models import Article, Comment, db
     from flask import request, flash, redirect, url_for
     
-    article = Article.query.get_or_404(article_id)
+    article = db.get_or_404(Article, article_id)
     
     if not article.allow_comments:
         flash('このページではコメントが無効になっています。', 'error')
@@ -957,13 +984,17 @@ def add_comment(article_id):
 @app.route('/profile/<handle_name>/')
 def profile(handle_name):
     """ユーザープロフィールページ"""
-    user = User.query.filter_by(handle_name=handle_name).first()
+    user = db.session.execute(select(User).where(User.handle_name == handle_name)).scalar_one_or_none()
     if not user:
         # ハンドルネームが見つからない場合、nameで検索
-        user = User.query.filter_by(name=handle_name).first_or_404()
+        user = db.session.execute(select(User).where(User.name == handle_name)).scalar_one_or_none()
+        if not user:
+            abort(404)
     
     # 公開記事のみ取得
-    articles = Article.query.filter_by(author_id=user.id, is_published=True).order_by(Article.created_at.desc()).all()
+    articles = db.session.execute(
+        select(Article).where(Article.author_id == user.id, Article.is_published.is_(True)).order_by(Article.created_at.desc())
+    ).scalars().all()
     
     return render_template('profile.html', user=user, articles=articles)
 
