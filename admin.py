@@ -11,14 +11,9 @@ import time
 import re
 import json
 from forms import CategoryForm, ArticleForm, WordPressImportForm, GoogleAnalyticsForm
-try:
-    from block_forms import BlockEditorForm, create_block_form
-    from block_utils import process_block_image, process_block_image_with_crop, fetch_ogp_data, detect_sns_platform, extract_sns_id, generate_sns_embed_html
-    from models import BlockType, ArticleBlock
-    BLOCK_EDITOR_AVAILABLE = True
-except ImportError as e:
-    print(f"Block editor modules not available: {e}")
-    BLOCK_EDITOR_AVAILABLE = False
+# Block Editor機能を無効化
+BLOCK_EDITOR_AVAILABLE = False
+print("Block Editor functionality has been disabled")
 
 # 新しいサービスクラスをインポート
 from article_service import ArticleService, CategoryService, ImageProcessingService, UserService
@@ -892,9 +887,7 @@ def edit_article(article_id):
     article = db.get_or_404(Article, article_id)
     
     # ブロック型記事の場合はブロック型エディタにリダイレクト
-    if article.use_block_editor:
-        flash('この記事はブロック型エディタで作成されています。ブロック型エディタで編集してください。', 'info')
-        return redirect(url_for('admin.edit_article_block_editor', article_id=article_id))
+    # Block Editor機能削除により条件分岐削除
     
     form = ArticleForm(obj=article)
     
@@ -1398,210 +1391,9 @@ def bulk_comment_action():
     
     return redirect(url_for('admin.comments'))
 
-# ===== ブロック型エディタ機能 =====
+# Block Editor機能を削除
 
-@admin_bp.route('/article/block-editor/create/', methods=['GET', 'POST'])
-@admin_required
-def create_article_block_editor():
-    """ブロック型エディタで記事作成"""
-    if not BLOCK_EDITOR_AVAILABLE:
-        flash('ブロックエディタが利用できません。', 'warning')
-        return redirect(url_for('admin.create_article'))
-    
-    form = BlockEditorForm()
-    all_categories = db.session.execute(select(Category).order_by(Category.name)).scalars().all()
-    
-    # カテゴリの選択肢を設定
-    form.category_id.choices = [(0, 'カテゴリを選択してください')] + [(cat.id, cat.name) for cat in all_categories]
-    
-    if form.validate_on_submit():
-        # フォームのaction値を確認
-        action = request.form.get('action', 'save_draft')
-        
-        try:
-            # スラッグの生成と重複チェック
-            slug = form.slug.data or generate_slug_from_name(form.title.data)
-            original_slug = slug
-            counter = 1
-            
-            # スラッグの重複をチェックし、重複している場合は番号を追加
-            while db.session.execute(select(Article).where(Article.slug == slug)).scalar_one_or_none():
-                slug = f"{original_slug}-{counter}"
-                counter += 1
-                current_app.logger.info(f"Slug duplicated, trying: {slug}")
-            
-            # 新規記事作成
-            article = Article(
-                title=form.title.data,
-                slug=slug,
-                summary=form.summary.data,
-                author_id=current_user.id,
-                use_block_editor=True,
-                is_published=(action == 'publish') or (request.form.get('is_published') == 'true'),
-                allow_comments=request.form.get('allow_comments', 'true') == 'true',
-                meta_title=form.meta_title.data,
-                meta_description=form.meta_description.data,
-                meta_keywords=form.meta_keywords.data,
-                canonical_url=form.canonical_url.data
-            )
-            
-            if action == 'publish':
-                article.published_at = datetime.utcnow()
-            
-            db.session.add(article)
-            db.session.flush()  # IDを取得するため
-            
-            # カテゴリ関連付け
-            if form.category_id.data and form.category_id.data != 0:
-                category = db.session.get(Category, form.category_id.data)
-                if category:
-                    article.categories.append(category)
-            
-            db.session.commit()
-            flash('記事を作成しました。ブロックを追加して内容を編集してください。', 'success')
-            
-            # リダイレクト先URLにブロック追加パラメータがあるかチェック
-            redirect_url = url_for('admin.edit_article_block_editor', article_id=article.id)
-            add_block_type = request.args.get('add_block')
-            if add_block_type:
-                redirect_url += f'?add_block={add_block_type}'
-            
-            return redirect(redirect_url)
-            
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Block editor article creation error: {e}")
-            flash('記事の作成に失敗しました。', 'danger')
-    
-    return render_template('admin/block_editor.html', 
-                         form=form, 
-                         article=None, 
-                         blocks=[], 
-                         all_categories=all_categories)
-
-@admin_bp.route('/article/block-editor/edit/<int:article_id>/', methods=['GET', 'POST'])
-@admin_required
-def edit_article_block_editor(article_id):
-    """ブロック型エディタで記事編集"""
-    if not BLOCK_EDITOR_AVAILABLE:
-        flash('ブロックエディタが利用できません。', 'warning')
-        return redirect(url_for('admin.edit_article', article_id=article_id))
-    
-    article = db.get_or_404(Article, article_id)
-    
-    # 従来型記事の場合は従来型エディタにリダイレクト
-    if not article.use_block_editor:
-        flash('この記事は従来型エディタで作成されています。従来型エディタで編集してください。', 'info')
-        return redirect(url_for('admin.edit_article', article_id=article_id))
-    
-    # この記事は既にブロック型として設定済み
-    
-    form = BlockEditorForm(obj=article)
-    all_categories = db.session.execute(select(Category).order_by(Category.name)).scalars().all()
-    
-    # カテゴリの選択肢を設定
-    form.category_id.choices = [(0, 'カテゴリを選択してください')] + [(cat.id, cat.name) for cat in all_categories]
-    
-    # 現在のカテゴリを設定
-    current_category = article.categories[0] if article.categories else None
-    if current_category:
-        form.category_id.data = current_category.id
-    
-    # フォームに記事の現在の状態を反映
-    form.is_published.data = 'true' if article.is_published else 'false'
-    form.allow_comments.data = 'true' if article.allow_comments else 'false'
-    
-    # デバッグ用ログ
-    current_app.logger.info(f"Article {article.id} - is_published: {article.is_published}, allow_comments: {article.allow_comments}")
-    current_app.logger.info(f"Form data - is_published: {form.is_published.data}, allow_comments: {form.allow_comments.data}")
-    
-    # 記事のブロックを取得
-    blocks = article.get_visible_blocks()
-    
-    # 初期ブロック追加の処理
-    add_block_type = request.args.get('add_block')
-    if add_block_type and BLOCK_EDITOR_AVAILABLE:
-        try:
-            block_type = db.session.execute(select(BlockType).where(BlockType.type_name == add_block_type)).scalar_one_or_none()
-            if block_type:
-                # 最大順序番号を取得
-                max_order = db.session.execute(select(func.max(ArticleBlock.sort_order)).where(ArticleBlock.article_id == article.id)).scalar() or 0
-                
-                # 新しいブロックを作成
-                new_block = ArticleBlock(
-                    article_id=article.id,
-                    block_type_id=block_type.id,
-                    sort_order=max_order + 1,
-                    title=f'新しい{block_type.type_label}'
-                )
-                
-                db.session.add(new_block)
-                db.session.commit()
-                flash(f'{block_type.type_label}を追加しました。', 'success')
-                
-                # ブロックリストを更新
-                blocks = article.get_visible_blocks()
-        except Exception as e:
-            current_app.logger.error(f"Initial block creation error: {e}")
-            flash('ブロックの追加に失敗しました。', 'warning')
-    
-    if form.validate_on_submit():
-        try:
-            # フォームのaction値を確認
-            action = request.form.get('action', 'save_draft')
-            
-            # 記事基本情報の更新
-            article.title = form.title.data
-            article.slug = form.slug.data
-            article.summary = form.summary.data
-            article.meta_title = form.meta_title.data
-            article.meta_description = form.meta_description.data
-            article.meta_keywords = form.meta_keywords.data
-            article.canonical_url = form.canonical_url.data
-            article.allow_comments = request.form.get('allow_comments') == 'true'
-            article.updated_at = datetime.utcnow()
-            
-            # 公開状態の更新
-            was_published = article.is_published
-            is_published = (action == 'publish') or (request.form.get('is_published') == 'true')
-            article.is_published = is_published
-            if is_published and not was_published:
-                article.published_at = datetime.utcnow()
-            
-            # カテゴリ関連付けの更新
-            # dynamic relationshipの場合は直接clearできないため、手動で削除
-            current_category_ids = [cat.id for cat in article.categories.all()]
-            for cat_id in current_category_ids:
-                category_to_remove = db.session.get(Category, cat_id)
-                if category_to_remove:
-                    article.categories.remove(category_to_remove)
-                    
-            if form.category_id.data and form.category_id.data != 0:
-                category = db.session.get(Category, form.category_id.data)
-                if category:
-                    article.categories.append(category)
-            
-            db.session.commit()
-            flash('記事を更新しました。', 'success')
-            
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Block editor article update error: {e}")
-            flash('記事の更新に失敗しました。', 'danger')
-    
-    return render_template('admin/block_editor.html', 
-                         form=form, 
-                         article=article, 
-                         blocks=blocks, 
-                         all_categories=all_categories)
-
-@admin_bp.route('/api/block/add', methods=['POST'])
-@admin_required
-def add_block():
-    """新しいブロックを追加"""
-    # 関数の開始を必ず記録
-    print("=== add_block function called ===")
-    current_app.logger.info("=== add_block function called ===")
+# Block Editor関連の大きなセクションを削除
     
     try:
         current_app.logger.info(f"Request method: {request.method}")
@@ -2107,14 +1899,9 @@ def remove_featured_image():
 @admin_bp.route('/article/preview/<int:article_id>')
 @admin_required
 def article_preview(article_id):
-    """記事プレビュー（ブロックエディタ対応）"""
+    """記事プレビュー（Markdownエディタ）"""
     article = db.get_or_404(Article, article_id)
-    
-    if article.use_block_editor:
-        blocks = article.get_visible_blocks()
-        return render_template('admin/article_preview.html', article=article, blocks=blocks)
-    else:
-        return render_template('article_detail.html', article=article, is_preview=True)
+    return render_template('article_detail.html', article=article, is_preview=True)
 
 # ===============================
 # WordPress インポート機能
