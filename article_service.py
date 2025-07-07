@@ -6,6 +6,7 @@ from models import db, Article, Category, User
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
+from sqlalchemy import select, func
 import re
 import os
 
@@ -16,7 +17,7 @@ class ArticleService:
     @staticmethod
     def setup_category_choices(form):
         """カテゴリ選択肢の設定（全記事フォームで共通）"""
-        all_categories = Category.query.order_by(Category.name).all()
+        all_categories = db.session.execute(select(Category).order_by(Category.name)).scalars().all()
         form.category_id.choices = [
             (0, 'カテゴリを選択してください')
         ] + [(cat.id, cat.name) for cat in all_categories]
@@ -28,14 +29,21 @@ class ArticleService:
         slug = re.sub(r'[-\s]+', '-', slug)
         
         # 重複チェック
-        query = Article.query.filter(Article.slug == slug)
+        query_stmt = select(Article).where(Article.slug == slug)
         if article_id:
-            query = query.filter(Article.id != article_id)
+            query_stmt = query_stmt.where(Article.id != article_id)
         
-        if query.first():
+        existing = db.session.execute(query_stmt).scalar_one_or_none()
+        if existing:
             counter = 1
             original_slug = slug
-            while query.filter(Article.slug == f"{original_slug}-{counter}").first():
+            while True:
+                test_slug = f"{original_slug}-{counter}"
+                test_stmt = select(Article).where(Article.slug == test_slug)
+                if article_id:
+                    test_stmt = test_stmt.where(Article.id != article_id)
+                if not db.session.execute(test_stmt).scalar_one_or_none():
+                    break
                 counter += 1
             slug = f"{original_slug}-{counter}"
         
@@ -47,20 +55,22 @@ class ArticleService:
         errors = []
         
         # タイトル重複チェック
-        existing_article = Article.query.filter(Article.title == form.title.data)
+        title_stmt = select(Article).where(Article.title == form.title.data)
         if article_id:
-            existing_article = existing_article.filter(Article.id != article_id)
+            title_stmt = title_stmt.where(Article.id != article_id)
         
-        if existing_article.first():
+        existing_article = db.session.execute(title_stmt).scalar_one_or_none()
+        if existing_article:
             errors.append('同じタイトルの記事が既に存在します')
         
         # スラッグ重複チェック（自動生成の場合）
         if form.slug.data:
-            existing_slug = Article.query.filter(Article.slug == form.slug.data)
+            slug_stmt = select(Article).where(Article.slug == form.slug.data)
             if article_id:
-                existing_slug = existing_slug.filter(Article.id != article_id)
+                slug_stmt = slug_stmt.where(Article.id != article_id)
             
-            if existing_slug.first():
+            existing_slug = db.session.execute(slug_stmt).scalar_one_or_none()
+            if existing_slug:
                 errors.append('同じスラッグが既に存在します')
         
         return errors
@@ -130,7 +140,7 @@ class ArticleService:
         
         # 既存カテゴリを削除
         if hasattr(article, 'categories'):
-            current_category_ids = [cat.id for cat in article.categories.all()]
+            current_category_ids = [cat.id for cat in article.categories]
             for cat_id in current_category_ids:
                 category_to_remove = db.session.get(Category, cat_id)
                 if category_to_remove:
@@ -272,14 +282,21 @@ class CategoryService:
         slug = re.sub(r'[-\s]+', '-', slug)
         
         # 重複チェック
-        query = Category.query.filter(Category.slug == slug)
+        query_stmt = select(Category).where(Category.slug == slug)
         if category_id:
-            query = query.filter(Category.id != category_id)
+            query_stmt = query_stmt.where(Category.id != category_id)
         
-        if query.first():
+        existing = db.session.execute(query_stmt).scalar_one_or_none()
+        if existing:
             counter = 1
             original_slug = slug
-            while query.filter(Category.slug == f"{original_slug}-{counter}").first():
+            while True:
+                test_slug = f"{original_slug}-{counter}"
+                test_stmt = select(Category).where(Category.slug == test_slug)
+                if category_id:
+                    test_stmt = test_stmt.where(Category.id != category_id)
+                if not db.session.execute(test_stmt).scalar_one_or_none():
+                    break
                 counter += 1
             slug = f"{original_slug}-{counter}"
         
@@ -291,20 +308,22 @@ class CategoryService:
         errors = []
         
         # 名前重複チェック
-        existing_category = Category.query.filter(Category.name == form_data['name'])
+        name_stmt = select(Category).where(Category.name == form_data['name'])
         if category_id:
-            existing_category = existing_category.filter(Category.id != category_id)
+            name_stmt = name_stmt.where(Category.id != category_id)
         
-        if existing_category.first():
+        existing_category = db.session.execute(name_stmt).scalar_one_or_none()
+        if existing_category:
             errors.append('同じ名前のカテゴリが既に存在します')
         
         # スラッグ重複チェック
         if form_data.get('slug'):
-            existing_slug = Category.query.filter(Category.slug == form_data['slug'])
+            slug_stmt = select(Category).where(Category.slug == form_data['slug'])
             if category_id:
-                existing_slug = existing_slug.filter(Category.id != category_id)
+                slug_stmt = slug_stmt.where(Category.id != category_id)
             
-            if existing_slug.first():
+            existing_slug = db.session.execute(slug_stmt).scalar_one_or_none()
+            if existing_slug:
                 errors.append('同じスラッグが既に存在します')
         
         return errors
@@ -485,11 +504,12 @@ class UserService:
         errors = []
         
         # メールアドレス重複チェック
-        existing_user = User.query.filter(User.email == form_data['email'])
+        email_stmt = select(User).where(User.email == form_data['email'])
         if user_id:
-            existing_user = existing_user.filter(User.id != user_id)
+            email_stmt = email_stmt.where(User.id != user_id)
         
-        if existing_user.first():
+        existing_user = db.session.execute(email_stmt).scalar_one_or_none()
+        if existing_user:
             errors.append('同じメールアドレスのユーザが既に存在します')
         
         # パスワードバリデーション（新規作成時のみ必須）
