@@ -164,7 +164,6 @@
                 </h3>
                 
                 <!-- 既存のコメント表示 -->
-                {% set approved_comments = article.comments.filter_by(is_approved=True, parent_id=None).all() %}
                 {% if approved_comments %}
                     <div class="comments-list">
                         {% for comment in approved_comments %}
@@ -178,10 +177,9 @@
                                 </div>
                                 
                                 <!-- 返信表示 -->
-                                {% set replies = comment.replies.filter_by(is_approved=True).all() %}
-                                {% if replies %}
+                                {% if comment.approved_replies %}
                                     <div class="comment-replies">
-                                        {% for reply in replies %}
+                                        {% for reply in comment.approved_replies %}
                                             <div class="comment-reply">
                                                 <div class="comment-header">
                                                     <h6 class="comment-author">{{ reply.author_name }}</h6>

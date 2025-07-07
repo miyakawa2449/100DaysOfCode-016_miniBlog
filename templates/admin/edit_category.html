@@ -167,7 +167,7 @@
                         
                         <dt class="col-sm-4">記事数:</dt>
                         <dd class="col-sm-8">
-                            <span class="badge bg-info">{{ category.articles.count() }}</span>
+                            <span class="badge bg-info">{{ category.articles|length }}</span>
                         </dd>
                         
                         {% if category.parent %}

@@ -56,7 +56,7 @@
                     </thead>
                     <tbody>
                         {% for category in categories_list.items %}
-                        <tr class="category-row" data-name="{{ category.name|lower }}" data-articles="{{ category.articles.count() if category.articles else 0 }}" data-created="{{ category.created_at.strftime('%Y%m%d') if category.created_at else '19700101' }}">
+                        <tr class="category-row" data-name="{{ category.name|lower }}" data-articles="{{ category.articles|length if category.articles else 0 }}" data-created="{{ category.created_at.strftime('%Y%m%d') if category.created_at else '19700101' }}">
                             <td>
                                 <input type="checkbox" name="category_ids" value="{{ category.id }}" class="category-checkbox">
                             </td>
@@ -99,8 +99,8 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <span class="badge bg-{{ 'success' if category.articles and category.articles.count() > 0 else 'secondary' }}">
-                                    {{ category.articles.count() if category.articles else 0 }}
+                                <span class="badge bg-{{ 'success' if category.articles and category.articles|length > 0 else 'secondary' }}">
+                                    {{ category.articles|length if category.articles else 0 }}
                                 </span>
                             </td>
                             <td>
