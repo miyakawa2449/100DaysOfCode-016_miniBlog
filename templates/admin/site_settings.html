@@ -37,22 +37,22 @@
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="site_title" class="form-label">
-                                    <i class="fas fa-heading me-1"></i>サイトタイトル
+                                <label for="site_name" class="form-label">
+                                    <i class="bi bi-journal-text me-1"></i>サイト名
                                 </label>
-                                <input type="text" class="form-control" id="site_title" name="site_title" 
-                                       value="{{ settings.get('site_title', '') }}" required>
+                                <input type="text" class="form-control" id="site_name" name="site_name" 
+                                       value="{{ settings.get('site_name', '') }}" required>
                                 <div class="form-text">ブログのタイトルを入力してください。</div>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="site_url" class="form-label">
-                                    <i class="fas fa-link me-1"></i>サイトURL
+                                <label for="contact_email" class="form-label">
+                                    <i class="bi bi-envelope me-1"></i>お問い合わせメール
                                 </label>
-                                <input type="url" class="form-control" id="site_url" name="site_url" 
-                                       value="{{ settings.get('site_url', '') }}" required>
-                                <div class="form-text">サイトの完全なURLを入力してください。</div>
+                                <input type="email" class="form-control" id="contact_email" name="contact_email" 
+                                       value="{{ settings.get('contact_email', '') }}">
+                                <div class="form-text">お問い合わせ先のメールアドレスです。</div>
                             </div>
                         </div>
                     </div>
@@ -69,24 +69,32 @@
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="site_keywords" class="form-label">
-                                    <i class="fas fa-tags me-1"></i>サイトキーワード
+                                <label for="seo_keywords" class="form-label">
+                                    <i class="bi bi-tags me-1"></i>SEOキーワード
                                 </label>
-                                <input type="text" class="form-control" id="site_keywords" name="site_keywords" 
-                                       value="{{ settings.get('site_keywords', '') }}">
+                                <input type="text" class="form-control" id="seo_keywords" name="seo_keywords" 
+                                       value="{{ settings.get('seo_keywords', '') }}">
                                 <div class="form-text">カンマ区切りでキーワードを入力してください。</div>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
-                                <label for="admin_email" class="form-label">
-                                    <i class="fas fa-envelope me-1"></i>管理者メールアドレス
+                                <label for="theme_color" class="form-label">
+                                    <i class="bi bi-palette me-1"></i>テーマカラー
                                 </label>
-                                <input type="email" class="form-control" id="admin_email" name="admin_email" 
-                                       value="{{ settings.get('admin_email', '') }}" required>
-                                <div class="form-text">通知メールの送信先として使用されます。</div>
+                                <input type="color" class="form-control form-control-color" id="theme_color" name="theme_color" 
+                                       value="{{ settings.get('theme_color', '#007bff') }}">
+                                <div class="form-text">サイトのメインカラーを選択してください。</div>
                             </div>
                         </div>
+                    
+                    <div class="mb-3">
+                        <label for="footer_text" class="form-label">
+                            <i class="bi bi-file-text me-1"></i>フッターテキスト
+                        </label>
+                        <input type="text" class="form-control" id="footer_text" name="footer_text" 
+                               value="{{ settings.get('footer_text', '') }}">
+                        <div class="form-text">サイトフッターに表示されるテキストです。</div>
                     </div>
                 </div>
             </div>
@@ -226,6 +234,15 @@
                         <input type="url" class="form-control" id="social_instagram" name="social_instagram" 
                                value="{{ settings.get('social_instagram', '') }}" 
                                placeholder="https://instagram.com/username">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="social_github" class="form-label">
+                            <i class="fab fa-github me-1"></i>GitHub
+                        </label>
+                        <input type="url" class="form-control" id="social_github" name="social_github" 
+                               value="{{ settings.get('social_github', '') }}" 
+                               placeholder="https://github.com/username">
                     </div>
                 </div>
             </div>
