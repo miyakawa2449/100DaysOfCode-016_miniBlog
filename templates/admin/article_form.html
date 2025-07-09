@@ -1158,7 +1158,18 @@ function handleImageUpload() {
                     const modal = bootstrap.Modal.getInstance(document.getElementById('imageUploadModal'));
                     if (modal) {
                         modal.hide();
+                        // モーダル完全閉鎖後の処理
                         setTimeout(() => {
+                            // 背景オーバーレイを強制削除
+                            const backdropElements = document.querySelectorAll('.modal-backdrop');
+                            backdropElements.forEach(backdrop => backdrop.remove());
+                            
+                            // bodyの状態をリセット
+                            document.body.classList.remove('modal-open');
+                            document.body.style.overflow = '';
+                            document.body.style.paddingRight = '';
+                            
+                            // フォーカスを戻す
                             const bodyTextarea = document.getElementById('body');
                             if (bodyTextarea) {
                                 bodyTextarea.focus();
@@ -1305,6 +1316,17 @@ function closeUploadCropModal() {
     const modal = bootstrap.Modal.getInstance(document.getElementById('uploadCropModal'));
     if (modal) {
         modal.hide();
+        // モーダル完全閉鎖後の処理
+        setTimeout(() => {
+            // 背景オーバーレイを強制削除
+            const backdropElements = document.querySelectorAll('.modal-backdrop');
+            backdropElements.forEach(backdrop => backdrop.remove());
+            
+            // bodyの状態をリセット
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+        }, 300);
     }
 }
 
@@ -1605,6 +1627,17 @@ function applyCrop() {
             const modal = bootstrap.Modal.getInstance(document.getElementById('cropModal'));
             if (modal) {
                 modal.hide();
+                // モーダル完全閉鎖後の処理
+                setTimeout(() => {
+                    // 背景オーバーレイを強制削除
+                    const backdropElements = document.querySelectorAll('.modal-backdrop');
+                    backdropElements.forEach(backdrop => backdrop.remove());
+                    
+                    // bodyの状態をリセット
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                }, 300);
             }
         } else {
             // フォールバック
@@ -1612,6 +1645,9 @@ function applyCrop() {
             modalElement.style.display = 'none';
             modalElement.classList.remove('show');
             document.body.classList.remove('modal-open');
+            // 背景オーバーレイを強制削除
+            const backdropElements = document.querySelectorAll('.modal-backdrop');
+            backdropElements.forEach(backdrop => backdrop.remove());
         }
         
         // Cropperを破棄

@@ -25,8 +25,8 @@ class CategoryForm(FlaskForm):
     ogp_crop_width = HiddenField('OGP Crop Width')
     ogp_crop_height = HiddenField('OGP Crop Height')
     ogp_crop_rotate = IntegerField('OGP Crop Rotate', widget=HiddenInput(), validators=[Optional()])
-    ogp_crop_scaleX = IntegerField('OGP Crop ScaleX', widget=HiddenInput(), validators=[Optional()])
-    ogp_crop_scaleY = IntegerField('OGP Crop ScaleY', widget=HiddenInput(), validators=[Optional()])
+    ogp_crop_scale_x = IntegerField('OGP Crop ScaleX', widget=HiddenInput(), validators=[Optional()])
+    ogp_crop_scale_y = IntegerField('OGP Crop ScaleY', widget=HiddenInput(), validators=[Optional()])
 
     # SEO関連フィールド
     meta_title = StringField('メタタイトル', validators=[Optional(), Length(max=255)])
