@@ -634,23 +634,6 @@ def striptags(value):
         return re.sub(r'<[^>]*>', '', value)
     return value
 
-@app.template_filter('render_block_content')
-def render_block_content_filter(block):
-    """ブロック内容のレンダリング"""
-    try:
-        from block_utils import render_block_content
-        return render_block_content(block)
-    except ImportError:
-        return '<div class="block-error">Block editor not available</div>'
-
-@app.template_global()
-def render_block_content(block):
-    """ブロック内容のレンダリング（グローバル関数）"""
-    try:
-        from block_utils import render_block_content as _render_block_content
-        return _render_block_content(block)
-    except ImportError:
-        return '<div class="block-error">Block editor not available</div>'
 
 app.register_blueprint(admin_bp, url_prefix='/admin')
 
@@ -684,6 +667,8 @@ def login():
                 next_page = request.args.get('next')
                 return redirect(next_page or url_for('home'))
         else:
+            # ログイン失敗をログに記録（セキュリティ監視用）
+            current_app.logger.warning(f"Failed login attempt for email: {email}")
             flash('メールアドレスまたはパスワードが正しくありません。', 'danger')
     
     return render_template('login.html', form=form)
@@ -885,8 +870,12 @@ def category_page(slug):
     page = request.args.get('page', 1, type=int)
     per_page = 10
     
-    # SQLAlchemy 2.0対応: カテゴリーの公開記事を取得
-    articles_query = select(Article).join(article_categories).where(
+    # SQLAlchemy 2.0対応: カテゴリーの公開記事を取得（eager loading追加）
+    from sqlalchemy.orm import joinedload, selectinload
+    articles_query = select(Article).options(
+        joinedload(Article.author),
+        selectinload(Article.categories)
+    ).join(article_categories).where(
         article_categories.c.category_id == category.id,
         Article.is_published.is_(True)
     ).order_by(Article.created_at.desc())
@@ -915,22 +904,24 @@ def article_detail(slug):
     # 承認済みコメントを取得（親コメントのみ）
     approved_comments = []
     if hasattr(article, 'comments') and article.allow_comments:
+        # eager loadingで返信も一緒に取得してN+1問題を解決
+        from sqlalchemy.orm import selectinload
         approved_comments = db.session.execute(
-            select(Comment).where(
+            select(Comment)
+            .options(selectinload(Comment.replies))
+            .where(
                 Comment.article_id == article.id,
                 Comment.is_approved.is_(True),
                 Comment.parent_id.is_(None)
             ).order_by(Comment.created_at.asc())
         ).scalars().all()
         
-        # 各コメントの承認済み返信も取得
+        # 承認済みの返信のみをフィルタリング
         for comment in approved_comments:
-            comment.approved_replies = db.session.execute(
-                select(Comment).where(
-                    Comment.parent_id == comment.id,
-                    Comment.is_approved.is_(True)
-                ).order_by(Comment.created_at.asc())
-            ).scalars().all()
+            comment.approved_replies = [
+                reply for reply in comment.replies 
+                if reply.is_approved
+            ]
     
     return render_template('article_detail.html', article=article, approved_comments=approved_comments)
 

@@ -1,19 +1,17 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, session, current_app, jsonify
 from flask_login import login_required, current_user
-from models import db, User, Article, Category, Comment, SiteSetting, UploadedImage
+from models import db, User, Article, Category, Comment, SiteSetting, UploadedImage, article_categories
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 import os
 from PIL import Image
 import time
 import re
 import json
 from forms import CategoryForm, ArticleForm, WordPressImportForm, GoogleAnalyticsForm
-# Block Editor機能を無効化
-BLOCK_EDITOR_AVAILABLE = False
-print("Block Editor functionality has been disabled")
 
 # 新しいサービスクラスをインポート
 from article_service import ArticleService, CategoryService, ImageProcessingService, UserService
@@ -58,8 +56,11 @@ def get_safe_count(query_or_model):
             count = db.session.execute(query_or_model).scalar()
             current_app.logger.info(f"Query count: {count}")
             return count
+    except SQLAlchemyError as e:
+        current_app.logger.error(f"Database error in count query: {e}")
+        return 0
     except Exception as e:
-        current_app.logger.error(f"Count query failed for {query_or_model}: {e}")
+        current_app.logger.error(f"Unexpected error in count query: {e}")
         return 0
 
 def generate_slug_from_name(name):
@@ -196,8 +197,11 @@ def process_featured_image(image_file, article_id=None):
         if 'temp_path' in locals() and os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
-            except:
-                pass
+                current_app.logger.info(f"Cleaned up temp file: {temp_path}")
+            except OSError as e:
+                current_app.logger.warning(f"Failed to cleanup temp file {temp_path}: {e}")
+            except Exception as e:
+                current_app.logger.error(f"Unexpected error cleaning temp file {temp_path}: {e}")
         return None
 
 def process_featured_image_with_crop(image_file, article_id, crop_data=None):
@@ -801,9 +805,15 @@ def articles():
     page = request.args.get('page', 1, type=int)
     per_page = 10
     
-    # ページネーション
+    # ページネーション（eager loading で関連データも取得）
+    from sqlalchemy.orm import selectinload, joinedload
     articles_pagination = db.paginate(
-        select(Article).order_by(Article.created_at.desc()),
+        select(Article)
+        .options(
+            joinedload(Article.author),
+            selectinload(Article.categories)
+        )
+        .order_by(Article.created_at.desc()),
         page=page, 
         per_page=per_page, 
         error_out=False
@@ -886,8 +896,6 @@ def edit_article(article_id):
     """記事編集（統一版）"""
     article = db.get_or_404(Article, article_id)
     
-    # ブロック型記事の場合はブロック型エディタにリダイレクト
-    # Block Editor機能削除により条件分岐削除
     
     form = ArticleForm(obj=article)
     
@@ -983,7 +991,7 @@ def delete_article(article_id):
     article_title = article.title  # 削除前にタイトルを保存
     
     try:
-        # SQLAlchemyのCASCADE設定により関連ブロックも自動削除される
+        # SQLAlchemyのCASCADE設定により関連データも自動削除される
         db.session.delete(article)
         db.session.commit()
         flash(f'記事「{article_title}」を削除しました。', 'success')
@@ -1002,8 +1010,9 @@ def delete_article(article_id):
 def categories():
     """カテゴリ一覧"""
     page = request.args.get('page', 1, type=int)
+    from sqlalchemy.orm import selectinload
     categories_list = db.paginate(
-        select(Category).order_by(Category.name),
+        select(Category).options(selectinload(Category.articles)).order_by(Category.name),
         page=page, per_page=10, error_out=False
     )
     
@@ -1015,17 +1024,17 @@ def categories():
     for category in categories_list.items:
         current_page_articles += len(category.articles) if category.articles else 0
     
-    # 全カテゴリの記事数
-    total_articles_in_categories = 0
-    all_categories = db.session.execute(select(Category)).scalars().all()
-    for category in all_categories:
-        total_articles_in_categories += len(category.articles) if category.articles else 0
+    # 全カテゴリの記事数（最適化）
+    total_articles_in_categories = db.session.execute(
+        select(func.count(article_categories.c.article_id))
+    ).scalar()
     
-    # 記事が割り当てられていないカテゴリ数
-    empty_categories = 0
-    for category in all_categories:
-        if not category.articles or len(category.articles) == 0:
-            empty_categories += 1
+    # 記事が割り当てられていないカテゴリ数（最適化）
+    empty_categories = db.session.execute(
+        select(func.count(Category.id)).where(
+            ~Category.id.in_(select(article_categories.c.category_id))
+        )
+    ).scalar()
     
     stats = {
         'total_categories': total_categories,
@@ -1175,10 +1184,17 @@ def edit_category(category_id):
 @admin_required
 def delete_category(category_id):
     """カテゴリ削除"""
-    category = db.get_or_404(Category, category_id)
+    from sqlalchemy.orm import selectinload
+    category = db.session.execute(
+        select(Category).options(selectinload(Category.articles)).where(Category.id == category_id)
+    ).scalar_one_or_none()
+    
+    if not category:
+        flash('カテゴリが見つかりません。', 'danger')
+        return redirect(url_for('admin.categories'))
     
     try:
-        # 関連記事のカテゴリ関連付けを削除
+        # 関連記事のカテゴリ関連付けを削除（eager loading済み）
         for article in category.articles:
             article.categories.remove(category)
         
@@ -1204,10 +1220,13 @@ def bulk_delete_categories():
     
     try:
         deleted_count = 0
+        from sqlalchemy.orm import selectinload
         for category_id in category_ids:
-            category = db.session.get(Category, category_id)
+            category = db.session.execute(
+                select(Category).options(selectinload(Category.articles)).where(Category.id == category_id)
+            ).scalar_one_or_none()
             if category:
-                # 関連記事のカテゴリ関連付けを削除
+                # 関連記事のカテゴリ関連付けを削除（eager loading済み）
                 for article in category.articles:
                     article.categories.remove(category)
                 
@@ -1391,510 +1410,6 @@ def bulk_comment_action():
     
     return redirect(url_for('admin.comments'))
 
-# Block Editor機能を削除
-
-# Block Editor関連の大きなセクションを削除
-    
-    try:
-        current_app.logger.info(f"Request method: {request.method}")
-        current_app.logger.info(f"Request content type: {request.content_type}")
-        current_app.logger.info(f"Request data raw: {request.data}")
-        current_app.logger.info(f"Request form: {dict(request.form)}")
-        current_app.logger.info(f"Request args: {dict(request.args)}")
-        
-        # リクエストの Content-Type を確認
-        if 'application/json' not in (request.content_type or ''):
-            current_app.logger.error(f"Invalid content type: {request.content_type}")
-            return jsonify({'success': False, 'error': f'Content-Type が application/json ではありません: {request.content_type}'})
-        
-        data = request.get_json(force=True)
-        current_app.logger.info(f"Parsed JSON data: {data}")
-        
-        if data is None:
-            current_app.logger.error("No JSON data received")
-            return jsonify({'success': False, 'error': 'JSONデータが受信されませんでした'})
-        
-        article_id = data.get('article_id')
-        block_type_name = data.get('block_type')
-        current_app.logger.info(f"article_id: {article_id}, block_type: {block_type_name}")
-        
-        if not article_id or not block_type_name:
-            return jsonify({'success': False, 'error': '必要なパラメータが不足しています'})
-        
-        article = db.session.get(Article, article_id)
-        if not article:
-            return jsonify({'success': False, 'error': '記事が見つかりません'})
-        
-        block_type = db.session.execute(select(BlockType).where(BlockType.type_name == block_type_name)).scalar_one_or_none()
-        if not block_type:
-            return jsonify({'success': False, 'error': 'ブロックタイプが見つかりません'})
-        
-        # 最大順序番号を取得
-        max_order = db.session.execute(select(func.max(ArticleBlock.sort_order)).where(ArticleBlock.article_id == article_id)).scalar() or 0
-        
-        # 新しいブロックを作成
-        new_block = ArticleBlock(
-            article_id=article_id,
-            block_type_id=block_type.id,
-            sort_order=max_order + 1,
-            title=f'新しい{block_type.type_label}'
-        )
-        
-        db.session.add(new_block)
-        db.session.commit()
-        
-        current_app.logger.info(f"Block added successfully: ID={new_block.id}, Type={block_type_name}")
-        
-        # ブロックHTMLを生成
-        from flask import render_template_string
-        block_html = render_template('admin/block_item.html', block=new_block)
-        
-        current_app.logger.info("Block HTML generated successfully")
-        
-        return jsonify({
-            'success': True, 
-            'block_id': new_block.id,
-            'block_html': block_html
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Add block error: {e}")
-        current_app.logger.error(f"Exception type: {type(e).__name__}")
-        import traceback
-        current_app.logger.error(f"Traceback: {traceback.format_exc()}")
-        return jsonify({'success': False, 'error': f'ブロック追加エラー: {str(e)}'})
-
-@admin_bp.route('/api/block/edit')
-@admin_required
-def edit_block():
-    """ブロック編集フォームを取得"""
-    try:
-        block_id = request.args.get('block_id')
-        if not block_id:
-            return 'ブロックIDが指定されていません', 400
-        
-        block = db.get_or_404(ArticleBlock, block_id)
-        form = create_block_form(block.block_type.type_name, obj=block)
-        
-        return render_template('admin/block_edit_form.html', block=block, form=form)
-        
-    except Exception as e:
-        current_app.logger.error(f"Edit block form error: {e}")
-        return 'ブロック編集フォームの読み込みに失敗しました', 500
-
-@admin_bp.route('/api/block/save', methods=['POST'])
-@admin_required
-def save_block():
-    """ブロックの保存"""
-    try:
-        current_app.logger.info("save_block function called")
-        current_app.logger.info(f"Request method: {request.method}")
-        current_app.logger.info(f"Request form keys: {list(request.form.keys())}")
-        current_app.logger.info(f"Request headers: {dict(request.headers)}")
-        
-        # CSRFトークンをログで確認
-        csrf_token = request.form.get('csrf_token')
-        current_app.logger.info(f"CSRF token received: {csrf_token}")
-        
-        block_id = request.form.get('block_id')
-        current_app.logger.info(f"Received block_id: {block_id}")
-        
-        if not block_id:
-            current_app.logger.error("No block_id provided")
-            return jsonify({'success': False, 'error': 'ブロックIDが指定されていません'})
-        
-        try:
-            block = db.session.get(ArticleBlock, block_id)
-            if not block:
-                current_app.logger.error(f"Block not found: {block_id}")
-                return jsonify({'success': False, 'error': f'ブロック（ID: {block_id}）が見つかりません'})
-        except Exception as get_error:
-            current_app.logger.error(f"Error getting block: {get_error}")
-            return jsonify({'success': False, 'error': f'ブロック取得エラー: {str(get_error)}'})
-        
-        # フォーム検証を完全にスキップして直接更新
-        current_app.logger.info(f"Form data: {dict(request.form)}")
-        current_app.logger.info(f"Block type: {block.block_type.type_name}")
-        current_app.logger.info(f"Block ID: {block_id}")
-        
-        # フォーム検証をスキップして直接フィールドを更新
-        try:
-            # ブロック共通フィールドの更新
-            if 'title' in request.form:
-                block.title = request.form.get('title', '')
-            if 'css_classes' in request.form:
-                block.css_classes = request.form.get('css_classes', '')
-            
-            # ブロックタイプ別の処理
-            if block.is_text_block:
-                content = request.form.get('content', '')
-                current_app.logger.info(f"Content to save: {content}")
-                block.content = content
-                
-            elif block.is_image_block or block.is_featured_image_block:
-                # 画像メタデータの更新
-                if 'image_alt_text' in request.form:
-                    block.image_alt_text = request.form.get('image_alt_text', '')
-                if 'image_caption' in request.form:
-                    block.image_caption = request.form.get('image_caption', '')
-                
-                # 画像ファイルのアップロード処理
-                if 'image_file' in request.files and request.files['image_file'].filename:
-                    image_file = request.files['image_file']
-                    current_app.logger.info(f"Processing image upload: {image_file.filename}")
-                    
-                    # トリミング情報を取得
-                    crop_data = None
-                    crop_x = request.form.get('crop_x')
-                    crop_y = request.form.get('crop_y')
-                    crop_width = request.form.get('crop_width')
-                    crop_height = request.form.get('crop_height')
-                    
-                    if all([crop_x, crop_y, crop_width, crop_height]):
-                        try:
-                            crop_data = {
-                                'x': int(float(crop_x)),
-                                'y': int(float(crop_y)),
-                                'width': int(float(crop_width)),
-                                'height': int(float(crop_height))
-                            }
-                            current_app.logger.info(f"Crop data: {crop_data}")
-                        except (ValueError, TypeError) as e:
-                            current_app.logger.warning(f"Invalid crop data: {e}")
-                            crop_data = None
-                    
-                    # 画像処理を実行
-                    try:
-                        if crop_data:
-                            # トリミング付き画像処理
-                            image_path = process_block_image_with_crop(
-                                image_file, 
-                                block.block_type.type_name, 
-                                crop_data, 
-                                block.id
-                            )
-                        else:
-                            # 通常の画像処理
-                            image_path = process_block_image(
-                                image_file, 
-                                block.block_type.type_name, 
-                                block.id
-                            )
-                        
-                        if image_path:
-                            # 古い画像ファイルを削除
-                            if block.image_path:
-                                old_path = os.path.join(current_app.root_path, block.image_path)
-                                if os.path.exists(old_path):
-                                    os.remove(old_path)
-                                    current_app.logger.info(f"Deleted old image: {old_path}")
-                            
-                            # 新しい画像パスを保存
-                            block.image_path = image_path
-                            current_app.logger.info(f"Image saved: {image_path}")
-                        else:
-                            current_app.logger.error("Image processing failed")
-                            
-                    except Exception as img_error:
-                        current_app.logger.error(f"Image processing error: {img_error}")
-                        # 画像処理が失敗してもメタデータの更新は続行
-                
-            elif block.is_sns_embed_block:
-                if 'embed_url' in request.form:
-                    embed_url = request.form.get('embed_url', '')
-                    block.embed_url = embed_url
-                    
-                    # 表示モードの設定を保存
-                    display_mode = request.form.get('display_mode', 'embed')
-                    current_settings = block.get_settings_json()
-                    current_settings['display_mode'] = display_mode
-                    block.set_settings_json(current_settings)
-                    current_app.logger.info(f"Display mode set to: {display_mode}")
-                    
-                    # SNSプラットフォーム検出
-                    platform = detect_sns_platform(embed_url)
-                    if platform:
-                        block.embed_platform = platform
-                        current_app.logger.info(f"Detected SNS platform: {platform}")
-                        
-                        # SNS固有IDの抽出
-                        sns_id = extract_sns_id(embed_url, platform)
-                        if sns_id:
-                            block.embed_id = sns_id
-                            current_app.logger.info(f"Extracted SNS ID: {sns_id}")
-                            
-                            # 埋込HTMLの生成（従来モード用）
-                            embed_html = generate_sns_embed_html(embed_url, platform, sns_id)
-                            if embed_html:
-                                block.embed_html = embed_html
-                                current_app.logger.info("Generated embed HTML")
-                        else:
-                            current_app.logger.warning(f"Could not extract SNS ID from: {embed_url}")
-                    else:
-                        current_app.logger.warning(f"Unsupported SNS platform: {embed_url}")
-                        block.embed_platform = 'unknown'
-                    
-                    # OGPカード表示モード用のOGP情報を保存
-                    if display_mode == 'ogp_card':
-                        # OGP URLとして埋込URLを設定
-                        block.ogp_url = embed_url
-                        
-                        # 自動OGP取得を試行（手動入力が空の場合のみ）
-                        auto_fetch_ogp = (
-                            not request.form.get('ogp_title', '').strip() and
-                            not request.form.get('ogp_description', '').strip() and
-                            not request.form.get('ogp_site_name', '').strip()
-                        )
-                        
-                        if auto_fetch_ogp and embed_url:
-                            current_app.logger.info(f"Auto-fetching SNS OGP data for: {embed_url}")
-                            try:
-                                from block_utils import fetch_sns_ogp_data
-                                ogp_data = fetch_sns_ogp_data(embed_url, platform)
-                                
-                                if ogp_data:
-                                    current_app.logger.info(f"SNS OGP data retrieved: {ogp_data}")
-                                    block.ogp_title = ogp_data.get('title', '')
-                                    block.ogp_description = ogp_data.get('description', '')
-                                    block.ogp_site_name = ogp_data.get('site_name', '')
-                                    block.ogp_image = ogp_data.get('image', '')
-                                else:
-                                    current_app.logger.warning(f"Failed to fetch SNS OGP data for: {embed_url}")
-                            
-                            except Exception as ogp_error:
-                                current_app.logger.error(f"SNS OGP fetch error: {ogp_error}")
-                        
-                        # 手動入力値で上書き（手動入力が優先）
-                        if 'ogp_title' in request.form and request.form.get('ogp_title', '').strip():
-                            block.ogp_title = request.form.get('ogp_title', '')
-                        if 'ogp_description' in request.form and request.form.get('ogp_description', '').strip():
-                            block.ogp_description = request.form.get('ogp_description', '')
-                        if 'ogp_site_name' in request.form and request.form.get('ogp_site_name', '').strip():
-                            block.ogp_site_name = request.form.get('ogp_site_name', '')
-                        if 'ogp_image' in request.form and request.form.get('ogp_image', '').strip():
-                            block.ogp_image = request.form.get('ogp_image', '')
-                        
-                        block.ogp_cached_at = datetime.utcnow()
-                        current_app.logger.info("SNS OGP data saved for embed block")
-                
-            elif block.is_external_article_block:
-                # 外部記事URLの更新
-                external_url = request.form.get('external_url', '')
-                if 'external_url' in request.form and external_url:
-                    block.ogp_url = external_url
-                    
-                    # OGPデータを自動取得
-                    current_app.logger.info(f"Fetching OGP data for: {external_url}")
-                    try:
-                        ogp_data = fetch_ogp_data(external_url)
-                        if ogp_data:
-                            current_app.logger.info(f"OGP data retrieved: {ogp_data}")
-                            
-                            # 手動入力が優先、自動取得は空欄のみ埋める
-                            if not request.form.get('ogp_title', '').strip():
-                                block.ogp_title = ogp_data.get('title', '')
-                            else:
-                                block.ogp_title = request.form.get('ogp_title', '')
-                                
-                            if not request.form.get('ogp_description', '').strip():
-                                block.ogp_description = ogp_data.get('description', '')
-                            else:
-                                block.ogp_description = request.form.get('ogp_description', '')
-                                
-                            if not request.form.get('ogp_site_name', '').strip():
-                                block.ogp_site_name = ogp_data.get('site_name', '')
-                            else:
-                                block.ogp_site_name = request.form.get('ogp_site_name', '')
-                                
-                            # OGP画像の処理は将来実装
-                            # block.ogp_image = ogp_data.get('image', '')
-                        else:
-                            current_app.logger.warning(f"Failed to fetch OGP data for: {external_url}")
-                            # 手動入力値を使用
-                            block.ogp_title = request.form.get('ogp_title', '')
-                            block.ogp_description = request.form.get('ogp_description', '')
-                            block.ogp_site_name = request.form.get('ogp_site_name', '')
-                    except Exception as ogp_error:
-                        current_app.logger.error(f"OGP fetch error: {ogp_error}")
-                        # エラー時は手動入力値を使用
-                        block.ogp_title = request.form.get('ogp_title', '')
-                        block.ogp_description = request.form.get('ogp_description', '')
-                        block.ogp_site_name = request.form.get('ogp_site_name', '')
-                else:
-                    # 手動でOGP情報を更新
-                    if 'ogp_title' in request.form:
-                        block.ogp_title = request.form.get('ogp_title', '')
-                    if 'ogp_description' in request.form:
-                        block.ogp_description = request.form.get('ogp_description', '')
-                    if 'ogp_site_name' in request.form:
-                        block.ogp_site_name = request.form.get('ogp_site_name', '')
-            
-            block.updated_at = datetime.utcnow()
-            db.session.commit()
-            
-            current_app.logger.info(f"Block saved successfully: {block_id}")
-            
-            # 更新後のブロックHTMLを生成
-            try:
-                block_html = render_template('admin/block_item.html', block=block)
-                current_app.logger.info("Block HTML rendered successfully")
-            except Exception as render_error:
-                current_app.logger.error(f"Template render error: {render_error}")
-                # HTMLレンダリングが失敗してもブロックは保存されているので成功とする
-                block_html = f'<div class="block-item">ブロック保存済み (ID: {block.id})</div>'
-            
-            # プレビューHTMLも生成
-            try:
-                from block_utils import render_block_content
-                preview_html = render_block_content(block)
-                current_app.logger.info("Block preview HTML rendered successfully")
-            except Exception as preview_error:
-                current_app.logger.error(f"Preview render error: {preview_error}")
-                preview_html = '<div class="block-preview-error">プレビューの生成に失敗しました</div>'
-            
-            return jsonify({
-                'success': True,
-                'block_html': block_html,
-                'preview_html': preview_html,
-                'message': 'ブロックが正常に保存されました'
-            })
-            
-        except Exception as update_error:
-            db.session.rollback()
-            current_app.logger.error(f"Block update error: {update_error}")
-            return jsonify({'success': False, 'error': f'ブロック更新エラー: {str(update_error)}'})
-            
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Save block error: {e}")
-        current_app.logger.error(f"Exception type: {type(e).__name__}")
-        import traceback
-        current_app.logger.error(f"Traceback: {traceback.format_exc()}")
-        return jsonify({'success': False, 'error': f'保存中にエラーが発生しました: {str(e)}'})
-
-@admin_bp.route('/api/block/delete', methods=['POST'])
-@admin_required
-def delete_block():
-    """ブロックの削除"""
-    try:
-        data = request.get_json()
-        block_id = data.get('block_id')
-        
-        if not block_id:
-            return jsonify({'success': False, 'error': 'ブロックIDが指定されていません'})
-        
-        block = db.get_or_404(ArticleBlock, block_id)
-        
-        # 画像ファイルが存在する場合は削除
-        if block.image_path:
-            from block_utils import delete_block_image
-            delete_block_image(block.image_path)
-        
-        db.session.delete(block)
-        db.session.commit()
-        
-        return jsonify({'success': True})
-        
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Delete block error: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@admin_bp.route('/api/block/reorder', methods=['POST'])
-@admin_required
-def reorder_blocks():
-    """ブロックの順序変更"""
-    try:
-        data = request.get_json()
-        block_ids = data.get('block_ids', [])
-        
-        for index, block_id in enumerate(block_ids, 1):
-            block = db.session.get(ArticleBlock, block_id)
-            if block:
-                block.sort_order = index
-        
-        db.session.commit()
-        return jsonify({'success': True})
-        
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Reorder blocks error: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@admin_bp.route('/api/fetch-ogp', methods=['POST'])
-@admin_required  
-def fetch_ogp():
-    """OGP情報取得API"""
-    if not BLOCK_EDITOR_AVAILABLE:
-        return jsonify({'success': False, 'error': 'Block editor not available'})
-    
-    try:
-        data = request.get_json()
-        url = data.get('url')
-        
-        if not url:
-            return jsonify({'success': False, 'error': 'URL is required'})
-        
-        # SNS URLかどうかを判定してOGP情報を取得
-        platform = detect_sns_platform(url)
-        
-        if platform:
-            # SNS URLs用の専用OGP取得
-            current_app.logger.info(f"Detected SNS platform: {platform} for URL: {url}")
-            from block_utils import fetch_sns_ogp_data
-            ogp_data = fetch_sns_ogp_data(url, platform)
-        else:
-            # 一般的なOGP取得
-            ogp_data = fetch_ogp_data(url)
-        
-        if ogp_data:
-            return jsonify({
-                'success': True,
-                'ogp_data': {
-                    'title': ogp_data.get('title', ''),
-                    'description': ogp_data.get('description', ''),
-                    'site_name': ogp_data.get('site_name', ''),
-                    'image': ogp_data.get('image', '')
-                }
-            })
-        else:
-            return jsonify({'success': False, 'error': 'Could not fetch OGP data'})
-            
-    except Exception as e:
-        current_app.logger.error(f"OGP fetch error: {e}")
-        return jsonify({'success': False, 'error': str(e)})
-
-@admin_bp.route('/api/remove-featured-image', methods=['POST'])
-@admin_required
-def remove_featured_image():
-    """アイキャッチ画像を削除"""
-    try:
-        data = request.get_json()
-        article_id = data.get('article_id')
-        
-        if not article_id:
-            return jsonify({'success': False, 'error': '記事IDが指定されていません'})
-        
-        article = db.get_or_404(Article, article_id)
-        
-        # 画像ファイルを削除
-        if article.featured_image:
-            if delete_old_image(article.featured_image):
-                current_app.logger.info(f"Deleted featured image: {article.featured_image}")
-            
-            # データベースからも削除
-            article.featured_image = None
-            db.session.commit()
-            
-            return jsonify({'success': True, 'message': 'アイキャッチ画像を削除しました'})
-        else:
-            return jsonify({'success': False, 'error': 'アイキャッチ画像が設定されていません'})
-            
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Remove featured image error: {e}")
-        return jsonify({'success': False, 'error': f'画像削除エラー: {str(e)}'})
 
 @admin_bp.route('/article/preview/<int:article_id>')
 @admin_required
@@ -2094,7 +1609,6 @@ def wordpress_import():
                                     status='published',
                                     published_at=post_data['published_at'],
                                     author_id=self.author_id,
-                                    use_block_editor=False
                                 )
                                 db.session.add(article)
                                 db.session.flush()

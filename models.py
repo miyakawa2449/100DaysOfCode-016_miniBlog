@@ -54,7 +54,7 @@ class User(db.Model, UserMixin): # UserMixin を継承
     
     ext_json = db.Column(db.Text, nullable=True)  # 拡張用JSON
     
-    articles = db.relationship('Article', backref='author', lazy=True) # UserとArticleの1対多
+    articles = db.relationship('Article', backref=db.backref('author', lazy='select'), lazy='selectin') # UserとArticleの1対多（パフォーマンス最適化）
     
     def generate_totp_secret(self):
         """TOTP用のシークレットキーを生成"""
@@ -122,22 +122,20 @@ class Article(db.Model):
     featured_image = db.Column(db.String(255), nullable=True)  # アイキャッチ画像
     featured_image_alt = db.Column(db.String(255), nullable=True)  # アイキャッチ画像のalt属性
     
-    # Block Editor関連フィールドを削除
     # legacy_body_backup は削除せず保持（データ保護のため）
     legacy_body_backup = db.Column(db.Text, nullable=True)  # 従来のbodyフィールドのバックアップ
     
     # 拡張用
     ext_json = db.Column(db.Text, nullable=True)
 
-    # Article から Category へのリレーションシップ
+    # Article から Category へのリレーションシップ（パフォーマンス最適化）
     categories = db.relationship(
         'Category',
         secondary=article_categories,
-        lazy='select',
-        back_populates='articles'  # ★ 変更: Category.articles と紐づける
+        lazy='selectin',  # N+1問題回避のため selectin を使用
+        back_populates='articles'
     )
     
-    # Block Editor関連のリレーションシップを削除
     
     def get_text_content(self):
         """記事のテキストコンテンツを取得（検索用）"""
@@ -164,12 +162,12 @@ class Category(db.Model):
 
     parent = db.relationship('Category', remote_side=[id], backref=db.backref('children', lazy='select'))
 
-    # Category から Article へのリレーションシップ
+    # Category から Article へのリレーションシップ（パフォーマンス最適化）
     articles = db.relationship(
         'Article',
         secondary=article_categories,
-        lazy='select',
-        back_populates='categories' # ★ 変更: Article.categories と紐づける
+        lazy='selectin',  # N+1問題回避のため selectin を使用
+        back_populates='categories'
     )
 
     def __repr__(self):
@@ -190,9 +188,9 @@ class Comment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # リレーションシップ
-    article = db.relationship('Article', backref=db.backref('comments', lazy='select'))
-    parent = db.relationship('Comment', remote_side=[id], backref=db.backref('replies', lazy='select'))
+    # リレーションシップ（パフォーマンス最適化）
+    article = db.relationship('Article', backref=db.backref('comments', lazy='selectin'))
+    parent = db.relationship('Comment', remote_side=[id], backref=db.backref('replies', lazy='selectin'))
     
     def __repr__(self):
         return f'<Comment {self.id}: {self.author_name} on Article {self.article_id}>'
@@ -303,6 +301,3 @@ class UploadedImage(db.Model):
         self.last_used_at = datetime.utcnow()
         db.session.commit()
 
-# --- ブロック型エディタ用モデル ---
-
-# Block Editor関連のモデルクラスを削除
