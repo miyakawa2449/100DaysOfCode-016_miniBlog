@@ -1942,14 +1942,27 @@ def site_settings():
     if request.method == 'POST':
         try:
             # サイト基本設定
+            # 更新対象の設定項目（新しい設定項目に対応）
             settings_to_update = [
-                'site_title', 'site_subtitle', 'site_description', 'site_keywords',
+                # 基本情報
+                'site_name', 'site_description', 'contact_email',
+                # 外観
+                'site_logo_url', 'site_favicon_url', 'theme_color', 'footer_text',
+                # 機能
+                'maintenance_mode', 'registration_enabled', 'comment_moderation', 'max_upload_size',
+                # SEO
+                'seo_keywords', 'google_search_console_verification',
+                # アナリティクス
+                'google_analytics_id',
+                # SNS（JSON形式）
+                'social_media_links',
+                # レガシー設定項目（後方互換性のため保持）
+                'site_title', 'site_subtitle', 'site_keywords',
                 'site_author', 'site_email', 'site_url', 'site_logo',
-                'contact_email', 'contact_phone', 'contact_address',
-                'social_twitter', 'social_facebook', 'social_instagram', 'social_youtube',
-                'seo_google_analytics', 'seo_google_search_console', 'seo_google_tag_manager',
-                'maintenance_mode', 'registration_enabled', 'comments_enabled',
-                'max_upload_size', 'allowed_file_types', 'posts_per_page'
+                'contact_phone', 'contact_address',
+                'social_twitter', 'social_facebook', 'social_instagram', 'social_github', 'social_youtube',
+                'seo_google_analytics', 'seo_google_tag_manager',
+                'comments_enabled', 'allowed_file_types', 'posts_per_page'
             ]
             
             for setting_key in settings_to_update:
@@ -1957,11 +1970,64 @@ def site_settings():
                 
                 # 既存設定を取得または新規作成
                 setting = db.session.execute(select(SiteSetting).where(SiteSetting.key == setting_key)).scalar_one_or_none()
+                
+                # 設定タイプに応じた値の処理
+                if setting and setting.setting_type == 'boolean':
+                    # チェックボックスの場合
+                    setting_value = 'true' if request.form.get(setting_key) == 'on' else 'false'
+                elif setting and setting.setting_type == 'number':
+                    # 数値の場合
+                    try:
+                        float(setting_value) if setting_value else 0
+                    except ValueError:
+                        current_app.logger.warning(f"Invalid number value for {setting_key}: {setting_value}")
+                        setting_value = '0'
+                
                 if setting:
                     setting.value = setting_value
+                    setting.updated_at = datetime.utcnow()
                 else:
-                    setting = SiteSetting(key=setting_key, value=setting_value)
+                    # 新規設定の場合、setting_typeを推測
+                    setting_type = 'text'
+                    if setting_key in ['maintenance_mode', 'registration_enabled', 'comment_moderation', 'comments_enabled']:
+                        setting_type = 'boolean'
+                    elif setting_key in ['max_upload_size', 'posts_per_page']:
+                        setting_type = 'number'
+                    elif setting_key in ['social_media_links']:
+                        setting_type = 'json'
+                    
+                    setting = SiteSetting(
+                        key=setting_key, 
+                        value=setting_value,
+                        setting_type=setting_type,
+                        description=setting_key.replace('_', ' ').title()
+                    )
                     db.session.add(setting)
+            
+            # SNS設定の同期（個別設定からJSON設定を更新）
+            sns_links = {
+                'twitter': request.form.get('social_twitter', ''),
+                'facebook': request.form.get('social_facebook', ''),
+                'instagram': request.form.get('social_instagram', ''),
+                'github': request.form.get('social_github', ''),
+                'youtube': request.form.get('social_youtube', '')
+            }
+            
+            import json
+            # social_media_links（JSON形式）を更新
+            sns_setting = db.session.execute(select(SiteSetting).where(SiteSetting.key == 'social_media_links')).scalar_one_or_none()
+            if sns_setting:
+                sns_setting.value = json.dumps(sns_links)
+                sns_setting.updated_at = datetime.utcnow()
+            else:
+                sns_setting = SiteSetting(
+                    key='social_media_links',
+                    value=json.dumps(sns_links),
+                    description='SNSリンク（JSON形式）',
+                    setting_type='json',
+                    is_public=True
+                )
+                db.session.add(sns_setting)
             
             db.session.commit()
             flash('サイト設定を更新しました', 'success')
@@ -2238,3 +2304,8 @@ def images_manager():
         current_app.logger.error(f"Images manager error: {e}")
         flash('画像管理ページの読み込みに失敗しました。', 'danger')
         return redirect(url_for('admin.dashboard'))
+
+# ====================================
+# サイト設定管理の強化
+# ====================================
+# 既存のsite_settings機能を活用し、新しい設定項目に対応
