@@ -617,6 +617,59 @@ def inject_analytics():
         google_tag_manager_noscript=google_tag_manager_noscript
     )
 
+# サイト設定をテンプレートに注入
+@app.context_processor
+def inject_site_settings():
+    """サイト設定をすべてのテンプレートで利用可能にする"""
+    from models import SiteSetting
+    import json
+    
+    def get_site_settings():
+        """公開設定のみを取得（キャッシュ機能付き）"""
+        try:
+            # 公開設定のみを取得
+            public_settings = db.session.execute(
+                select(SiteSetting).where(SiteSetting.is_public == True)
+            ).scalars().all()
+            
+            settings = {}
+            for setting in public_settings:
+                value = setting.value
+                
+                # 設定タイプに応じて値を変換
+                if setting.setting_type == 'boolean':
+                    value = value.lower() == 'true'
+                elif setting.setting_type == 'number':
+                    try:
+                        value = float(value) if '.' in value else int(value)
+                    except ValueError:
+                        value = 0
+                elif setting.setting_type == 'json':
+                    try:
+                        value = json.loads(value) if value else {}
+                    except json.JSONDecodeError:
+                        value = {}
+                
+                settings[setting.key] = value
+            
+            return settings
+        except Exception as e:
+            current_app.logger.error(f"Error loading site settings: {e}")
+            return {}
+    
+    def get_setting(key, default=None):
+        """個別設定値を取得"""
+        try:
+            return SiteSetting.get_setting(key, default)
+        except Exception as e:
+            current_app.logger.error(f"Error getting setting {key}: {e}")
+            return default
+    
+    return dict(
+        site_settings=get_site_settings(),
+        get_setting=get_setting
+    )
+
 # カスタムフィルター
 @app.template_filter('nl2br')
 def nl2br(value):
@@ -638,12 +691,27 @@ def striptags(value):
 app.register_blueprint(admin_bp, url_prefix='/admin')
 
 @app.route('/')
-def home():
-    # 公開済み記事のみ表示
-    articles = db.session.execute(
-        select(Article).where(Article.is_published.is_(True)).order_by(Article.created_at.desc())
-    ).scalars().all()
-    return render_template('home.html', articles=articles)
+@app.route('/page/<int:page>')
+def home(page=1):
+    from models import SiteSetting
+    
+    # 1ページあたりの記事数をサイト設定から取得
+    per_page = int(SiteSetting.get_setting('posts_per_page', '5'))
+    
+    # ページネーション付きで公開済み記事を取得
+    articles_query = select(Article).where(Article.is_published.is_(True)).order_by(Article.created_at.desc())
+    
+    # SQLAlchemy 2.0のpaginateを使用
+    articles_pagination = db.paginate(
+        articles_query,
+        page=page,
+        per_page=per_page,
+        error_out=False
+    )
+    
+    return render_template('home.html', 
+                         articles=articles_pagination.items,
+                         pagination=articles_pagination)
 
 @app.route('/login/', methods=['GET', 'POST'])
 def login():
