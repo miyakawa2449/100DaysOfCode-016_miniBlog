@@ -1,12 +1,12 @@
 {% extends "layout.html" %}
 
-{% block title %}ミニブログ - 最新記事{% endblock %}
+{% block title %}{{ site_settings.site_name or 'ミニブログ' }} - 最新記事{% endblock %}
 
 {% block content %}
 <div class="hero">
     <div class="container">
         <h1 class="hero-title">最新記事</h1>
-        <p class="hero-subtitle">プログラミング、テック、ライフスタイルに関する記事をお届けします</p>
+        <p class="hero-subtitle">{{ site_settings.site_description or 'プログラミング、テック、ライフスタイルに関する記事をお届けします' }}</p>
     </div>
 </div>
 
@@ -82,6 +82,72 @@
                     </a>
                 {% endif %}
             </div>
+        {% endif %}
+        
+        <!-- ページネーション -->
+        {% if pagination and pagination.pages > 1 %}
+        <nav aria-label="記事ページネーション" class="mt-5">
+            <ul class="pagination justify-content-center">
+                <!-- 前のページ -->
+                {% if pagination.has_prev %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('home', page=pagination.prev_num) }}" aria-label="前のページ">
+                            <span aria-hidden="true">&laquo;</span>
+                            <span class="sr-only">前のページ</span>
+                        </a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">
+                            <span aria-hidden="true">&laquo;</span>
+                        </span>
+                    </li>
+                {% endif %}
+                
+                <!-- ページ番号 -->
+                {% for page_num in pagination.iter_pages() %}
+                    {% if page_num %}
+                        {% if page_num != pagination.page %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('home', page=page_num) }}">{{ page_num }}</a>
+                            </li>
+                        {% else %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ page_num }}</span>
+                            </li>
+                        {% endif %}
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">...</span>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+                
+                <!-- 次のページ -->
+                {% if pagination.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('home', page=pagination.next_num) }}" aria-label="次のページ">
+                            <span aria-hidden="true">&raquo;</span>
+                            <span class="sr-only">次のページ</span>
+                        </a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link">
+                            <span aria-hidden="true">&raquo;</span>
+                        </span>
+                    </li>
+                {% endif %}
+            </ul>
+            
+            <!-- ページ情報 -->
+            <div class="text-center mt-3">
+                <small class="text-muted">
+                    {{ pagination.total }}件中 {{ (pagination.page - 1) * pagination.per_page + 1 }}〜{{ pagination.page * pagination.per_page if pagination.page * pagination.per_page < pagination.total else pagination.total }}件を表示
+                    ({{ pagination.page }}/{{ pagination.pages }}ページ)
+                </small>
+            </div>
+        </nav>
         {% endif %}
     </div>
 </section>
