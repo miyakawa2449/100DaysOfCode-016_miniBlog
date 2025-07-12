@@ -27,6 +27,15 @@ from bs4 import BeautifulSoup
 import pymysql
 pymysql.install_as_MySQLdb()
 
+# OGPキャッシュ用
+from functools import lru_cache
+import hashlib
+from datetime import datetime, timedelta
+
+# OGPキャッシュ管理
+ogp_cache = {}
+OGP_CACHE_DURATION = 3600  # 1時間
+
 # models.py から db インスタンスとモデルクラスをインポートします
 from models import db, User, Article, Category, Comment, article_categories
 # forms.py からフォームクラスをインポート
@@ -234,7 +243,17 @@ def process_sns_auto_embed(text):
     return text
 
 def fetch_ogp_data(url):
-    """URLからOGP（Open Graph Protocol）データを取得"""
+    """URLからOGP（Open Graph Protocol）データを取得（キャッシュ対応）"""
+    # キャッシュチェック
+    cache_key = hashlib.md5(url.encode()).hexdigest()
+    current_time = datetime.now()
+    
+    if cache_key in ogp_cache:
+        cached_data, cached_time = ogp_cache[cache_key]
+        if current_time - cached_time < timedelta(seconds=OGP_CACHE_DURATION):
+            current_app.logger.debug(f"OGP cache hit for: {url[:50]}...")
+            return cached_data
+    
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -311,14 +330,24 @@ def fetch_ogp_data(url):
             except Exception as e:
                 current_app.logger.debug(f"Threads JavaScript parsing failed: {e}")
         
+        # キャッシュに保存
+        ogp_cache[cache_key] = (ogp_data, current_time)
+        current_app.logger.debug(f"OGP data cached for: {url[:50]}...")
+        
         return ogp_data
         
     except requests.RequestException as e:
         current_app.logger.error(f"OGP fetch request error: {e}")
-        return {}
+        # エラー時も空のデータをキャッシュ（短時間）
+        empty_data = {}
+        ogp_cache[cache_key] = (empty_data, current_time)
+        return empty_data
     except Exception as e:
         current_app.logger.error(f"OGP fetch error: {e}")
-        return {}
+        # エラー時も空のデータをキャッシュ（短時間）
+        empty_data = {}
+        ogp_cache[cache_key] = (empty_data, current_time)
+        return empty_data
 
 def detect_platform_from_url(url):
     """URLからSNSプラットフォームを検出"""
@@ -400,7 +429,7 @@ def generate_threads_embed(url):
     
     try:
         ogp_data = fetch_ogp_data(url)
-        current_app.logger.info(f"Threads OGP data fetched: {ogp_data}")
+        current_app.logger.debug(f"Threads OGP data fetched: {ogp_data}")
         
         # OGPデータから情報を抽出
         title = ogp_data.get('title', '')
@@ -542,75 +571,59 @@ def inject_analytics():
     from markupsafe import Markup
     
     def google_analytics_code():
-        """Google Analyticsのトラッキングコードを生成"""
-        # 管理者のトラッキングをスキップするかチェック
-        track_admin = SiteSetting.get_setting('analytics_track_admin', 'false').lower() == 'true'
-        if not track_admin and current_user.is_authenticated and current_user.role == 'admin':
+        """Enhanced Google Analytics トラッキングコードを生成"""
+        from ga4_analytics import GA4AnalyticsManager
+        
+        analytics_manager = GA4AnalyticsManager()
+        
+        # ユーザーを追跡すべきかチェック
+        if not analytics_manager.should_track_user(current_user if current_user.is_authenticated else None):
             return Markup('')
         
-        # Google Analyticsが有効かチェック
-        enabled = SiteSetting.get_setting('google_analytics_enabled', 'false').lower() == 'true'
-        if not enabled:
-            return Markup('')
-        
-        analytics_id = SiteSetting.get_setting('google_analytics_id', '')
-        gtm_id = SiteSetting.get_setting('google_tag_manager_id', '')
-        custom_code = SiteSetting.get_setting('custom_analytics_code', '')
+        # 完全なトラッキングコードを取得
+        tracking_codes = analytics_manager.get_complete_tracking_code()
         
         html_parts = []
         
-        # Google Analytics 4
-        if analytics_id:
-            ga4_code = f'''
-            <!-- Google tag (gtag.js) -->
-            <script async src="https://www.googletagmanager.com/gtag/js?id={analytics_id}"></script>
-            <script>
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){{dataLayer.push(arguments);}}
-              gtag('js', new Date());
-              gtag('config', '{analytics_id}');
-            </script>
-            '''
-            html_parts.append(ga4_code)
-        
-        # Google Tag Manager
-        if gtm_id:
-            gtm_code = f'''
-            <!-- Google Tag Manager -->
-            <script>(function(w,d,s,l,i){{w[l]=w[l]||[];w[l].push({{'gtm.start':
-            new Date().getTime(),event:'gtm.js'}});var f=d.getElementsByTagName(s)[0],
-            j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-            'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-            }})(window,document,'script','dataLayer','{gtm_id}');</script>
-            <!-- End Google Tag Manager -->
-            '''
-            html_parts.append(gtm_code)
+        # ヘッダー部分（基本トラッキングコード + GTM）
+        if tracking_codes['head_code']:
+            html_parts.append(tracking_codes['head_code'])
         
         # カスタムアナリティクスコード
+        custom_code = SiteSetting.get_setting('custom_analytics_code', '')
         if custom_code:
             html_parts.append(f'<!-- Custom Analytics Code -->\n{custom_code}')
         
         return Markup('\n'.join(html_parts))
     
     def google_tag_manager_noscript():
-        """Google Tag Manager の noscript 部分"""
-        track_admin = SiteSetting.get_setting('analytics_track_admin', 'false').lower() == 'true'
-        if not track_admin and current_user.is_authenticated and current_user.role == 'admin':
+        """Enhanced Google Tag Manager noscript 部分"""
+        from ga4_analytics import GA4AnalyticsManager
+        
+        analytics_manager = GA4AnalyticsManager()
+        
+        # ユーザーを追跡すべきかチェック
+        if not analytics_manager.should_track_user(current_user if current_user.is_authenticated else None):
             return Markup('')
         
-        enabled = SiteSetting.get_setting('google_analytics_enabled', 'false').lower() == 'true'
-        gtm_id = SiteSetting.get_setting('google_tag_manager_id', '')
+        # 完全なトラッキングコードを取得
+        tracking_codes = analytics_manager.get_complete_tracking_code()
         
-        if enabled and gtm_id:
-            noscript_code = f'''
-            <!-- Google Tag Manager (noscript) -->
-            <noscript><iframe src="https://www.googletagmanager.com/ns.html?id={gtm_id}"
-            height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
-            <!-- End Google Tag Manager (noscript) -->
-            '''
-            return Markup(noscript_code)
+        html_parts = []
         
-        return Markup('')
+        # GTM noscript部分
+        if tracking_codes['body_code']:
+            html_parts.append(tracking_codes['body_code'])
+        
+        # Enhanced tracking JavaScript
+        if tracking_codes['enhanced_code']:
+            html_parts.append(tracking_codes['enhanced_code'])
+        
+        # Cookie consent banner
+        if tracking_codes['consent_banner']:
+            html_parts.append(tracking_codes['consent_banner'])
+        
+        return Markup('\n'.join(html_parts))
     
     return dict(
         google_analytics_code=google_analytics_code,

@@ -153,6 +153,39 @@ class GoogleAnalyticsForm(FlaskForm):
     custom_analytics_code = TextAreaField('カスタムアナリティクスコード', validators=[Optional()])
     analytics_track_admin = BooleanField('管理者のアクセスも追跡する', default=False)
     
+    # GA4 Enhanced E-commerce設定
+    enhanced_ecommerce_enabled = BooleanField('Enhanced E-commerce追跡を有効にする', default=False)
+    
+    # カスタムイベント設定
+    track_scroll_events = BooleanField('スクロール追跡を有効にする', default=True)
+    track_file_downloads = BooleanField('ファイルダウンロード追跡を有効にする', default=True)
+    track_external_links = BooleanField('外部リンククリック追跡を有効にする', default=True)
+    track_page_engagement = BooleanField('ページエンゲージメント追跡を有効にする', default=True)
+    
+    # 検索機能追跡
+    track_site_search = BooleanField('サイト内検索追跡を有効にする', default=True)
+    
+    # ユーザープロパティ
+    track_user_properties = BooleanField('ユーザープロパティ追跡を有効にする', default=False)
+    
+    # プライバシー・Cookie同意管理
+    cookie_consent_enabled = BooleanField('Cookie同意バナーを有効にする', default=True)
+    gdpr_mode = BooleanField('GDPR対応モードを有効にする', default=True)
+    ccpa_mode = BooleanField('CCPA対応モードを有効にする', default=False)
+    
+    # Cookie同意設定
+    consent_banner_text = TextAreaField('Cookie同意バナーテキスト', 
+                                      default='このサイトではCookieを使用してサイトの利用状況を分析し、ユーザー体験を向上させています。')
+    privacy_policy_url = StringField('プライバシーポリシーURL', validators=[Optional(), URL()])
+    
+    # 詳細なプライバシー設定
+    analytics_storage = SelectField('Analytics Storage', 
+                                  choices=[('granted', '許可'), ('denied', '拒否')], 
+                                  default='denied')
+    ad_storage = SelectField('Ad Storage', 
+                           choices=[('granted', '許可'), ('denied', '拒否')], 
+                           default='denied')
+    
     submit = SubmitField('設定を保存')
     
     def validate_google_analytics_id(self, field):

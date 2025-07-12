@@ -40,6 +40,9 @@ class User(db.Model, UserMixin): # UserMixin を継承
     notify_on_publish = db.Column(db.Boolean, default=False)
     notify_on_comment = db.Column(db.Boolean, default=False)
     
+    # ログイン管理
+    last_login = db.Column(db.DateTime)  # 最終ログイン時刻
+    
     # プロフィール情報
     introduction = db.Column(db.Text, nullable=True)  # 紹介文（250文字以内）
     birthplace = db.Column(db.String(10), nullable=True)  # 出身地（10文字以内）
@@ -300,4 +303,98 @@ class UploadedImage(db.Model):
         self.usage_count += 1
         self.last_used_at = datetime.utcnow()
         db.session.commit()
+
+# --- ユーザーアクティビティ管理用モデル ---
+
+class LoginHistory(db.Model):
+    """ログイン履歴管理"""
+    __tablename__ = 'login_history'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    login_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    ip_address = db.Column(db.String(45))  # IPv6対応のため長め
+    user_agent = db.Column(db.Text)
+    success = db.Column(db.Boolean, default=True, nullable=False)
+    failure_reason = db.Column(db.String(255))  # 失敗理由
+    session_id = db.Column(db.String(255))  # セッションID
+    
+    # リレーションシップ
+    user = db.relationship('User', backref=db.backref('login_history', lazy='select', order_by='LoginHistory.login_at.desc()'))
+    
+    def __repr__(self):
+        return f'<LoginHistory {self.user.email}: {self.login_at} ({"Success" if self.success else "Failed"})>'
+    
+    @property
+    def browser_info(self):
+        """ユーザーエージェントからブラウザ情報を抽出"""
+        if not self.user_agent:
+            return "不明"
+        
+        ua = self.user_agent.lower()
+        if 'chrome' in ua:
+            return 'Chrome'
+        elif 'firefox' in ua:
+            return 'Firefox'
+        elif 'safari' in ua and 'chrome' not in ua:
+            return 'Safari'
+        elif 'edge' in ua:
+            return 'Edge'
+        else:
+            return 'その他'
+    
+    @property
+    def os_info(self):
+        """ユーザーエージェントからOS情報を抽出"""
+        if not self.user_agent:
+            return "不明"
+        
+        ua = self.user_agent.lower()
+        if 'windows' in ua:
+            return 'Windows'
+        elif 'mac' in ua:
+            return 'macOS'
+        elif 'linux' in ua:
+            return 'Linux'
+        elif 'android' in ua:
+            return 'Android'
+        elif 'iphone' in ua or 'ipad' in ua:
+            return 'iOS'
+        else:
+            return 'その他'
+
+# --- SEO分析用モデル ---
+
+class SEOAnalysis(db.Model):
+    """SEO分析結果保存"""
+    __tablename__ = 'seo_analysis'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    article_id = db.Column(db.Integer, db.ForeignKey('articles.id'), nullable=False)
+    analysis_type = db.Column(db.String(50), nullable=False)  # 'llmo', 'aio', 'traditional'
+    analysis_data = db.Column(db.Text, nullable=False)  # JSON形式の分析結果
+    score = db.Column(db.Float, nullable=False)  # 総合スコア
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # リレーションシップ
+    article = db.relationship('Article', backref=db.backref('seo_analyses', lazy='select'))
+    
+    def __repr__(self):
+        return f'<SEOAnalysis {self.analysis_type}: {self.score}>'
+    
+    @property
+    def analysis_dict(self):
+        """JSON文字列を辞書に変換"""
+        try:
+            import json
+            return json.loads(self.analysis_data)
+        except:
+            return {}
+    
+    @analysis_dict.setter
+    def analysis_dict(self, data):
+        """辞書をJSON文字列に変換して保存"""
+        import json
+        self.analysis_data = json.dumps(data, ensure_ascii=False, indent=2)
 

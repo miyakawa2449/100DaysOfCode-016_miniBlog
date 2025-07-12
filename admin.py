@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, session, current_app, jsonify
 from flask_login import login_required, current_user
-from models import db, User, Article, Category, Comment, SiteSetting, UploadedImage, article_categories
+from models import db, User, Article, Category, Comment, SiteSetting, UploadedImage, LoginHistory, SEOAnalysis, article_categories
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
@@ -638,14 +638,75 @@ def dashboard():
 @admin_bp.route('/users/')
 @admin_required
 def users():
-    """ユーザー一覧"""
+    """ユーザー一覧（検索・フィルタリング・ページネーション対応）"""
     try:
-        users = db.session.execute(select(User)).scalars().all()
-        return render_template('admin/users.html', users=users)
+        # パラメータ取得
+        page = request.args.get('page', 1, type=int)
+        search = request.args.get('search', '', type=str)
+        role_filter = request.args.get('role', '', type=str)
+        per_page = 10  # 1ページあたりのユーザー数
+        
+        # ベースクエリ
+        query = select(User).order_by(User.created_at.desc())
+        
+        # 検索フィルタ
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.where(
+                db.or_(
+                    User.name.ilike(search_pattern),
+                    User.email.ilike(search_pattern),
+                    User.handle_name.ilike(search_pattern)
+                )
+            )
+        
+        # 役割フィルタ
+        if role_filter:
+            query = query.where(User.role == role_filter)
+        
+        # ページネーション実行
+        pagination = db.paginate(
+            query,
+            page=page,
+            per_page=per_page,
+            error_out=False
+        )
+        
+        users = pagination.items
+        
+        # 統計情報の取得
+        total_users = db.session.execute(select(func.count(User.id))).scalar()
+        admin_count = db.session.execute(select(func.count(User.id)).where(User.role == 'admin')).scalar()
+        totp_enabled_count = db.session.execute(select(func.count(User.id)).where(User.totp_enabled == True)).scalar()
+        
+        # 今月の新規ユーザー数
+        current_month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        new_users_this_month = db.session.execute(
+            select(func.count(User.id)).where(User.created_at >= current_month_start)
+        ).scalar()
+        
+        return render_template('admin/users.html', 
+                               users=users,
+                               pagination=pagination,
+                               search=search,
+                               role_filter=role_filter,
+                               total_users=total_users,
+                               admin_count=admin_count,
+                               totp_enabled_count=totp_enabled_count,
+                               new_users_this_month=new_users_this_month)
+    
     except Exception as e:
         current_app.logger.error(f"Users page error: {e}")
         flash('ユーザーデータの取得中にエラーが発生しました。', 'danger')
-        return render_template('admin/users.html', users=[])
+        return render_template('admin/users.html', 
+                               users=[], 
+                               pagination=None,
+                               search='',
+                               role_filter='',
+                               total_users=0,
+                               admin_count=0,
+                               totp_enabled_count=0,
+                               new_users_this_month=0)
 
 @admin_bp.route('/user/create/', methods=['GET', 'POST'])
 @admin_required
@@ -698,10 +759,14 @@ def edit_user(user_id):
     user = db.get_or_404(User, user_id)
     
     if request.method == 'POST':
-        # 自分自身の管理者権限削除チェック
-        if user.id == current_user.id and request.form.get('role') != 'admin':
-            flash('自分自身の管理者権限は削除できません。', 'danger')
-            return render_template('admin/edit_user.html', user=user)
+        # 自分自身の管理者権限削除チェック（自分以外でroleフィールドが送信された場合のみ）
+        submitted_role = request.form.get('role')
+        if user.id != current_user.id and submitted_role and user.role == 'admin' and submitted_role != 'admin':
+            # 他の管理者の権限を削除しようとしている場合のチェック
+            admin_count = db.session.execute(select(func.count(User.id)).where(User.role == 'admin')).scalar()
+            if admin_count <= 1:
+                flash('最後の管理者の権限は削除できません。', 'danger')
+                return render_template('admin/edit_user.html', user=user)
         
         try:
             # パスワード確認チェック
@@ -714,8 +779,8 @@ def edit_user(user_id):
             # 基本データ更新
             user.name = request.form.get('name', user.name)
             user.handle_name = request.form.get('handle_name', user.handle_name or '')
-            if user.id != current_user.id:  # 自分以外の場合のみ権限変更可能
-                user.role = request.form.get('role', user.role)
+            # 権限更新（自分自身の場合はhiddenフィールドで'admin'が送信される）
+            user.role = request.form.get('role', user.role)
             
             # プロフィール情報更新
             user.introduction = request.form.get('introduction', user.introduction or '')
@@ -796,6 +861,104 @@ def delete_user(user_id):
         flash('ユーザーの削除に失敗しました。', 'danger')
     
     return redirect(url_for('admin.users'))
+
+@admin_bp.route('/user/detail/<int:user_id>/')
+@admin_required
+def user_detail(user_id):
+    """ユーザー詳細情報"""
+    user = db.get_or_404(User, user_id)
+    
+    try:
+        # ユーザー統計情報
+        total_articles = db.session.execute(select(func.count(Article.id)).where(Article.author_id == user.id)).scalar()
+        published_articles = db.session.execute(select(func.count(Article.id)).where(Article.author_id == user.id, Article.is_published == True)).scalar()
+        draft_articles = total_articles - published_articles
+        
+        # 最近の記事（5件）
+        recent_articles = db.session.execute(
+            select(Article)
+            .where(Article.author_id == user.id)
+            .order_by(Article.created_at.desc())
+            .limit(5)
+        ).scalars().all()
+        
+        # ログイン履歴（10件）
+        login_history = db.session.execute(
+            select(LoginHistory)
+            .where(LoginHistory.user_id == user.id)
+            .order_by(LoginHistory.login_at.desc())
+            .limit(10)
+        ).scalars().all()
+        
+        # 最近のログイン統計
+        successful_logins = db.session.execute(
+            select(func.count(LoginHistory.id))
+            .where(LoginHistory.user_id == user.id, LoginHistory.success == True)
+        ).scalar()
+        
+        failed_logins = db.session.execute(
+            select(func.count(LoginHistory.id))
+            .where(LoginHistory.user_id == user.id, LoginHistory.success == False)
+        ).scalar()
+        
+        return render_template('admin/user_detail.html',
+                               user=user,
+                               total_articles=total_articles,
+                               published_articles=published_articles,
+                               draft_articles=draft_articles,
+                               recent_articles=recent_articles,
+                               login_history=login_history,
+                               successful_logins=successful_logins,
+                               failed_logins=failed_logins)
+    
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        current_app.logger.error(f"User detail error: {e}\nTraceback: {error_traceback}")
+        flash(f'ユーザー詳細情報の取得中にエラーが発生しました: {str(e)}', 'danger')
+        return redirect(url_for('admin.users'))
+
+@admin_bp.route('/user/<int:user_id>/reset-2fa/', methods=['POST'])
+@admin_required
+def reset_user_2fa(user_id):
+    """ユーザーの2FA設定をリセット"""
+    user = db.get_or_404(User, user_id)
+    
+    try:
+        user.totp_enabled = False
+        user.totp_secret = None
+        db.session.commit()
+        flash(f'ユーザー「{user.name}」の2FA設定をリセットしました。', 'success')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"2FA reset error: {e}")
+        flash('2FA設定のリセットに失敗しました。', 'danger')
+    
+    return redirect(url_for('admin.user_detail', user_id=user_id))
+
+@admin_bp.route('/user/<int:user_id>/reset-password/', methods=['POST'])
+@admin_required
+def admin_reset_user_password(user_id):
+    """管理者によるユーザーパスワードリセット"""
+    user = db.get_or_404(User, user_id)
+    new_password = request.form.get('new_password')
+    
+    if not new_password or len(new_password) < 8:
+        flash('パスワードは8文字以上で入力してください。', 'danger')
+        return redirect(url_for('admin.user_detail', user_id=user_id))
+    
+    try:
+        user.password_hash = generate_password_hash(new_password)
+        user.reset_token = None
+        user.reset_token_expires = None
+        db.session.commit()
+        flash(f'ユーザー「{user.name}」のパスワードをリセットしました。', 'success')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Password reset error: {e}")
+        flash('パスワードのリセットに失敗しました。', 'danger')
+    
+    return redirect(url_for('admin.user_detail', user_id=user_id))
 
 # 記事管理
 @admin_bp.route('/articles/')
@@ -1683,6 +1846,24 @@ def analytics_settings():
         form.google_tag_manager_id.data = SiteSetting.get_setting('google_tag_manager_id', '')
         form.custom_analytics_code.data = SiteSetting.get_setting('custom_analytics_code', '')
         form.analytics_track_admin.data = SiteSetting.get_setting('analytics_track_admin', 'false').lower() == 'true'
+        
+        # Enhanced E-commerce and Custom Events
+        form.enhanced_ecommerce_enabled.data = SiteSetting.get_setting('enhanced_ecommerce_enabled', 'false').lower() == 'true'
+        form.track_scroll_events.data = SiteSetting.get_setting('track_scroll_events', 'true').lower() == 'true'
+        form.track_file_downloads.data = SiteSetting.get_setting('track_file_downloads', 'true').lower() == 'true'
+        form.track_external_links.data = SiteSetting.get_setting('track_external_links', 'true').lower() == 'true'
+        form.track_page_engagement.data = SiteSetting.get_setting('track_page_engagement', 'true').lower() == 'true'
+        form.track_site_search.data = SiteSetting.get_setting('track_site_search', 'true').lower() == 'true'
+        form.track_user_properties.data = SiteSetting.get_setting('track_user_properties', 'false').lower() == 'true'
+        
+        # Privacy and Cookie Consent
+        form.cookie_consent_enabled.data = SiteSetting.get_setting('cookie_consent_enabled', 'true').lower() == 'true'
+        form.gdpr_mode.data = SiteSetting.get_setting('gdpr_mode', 'true').lower() == 'true'
+        form.ccpa_mode.data = SiteSetting.get_setting('ccpa_mode', 'false').lower() == 'true'
+        form.consent_banner_text.data = SiteSetting.get_setting('consent_banner_text', form.consent_banner_text.default)
+        form.privacy_policy_url.data = SiteSetting.get_setting('privacy_policy_url', '/privacy-policy')
+        form.analytics_storage.data = SiteSetting.get_setting('analytics_storage', 'denied')
+        form.ad_storage.data = SiteSetting.get_setting('ad_storage', 'denied')
     
     if form.validate_on_submit():
         try:
@@ -1707,6 +1888,64 @@ def analytics_settings():
                                    'true' if form.analytics_track_admin.data else 'false',
                                    '管理者のアクセスも追跡する', 'boolean', False)
             
+            # Enhanced E-commerce and Custom Events
+            SiteSetting.set_setting('enhanced_ecommerce_enabled',
+                                   'true' if form.enhanced_ecommerce_enabled.data else 'false',
+                                   'Enhanced E-commerce追跡を有効にする', 'boolean', True)
+            
+            SiteSetting.set_setting('track_scroll_events',
+                                   'true' if form.track_scroll_events.data else 'false',
+                                   'スクロール追跡を有効にする', 'boolean', True)
+            
+            SiteSetting.set_setting('track_file_downloads',
+                                   'true' if form.track_file_downloads.data else 'false',
+                                   'ファイルダウンロード追跡を有効にする', 'boolean', True)
+            
+            SiteSetting.set_setting('track_external_links',
+                                   'true' if form.track_external_links.data else 'false',
+                                   '外部リンククリック追跡を有効にする', 'boolean', True)
+            
+            SiteSetting.set_setting('track_page_engagement',
+                                   'true' if form.track_page_engagement.data else 'false',
+                                   'ページエンゲージメント追跡を有効にする', 'boolean', True)
+            
+            SiteSetting.set_setting('track_site_search',
+                                   'true' if form.track_site_search.data else 'false',
+                                   'サイト内検索追跡を有効にする', 'boolean', True)
+            
+            SiteSetting.set_setting('track_user_properties',
+                                   'true' if form.track_user_properties.data else 'false',
+                                   'ユーザープロパティ追跡を有効にする', 'boolean', True)
+            
+            # Privacy and Cookie Consent
+            SiteSetting.set_setting('cookie_consent_enabled',
+                                   'true' if form.cookie_consent_enabled.data else 'false',
+                                   'Cookie同意バナーを有効にする', 'boolean', True)
+            
+            SiteSetting.set_setting('gdpr_mode',
+                                   'true' if form.gdpr_mode.data else 'false',
+                                   'GDPR対応モードを有効にする', 'boolean', True)
+            
+            SiteSetting.set_setting('ccpa_mode',
+                                   'true' if form.ccpa_mode.data else 'false',
+                                   'CCPA対応モードを有効にする', 'boolean', True)
+            
+            SiteSetting.set_setting('consent_banner_text',
+                                   form.consent_banner_text.data or '',
+                                   'Cookie同意バナーテキスト', 'text', True)
+            
+            SiteSetting.set_setting('privacy_policy_url',
+                                   form.privacy_policy_url.data or '/privacy-policy',
+                                   'プライバシーポリシーURL', 'text', True)
+            
+            SiteSetting.set_setting('analytics_storage',
+                                   form.analytics_storage.data or 'denied',
+                                   'Analytics Storage設定', 'text', True)
+            
+            SiteSetting.set_setting('ad_storage',
+                                   form.ad_storage.data or 'denied',
+                                   'Ad Storage設定', 'text', True)
+            
             flash('Google Analytics設定を保存しました', 'success')
             current_app.logger.info('Google Analytics settings updated')
             
@@ -1725,10 +1964,24 @@ def analytics_settings():
         'google_analytics_enabled': SiteSetting.get_setting('google_analytics_enabled', 'false'),
         'google_analytics_id': SiteSetting.get_setting('google_analytics_id', ''),
         'google_tag_manager_id': SiteSetting.get_setting('google_tag_manager_id', ''),
-        'analytics_track_admin': SiteSetting.get_setting('analytics_track_admin', 'false')
+        'analytics_track_admin': SiteSetting.get_setting('analytics_track_admin', 'false'),
+        'enhanced_ecommerce_enabled': SiteSetting.get_setting('enhanced_ecommerce_enabled', 'false'),
+        'track_scroll_events': SiteSetting.get_setting('track_scroll_events', 'true'),
+        'track_file_downloads': SiteSetting.get_setting('track_file_downloads', 'true'),
+        'track_external_links': SiteSetting.get_setting('track_external_links', 'true'),
+        'track_page_engagement': SiteSetting.get_setting('track_page_engagement', 'true'),
+        'track_site_search': SiteSetting.get_setting('track_site_search', 'true'),
+        'track_user_properties': SiteSetting.get_setting('track_user_properties', 'false'),
+        'cookie_consent_enabled': SiteSetting.get_setting('cookie_consent_enabled', 'true'),
+        'gdpr_mode': SiteSetting.get_setting('gdpr_mode', 'true'),
+        'ccpa_mode': SiteSetting.get_setting('ccpa_mode', 'false'),
+        'consent_banner_text': SiteSetting.get_setting('consent_banner_text', ''),
+        'privacy_policy_url': SiteSetting.get_setting('privacy_policy_url', '/privacy-policy'),
+        'analytics_storage': SiteSetting.get_setting('analytics_storage', 'denied'),
+        'ad_storage': SiteSetting.get_setting('ad_storage', 'denied')
     }
     
-    return render_template('admin/analytics_settings.html', 
+    return render_template('admin/enhanced_analytics_settings.html', 
                          form=form, 
                          current_settings=current_settings)
 
@@ -1817,43 +2070,84 @@ def seo_tools():
 @admin_bp.route('/seo-analyze/<int:article_id>', methods=['GET', 'POST'])
 @admin_required
 def seo_analyze_article(article_id):
-    """記事のSEO分析"""
-    from seo_optimizer import SEOOptimizer
+    """記事の総合SEO分析（既存+新LLMO/AIO）"""
+    from llmo_analyzer import LLMOAnalyzer, AIOOptimizer
+    import json
     
     article = db.get_or_404(Article, article_id)
     analysis_result = None
-    llm_suggestions = None
+    llmo_analysis = None
+    aio_analysis = None
     
-    try:
-        optimizer = SEOOptimizer()
-        
-        # 基本SEO分析
-        content = article.content or article.body or ''
-        target_keywords = article.meta_keywords.split(',') if article.meta_keywords else []
-        target_keywords = [kw.strip() for kw in target_keywords if kw.strip()]
-        
-        analysis_result = optimizer.analyze_content(
-            title=article.title,
-            content=content,
-            target_keywords=target_keywords
-        )
-        
-        # LLM提案生成（オプション）
-        if request.method == 'POST' and request.form.get('generate_llm_suggestions'):
-            llm_suggestions = optimizer.generate_llm_suggestions(
-                title=article.title,
+    # 既存のSEO分析結果を取得
+    existing_llmo = SEOAnalysis.query.filter_by(
+        article_id=article_id,
+        analysis_type='llmo'
+    ).first()
+    
+    existing_aio = SEOAnalysis.query.filter_by(
+        article_id=article_id,
+        analysis_type='aio'
+    ).first()
+    
+    if request.method == 'POST':
+        try:
+            content = article.body or ''
+            target_keywords = article.meta_keywords.split(',') if article.meta_keywords else []
+            target_keywords = [kw.strip() for kw in target_keywords if kw.strip()]
+            
+            # LLMO分析
+            llmo_analyzer = LLMOAnalyzer()
+            llmo_result = llmo_analyzer.analyze_content_for_llm(
                 content=content,
-                target_keywords=target_keywords
+                title=article.title,
+                keywords=target_keywords
             )
-        
-        current_app.logger.info(f"SEO analysis completed for article {article_id}")
-        
-    except Exception as e:
-        current_app.logger.error(f"SEO analysis error: {e}")
-        flash(f'SEO分析エラー: {str(e)}', 'danger')
+            
+            # AIO分析
+            aio_optimizer = AIOOptimizer()
+            aio_result = aio_optimizer.optimize_for_ai_overview(
+                article_content=content,
+                title=article.title
+            )
+            
+            # 結果保存
+            # LLMO結果
+            if not existing_llmo:
+                existing_llmo = SEOAnalysis(
+                    article_id=article_id,
+                    analysis_type='llmo'
+                )
+            
+            existing_llmo.analysis_dict = llmo_result
+            existing_llmo.score = llmo_result['llm_friendliness_score']
+            db.session.add(existing_llmo)
+            
+            # AIO結果
+            if not existing_aio:
+                existing_aio = SEOAnalysis(
+                    article_id=article_id,
+                    analysis_type='aio'
+                )
+            
+            existing_aio.analysis_dict = aio_result
+            existing_aio.score = aio_result['optimization_score']
+            db.session.add(existing_aio)
+            
+            db.session.commit()
+            
+            flash('SEO分析が完了しました', 'success')
+            current_app.logger.info(f'SEO analysis completed for article {article_id}')
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f'SEO analysis error: {e}')
+            flash(f'SEO分析エラー: {str(e)}', 'danger')
     
     return render_template('admin/seo_analyze.html',
                          article=article,
+                         llmo_analysis=existing_llmo,
+                         aio_analysis=existing_aio,
                          analysis=analysis_result,
                          llm_suggestions=llm_suggestions)
 
@@ -2309,3 +2603,247 @@ def images_manager():
 # サイト設定管理の強化
 # ====================================
 # 既存のsite_settings機能を活用し、新しい設定項目に対応
+
+# ===============================
+# SEO分析機能
+# ===============================
+
+@admin_bp.route('/seo/analyze/<int:article_id>/', methods=['GET', 'POST'])
+@admin_required
+def analyze_article_seo(article_id):
+    """記事SEO分析"""
+    from llmo_analyzer import LLMOAnalyzer, AIOOptimizer
+    import json
+    
+    article = db.get_or_404(Article, article_id)
+    
+    if request.method == 'POST':
+        try:
+            # LLMO分析
+            llmo_analyzer = LLMOAnalyzer()
+            llmo_result = llmo_analyzer.analyze_content_for_llm(
+                content=article.body or '',
+                title=article.title,
+                keywords=article.meta_keywords.split(',') if article.meta_keywords else []
+            )
+            
+            # AIO分析
+            aio_optimizer = AIOOptimizer()
+            aio_result = aio_optimizer.optimize_for_ai_overview(
+                article_content=article.body or '',
+                title=article.title
+            )
+            
+            # 分析結果をデータベースに保存
+            # LLMO分析結果
+            llmo_analysis = SEOAnalysis.query.filter_by(
+                article_id=article_id,
+                analysis_type='llmo'
+            ).first()
+            
+            if not llmo_analysis:
+                llmo_analysis = SEOAnalysis(
+                    article_id=article_id,
+                    analysis_type='llmo'
+                )
+            
+            llmo_analysis.analysis_dict = llmo_result
+            llmo_analysis.score = llmo_result['llm_friendliness_score']
+            db.session.add(llmo_analysis)
+            
+            # AIO分析結果
+            aio_analysis = SEOAnalysis.query.filter_by(
+                article_id=article_id,
+                analysis_type='aio'
+            ).first()
+            
+            if not aio_analysis:
+                aio_analysis = SEOAnalysis(
+                    article_id=article_id,
+                    analysis_type='aio'
+                )
+            
+            aio_analysis.analysis_dict = aio_result
+            aio_analysis.score = aio_result['optimization_score']
+            db.session.add(aio_analysis)
+            
+            db.session.commit()
+            
+            flash('SEO分析が完了しました', 'success')
+            current_app.logger.info(f'SEO analysis completed for article {article_id}')
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f'SEO analysis error: {e}')
+            flash(f'SEO分析エラー: {str(e)}', 'danger')
+    
+    # 既存の分析結果を取得
+    llmo_analysis = SEOAnalysis.query.filter_by(
+        article_id=article_id,
+        analysis_type='llmo'
+    ).first()
+    
+    aio_analysis = SEOAnalysis.query.filter_by(
+        article_id=article_id,
+        analysis_type='aio'
+    ).first()
+    
+    return render_template('admin/seo_analyze.html',
+                           article=article,
+                           llmo_analysis=llmo_analysis,
+                           aio_analysis=aio_analysis)
+
+@admin_bp.route('/seo/batch-analyze/', methods=['GET', 'POST'])
+@admin_required
+def batch_analyze_seo():
+    """バッチSEO分析"""
+    if request.method == 'POST':
+        try:
+            from llmo_analyzer import LLMOAnalyzer, AIOOptimizer
+            
+            # 分析対象の記事を取得（公開済みのみ）
+            articles = db.session.execute(
+                select(Article)
+                .where(Article.is_published == True)
+                .order_by(Article.created_at.desc())
+                .limit(10)  # パフォーマンス考慮で初回は10件まで
+            ).scalars().all()
+            
+            llmo_analyzer = LLMOAnalyzer()
+            aio_optimizer = AIOOptimizer()
+            
+            analyzed_count = 0
+            
+            for article in articles:
+                try:
+                    # LLMO分析
+                    llmo_result = llmo_analyzer.analyze_content_for_llm(
+                        content=article.body or '',
+                        title=article.title,
+                        keywords=article.meta_keywords.split(',') if article.meta_keywords else []
+                    )
+                    
+                    # AIO分析
+                    aio_result = aio_optimizer.optimize_for_ai_overview(
+                        article_content=article.body or '',
+                        title=article.title
+                    )
+                    
+                    # 結果保存
+                    for analysis_type, result in [('llmo', llmo_result), ('aio', aio_result)]:
+                        analysis = SEOAnalysis.query.filter_by(
+                            article_id=article.id,
+                            analysis_type=analysis_type
+                        ).first()
+                        
+                        if not analysis:
+                            analysis = SEOAnalysis(
+                                article_id=article.id,
+                                analysis_type=analysis_type
+                            )
+                        
+                        analysis.analysis_dict = result
+                        if analysis_type == 'llmo':
+                            analysis.score = result['llm_friendliness_score']
+                        else:
+                            analysis.score = result['optimization_score']
+                        
+                        db.session.add(analysis)
+                    
+                    analyzed_count += 1
+                    
+                except Exception as e:
+                    current_app.logger.error(f'Batch analysis error for article {article.id}: {e}')
+                    continue
+            
+            db.session.commit()
+            flash(f'{analyzed_count}件の記事のSEO分析が完了しました', 'success')
+            
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f'Batch SEO analysis error: {e}')
+            flash(f'バッチ分析エラー: {str(e)}', 'danger')
+    
+    # 分析結果の統計
+    total_analyses = db.session.execute(select(func.count(SEOAnalysis.id))).scalar()
+    llmo_analyses = db.session.execute(
+        select(func.count(SEOAnalysis.id)).where(SEOAnalysis.analysis_type == 'llmo')
+    ).scalar()
+    aio_analyses = db.session.execute(
+        select(func.count(SEOAnalysis.id)).where(SEOAnalysis.analysis_type == 'aio')
+    ).scalar()
+    
+    # 最新の分析結果
+    recent_analyses = db.session.execute(
+        select(SEOAnalysis)
+        .join(Article)
+        .order_by(SEOAnalysis.created_at.desc())
+        .limit(20)
+    ).scalars().all()
+    
+    return render_template('admin/seo_batch_analyze.html',
+                           total_analyses=total_analyses,
+                           llmo_analyses=llmo_analyses,
+                           aio_analyses=aio_analyses,
+                           recent_analyses=recent_analyses)
+
+@admin_bp.route('/seo/dashboard/')
+@admin_required
+def seo_dashboard():
+    """新しいSEOダッシュボード"""
+    try:
+        # SEO分析結果の統計
+        total_articles = db.session.execute(select(func.count(Article.id))).scalar()
+        analyzed_articles = db.session.execute(
+            select(func.count(func.distinct(SEOAnalysis.article_id)))
+        ).scalar()
+        
+        # 平均スコア
+        avg_llmo_score = db.session.execute(
+            select(func.avg(SEOAnalysis.score))
+            .where(SEOAnalysis.analysis_type == 'llmo')
+        ).scalar() or 0
+        
+        avg_aio_score = db.session.execute(
+            select(func.avg(SEOAnalysis.score))
+            .where(SEOAnalysis.analysis_type == 'aio')
+        ).scalar() or 0
+        
+        # スコア別分布
+        score_ranges = {
+            'excellent': (80, 100),
+            'good': (60, 79),
+            'fair': (40, 59),
+            'poor': (0, 39)
+        }
+        
+        score_distribution = {}
+        for range_name, (min_score, max_score) in score_ranges.items():
+            count = db.session.execute(
+                select(func.count(SEOAnalysis.id))
+                .where(SEOAnalysis.score >= min_score)
+                .where(SEOAnalysis.score <= max_score)
+            ).scalar()
+            score_distribution[range_name] = count
+        
+        # 最新の分析結果（トップスコア）
+        top_articles = db.session.execute(
+            select(SEOAnalysis, Article.title)
+            .join(Article)
+            .where(SEOAnalysis.analysis_type == 'llmo')
+            .order_by(SEOAnalysis.score.desc())
+            .limit(10)
+        ).all()
+        
+        return render_template('admin/seo_dashboard.html',
+                               total_articles=total_articles,
+                               analyzed_articles=analyzed_articles,
+                               avg_llmo_score=round(avg_llmo_score, 1),
+                               avg_aio_score=round(avg_aio_score, 1),
+                               score_distribution=score_distribution,
+                               top_articles=top_articles)
+                               
+    except Exception as e:
+        current_app.logger.error(f'SEO dashboard error: {e}')
+        flash('SEOダッシュボードの読み込みに失敗しました。', 'danger')
+        return redirect(url_for('admin.dashboard'))

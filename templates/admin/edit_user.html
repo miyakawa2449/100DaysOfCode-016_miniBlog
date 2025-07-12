@@ -44,10 +44,16 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <label for="role" class="form-label">🛡️ 権限</label>
-                                <select class="form-select" id="role" name="role" {{ 'disabled' if user.id == current_user.id else '' }}>
-                                    <option value="author" {{ 'selected' if user.role == 'author' else '' }}>👤 投稿者</option>
-                                    <option value="admin" {{ 'selected' if user.role == 'admin' else '' }}>👑 管理者</option>
-                                </select>
+                                {% if user.id == current_user.id %}
+                                    <input type="text" class="form-control" value="👑 管理者" readonly>
+                                    <input type="hidden" name="role" value="admin">
+                                    <div class="form-text">自分自身の権限は変更できません</div>
+                                {% else %}
+                                    <select class="form-select" id="role" name="role">
+                                        <option value="author" {{ 'selected' if user.role == 'author' else '' }}>👤 投稿者</option>
+                                        <option value="admin" {{ 'selected' if user.role == 'admin' else '' }}>👑 管理者</option>
+                                    </select>
+                                {% endif %}
                                 {% if user.id == current_user.id %}
                                 <div class="form-text text-warning">自分の権限は変更できません</div>
                                 {% endif %}

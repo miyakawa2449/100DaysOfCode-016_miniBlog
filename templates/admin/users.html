@@ -6,9 +6,43 @@
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">👥 ユーザー管理</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
+        <a href="{{ url_for('admin.create_user') }}" class="btn btn-sm btn-primary me-2">
+            ➕ ユーザー追加
+        </a>
         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
             🔄 更新
         </button>
+    </div>
+</div>
+
+<!-- 検索・フィルタリングフォーム -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('admin.users') }}" class="row g-3">
+            <div class="col-md-6">
+                <label for="search" class="form-label">🔍 検索</label>
+                <input type="text" class="form-control" id="search" name="search" 
+                       value="{{ search }}" placeholder="名前、メール、ハンドル名で検索">
+            </div>
+            <div class="col-md-4">
+                <label for="role" class="form-label">🛡️ 役割フィルタ</label>
+                <select class="form-select" id="role" name="role">
+                    <option value="">すべて</option>
+                    <option value="admin" {{ 'selected' if role_filter == 'admin' }}>👑 管理者</option>
+                    <option value="author" {{ 'selected' if role_filter == 'author' }}>👤 一般</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">🔍 検索</button>
+            </div>
+        </form>
+        {% if search or role_filter %}
+        <div class="mt-3">
+            <a href="{{ url_for('admin.users') }}" class="btn btn-outline-secondary btn-sm">
+                ✖️ フィルタクリア
+            </a>
+        </div>
+        {% endif %}
     </div>
 </div>
 
@@ -29,6 +63,7 @@
             </tr>
         </thead>
         <tbody>
+            {% if users %}
             {% for user in users %}
             <tr>
                 <td>{{ user.id }}</td>
@@ -79,19 +114,82 @@
                     </div>
                 </td>
             </tr>
+            {% endfor %}
             {% else %}
             <tr>
                 <td colspan="6" class="text-center text-muted py-4">
                     <div>
                         <i class="fas fa-users fa-3x mb-3 text-muted"></i>
-                        <p>ユーザーが見つかりません</p>
+                        {% if search or role_filter %}
+                        <p>検索条件に一致するユーザーが見つかりません</p>
+                        {% else %}
+                        <p>ユーザーが登録されていません</p>
+                        {% endif %}
                     </div>
                 </td>
             </tr>
-            {% endfor %}
+            {% endif %}
         </tbody>
     </table>
 </div>
+
+<!-- ページネーション -->
+{% if pagination and pagination.pages > 1 %}
+<nav aria-label="ユーザー一覧ページネーション">
+    <ul class="pagination justify-content-center">
+        {% if pagination.has_prev %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('admin.users', page=pagination.prev_num, search=search, role=role_filter) }}">
+                « 前へ
+            </a>
+        </li>
+        {% else %}
+        <li class="page-item disabled">
+            <span class="page-link">« 前へ</span>
+        </li>
+        {% endif %}
+        
+        {% for page_num in pagination.iter_pages() %}
+        {% if page_num %}
+            {% if page_num != pagination.page %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('admin.users', page=page_num, search=search, role=role_filter) }}">
+                    {{ page_num }}
+                </a>
+            </li>
+            {% else %}
+            <li class="page-item active">
+                <span class="page-link">{{ page_num }}</span>
+            </li>
+            {% endif %}
+        {% else %}
+        <li class="page-item disabled">
+            <span class="page-link">…</span>
+        </li>
+        {% endif %}
+        {% endfor %}
+        
+        {% if pagination.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="{{ url_for('admin.users', page=pagination.next_num, search=search, role=role_filter) }}">
+                次へ »
+            </a>
+        </li>
+        {% else %}
+        <li class="page-item disabled">
+            <span class="page-link">次へ »</span>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+
+<!-- ページ情報表示 -->
+{% if pagination %}
+<div class="text-center text-muted mb-4">
+    {{ pagination.total }}件中 {{ (pagination.page - 1) * pagination.per_page + 1 }}～{{ pagination.page * pagination.per_page if pagination.page * pagination.per_page <= pagination.total else pagination.total }}件を表示
+</div>
+{% endif %}
+{% endif %}
 
 <!-- ユーザー統計カード -->
 <div class="row mt-4">
@@ -101,7 +199,7 @@
                 <div class="d-flex justify-content-between">
                     <div>
                         <h5 class="card-title">総ユーザー数</h5>
-                        <h2 class="mb-0">{{ users|length }}</h2>
+                        <h2 class="mb-0">{{ total_users }}</h2>
                     </div>
                     <div class="align-self-center">
                         <i class="fas fa-users fa-2x"></i>
@@ -116,7 +214,7 @@
                 <div class="d-flex justify-content-between">
                     <div>
                         <h5 class="card-title">2段階認証有効</h5>
-                        <h2 class="mb-0">{{ users|selectattr('totp_enabled')|list|length }}</h2>
+                        <h2 class="mb-0">{{ totp_enabled_count }}</h2>
                     </div>
                     <div class="align-self-center">
                         <i class="fas fa-shield-alt fa-2x"></i>
@@ -131,7 +229,7 @@
                 <div class="d-flex justify-content-between">
                     <div>
                         <h5 class="card-title">管理者</h5>
-                        <h2 class="mb-0">{{ users|selectattr('role', 'equalto', 'admin')|list|length }}</h2>
+                        <h2 class="mb-0">{{ admin_count }}</h2>
                     </div>
                     <div class="align-self-center">
                         <i class="fas fa-crown fa-2x"></i>
@@ -146,7 +244,7 @@
                 <div class="d-flex justify-content-between">
                     <div>
                         <h5 class="card-title">今月の新規</h5>
-                        <h2 class="mb-0">0</h2>
+                        <h2 class="mb-0">{{ new_users_this_month }}</h2>
                     </div>
                     <div class="align-self-center">
                         <i class="fas fa-user-plus fa-2x"></i>
@@ -186,8 +284,8 @@
 let deleteUserId = null;
 
 function viewUser(userId) {
-    // ユーザー詳細表示機能（未実装）
-    alert('ユーザー詳細表示機能は開発中です。ID: ' + userId);
+    // ユーザー詳細ページにリダイレクト
+    window.location.href = '/admin/user/detail/' + userId + '/';
 }
 
 function editUser(userId) {
