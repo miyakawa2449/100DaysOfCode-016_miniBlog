@@ -124,73 +124,70 @@
     {{ google_tag_manager_noscript() }}
     
     <!-- ナビゲーション -->
-    <nav class="navbar navbar-expand-lg sticky-top">
-        <div class="container">
-            <a class="navbar-brand" href="{{ url_for('home') }}">
+    <nav class="modern-navbar">
+        <div class="container-responsive">
+            <div class="navbar-content">
+                <a class="navbar-brand" href="{{ url_for('home') }}">
                 {% if site_settings.site_logo_url %}
                 <img src="{{ site_settings.site_logo_url }}" alt="{{ site_settings.site_name or 'ミニブログ' }}" style="height: 32px; margin-right: 8px;">
                 {% else %}
                 <i class="bi bi-journal-text"></i>
                 {% endif %}
-                {{ site_settings.site_name or 'ミニブログ' }}
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('home') }}">
-                            <i class="bi bi-house-door"></i> ホーム
-                        </a>
-                    </li>
+                    {{ site_settings.site_name or 'ミニブログ' }}
+                </a>
+                
+                <!-- ハンバーガーメニューボタン -->
+                <button class="hamburger-btn" aria-label="メニューを開く" aria-expanded="false">
+                    <span class="hamburger-line"></span>
+                    <span class="hamburger-line"></span>
+                    <span class="hamburger-line"></span>
+                </button>
+                
+                <!-- ナビゲーションメニュー -->
+                <div class="navbar-menu" role="menu">
+                    <a class="navbar-link" href="{{ url_for('home') }}" role="menuitem">
+                        <i class="bi bi-house-door"></i> ホーム
+                    </a>
                     
                     <!-- SNSアイコン -->
                     {% if site_settings.social_media_links %}
                         {% for platform, url in site_settings.social_media_links.items() if url %}
-                            <li class="nav-item">
-                                <a class="nav-link sns-link" href="{{ url }}" target="_blank" rel="noopener noreferrer" title="{{ platform|title }}">
-                                    {% if platform == 'twitter' %}
-                                        <i class="bi bi-twitter"></i>
-                                    {% elif platform == 'facebook' %}
-                                        <i class="bi bi-facebook"></i>
-                                    {% elif platform == 'instagram' %}
-                                        <i class="bi bi-instagram"></i>
-                                    {% elif platform == 'youtube' %}
-                                        <i class="bi bi-youtube"></i>
-                                    {% elif platform == 'github' %}
-                                        <i class="bi bi-github"></i>
-                                    {% elif platform == 'linkedin' %}
-                                        <i class="bi bi-linkedin"></i>
-                                    {% elif platform == 'tiktok' %}
-                                        <i class="bi bi-tiktok"></i>
-                                    {% else %}
-                                        <i class="bi bi-link-45deg"></i>
-                                    {% endif %}
-                                </a>
-                            </li>
+                            <a class="navbar-link" href="{{ url }}" target="_blank" rel="noopener noreferrer" title="{{ platform|title }}" role="menuitem">
+                                {% if platform == 'twitter' %}
+                                    <i class="bi bi-twitter"></i>
+                                {% elif platform == 'facebook' %}
+                                    <i class="bi bi-facebook"></i>
+                                {% elif platform == 'instagram' %}
+                                    <i class="bi bi-instagram"></i>
+                                {% elif platform == 'youtube' %}
+                                    <i class="bi bi-youtube"></i>
+                                {% elif platform == 'github' %}
+                                    <i class="bi bi-github"></i>
+                                {% elif platform == 'linkedin' %}
+                                    <i class="bi bi-linkedin"></i>
+                                {% elif platform == 'tiktok' %}
+                                    <i class="bi bi-tiktok"></i>
+                                {% else %}
+                                    <i class="bi bi-link-45deg"></i>
+                                {% endif %}
+                                {{ platform|title }}
+                            </a>
                         {% endfor %}
                     {% endif %}
                     
                     {% if current_user.is_authenticated %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('admin.dashboard') }}">
-                                <i class="bi bi-gear"></i> 管理
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('logout') }}">
-                                <i class="bi bi-box-arrow-right"></i> ログアウト
-                            </a>
-                        </li>
+                        <a class="navbar-link" href="{{ url_for('admin.dashboard') }}" role="menuitem">
+                            <i class="bi bi-gear"></i> 管理
+                        </a>
+                        <a class="navbar-link" href="{{ url_for('logout') }}" role="menuitem">
+                            <i class="bi bi-box-arrow-right"></i> ログアウト
+                        </a>
                     {% else %}
-                        <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('login') }}">
-                                <i class="bi bi-box-arrow-in-right"></i> ログイン
-                            </a>
-                        </li>
+                        <a class="navbar-link" href="{{ url_for('login') }}" role="menuitem">
+                            <i class="bi bi-box-arrow-in-right"></i> ログイン
+                        </a>
                     {% endif %}
-                </ul>
+                </div>
             </div>
         </div>
     </nav>
@@ -224,5 +221,8 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Performance Optimization JavaScript -->
+    <script src="{{ url_for('static', filename='js/performance.js') }}" defer></script>
 </body>
 </html>
