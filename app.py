@@ -36,6 +36,12 @@ from datetime import datetime, timedelta
 ogp_cache = {}
 OGP_CACHE_DURATION = 3600  # 1時間
 
+def clear_ogp_cache():
+    """OGPキャッシュをクリア"""
+    global ogp_cache
+    ogp_cache.clear()
+
+
 # models.py から db インスタンスとモデルクラスをインポートします
 from models import db, User, Article, Category, Comment, article_categories
 # forms.py からフォームクラスをインポート
@@ -240,50 +246,239 @@ def process_sns_auto_embed(text):
             # URLパターンにマッチする全てのURLを対象（行単位で処理）
             text = re.sub(pattern, replace_match, text, flags=re.MULTILINE)
     
+    # 一般的なWebサイトURLのOGPカード表示処理を追加
+    text = process_general_url_embeds(text)
+    
     return text
 
-def fetch_ogp_data(url):
-    """URLからOGP（Open Graph Protocol）データを取得（キャッシュ対応）"""
+def process_general_url_embeds(text):
+    """一般的なWebサイトURLをOGPカード表示に変換"""
+    if not text:
+        return text
+    
+    import re
+    
+    # 一般的なURL検出パターン（独立行で、かつSNSではないURL）
+    # SNSプラットフォームを除外するネガティブルックアヘッド
+    general_url_pattern = r'^(https?://(?!(?:www\.)?(youtube\.com|youtu\.be|twitter\.com|x\.com|instagram\.com|facebook\.com|fb\.watch|threads\.net|threads\.com))[^\s]+)$'
+    
+    def replace_general_url(match):
+        url = match.group(1).strip()
+        return generate_ogp_card(url)
+    
+    # 行単位でURLを検出して置換
+    text = re.sub(general_url_pattern, replace_general_url, text, flags=re.MULTILINE)
+    
+    return text
+
+def fetch_ogp_data(url, force_refresh=False):
+    """URLからOGP（Open Graph Protocol）データを取得（キャッシュ対応、Selenium対応）"""
     # キャッシュチェック
     cache_key = hashlib.md5(url.encode()).hexdigest()
     current_time = datetime.now()
     
-    if cache_key in ogp_cache:
+    # force_refreshがTrueの場合はキャッシュをスキップ
+    if not force_refresh and cache_key in ogp_cache:
         cached_data, cached_time = ogp_cache[cache_key]
         if current_time - cached_time < timedelta(seconds=OGP_CACHE_DURATION):
             current_app.logger.debug(f"OGP cache hit for: {url[:50]}...")
             return cached_data
     
+    # Threads URLかどうかを判定
+    is_threads_url = 'threads.com' in url or 'threads.net' in url
+    
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
+        if is_threads_url:
+            # ThreadsにはSeleniumを使用
+            ogp_data = _fetch_threads_ogp_with_selenium(url)
+        else:
+            # 通常のURLには従来の方法を使用
+            ogp_data = _fetch_ogp_with_requests(url)
         
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
+        # キャッシュに保存
+        ogp_cache[cache_key] = (ogp_data, current_time)
+        current_app.logger.debug(f"OGP data cached for: {url[:50]}...")
         
-        soup = BeautifulSoup(response.content, 'html.parser')
+        return ogp_data
+        
+    except Exception as e:
+        current_app.logger.error(f"OGP fetch error: {e}")
+        # エラー時も空のデータをキャッシュ（短時間）
+        empty_data = {}
+        ogp_cache[cache_key] = (empty_data, current_time)
+        return empty_data
+
+def _fetch_ogp_with_requests(url):
+    """通常のHTTPリクエストでOGPデータを取得"""
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    response = requests.get(url, headers=headers, timeout=10)
+    response.raise_for_status()
+    
+    soup = BeautifulSoup(response.content, 'html.parser')
+    
+    ogp_data = {}
+    
+    # OGPメタタグを取得
+    for tag in soup.find_all('meta'):
+        prop = tag.get('property', '').lower()
+        name = tag.get('name', '').lower()
+        content = tag.get('content', '')
+        
+        if prop == 'og:title' or name == 'og:title':
+            ogp_data['title'] = content
+        elif prop == 'og:description' or name == 'og:description':
+            ogp_data['description'] = content
+        elif prop == 'og:image' or name == 'og:image':
+            ogp_data['image'] = content
+        elif prop == 'og:site_name' or name == 'og:site_name':
+            ogp_data['site_name'] = content
+        elif prop == 'og:url' or name == 'og:url':
+            ogp_data['url'] = content
+    
+    # フォールバック: 通常のmetaタグからも取得
+    if not ogp_data.get('title'):
+        title_tag = soup.find('title')
+        if title_tag:
+            ogp_data['title'] = title_tag.get_text().strip()
+    
+    if not ogp_data.get('description'):
+        desc_tag = soup.find('meta', attrs={'name': 'description'})
+        if desc_tag:
+            ogp_data['description'] = desc_tag.get('content', '')
+    
+    return ogp_data
+
+def _fetch_threads_ogp_with_selenium(url):
+    """SeleniumでThreadsのOGPデータを取得"""
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from webdriver_manager.chrome import ChromeDriverManager
+    import time
+    
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')  # ヘッドレスモード
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    
+    driver = None
+    try:
+        current_app.logger.debug("🌐 Starting Selenium for Threads URL...")
+        
+        # webdriver-managerでChromeDriverをインストール
+        import os
+        import stat
+        
+        # ChromeDriverManagerの代わりに直接パスを指定
+        base_wdm_path = os.path.expanduser("~/.wdm/drivers/chromedriver")
+        
+        # 既知のパスを試す
+        actual_driver_path = None
+        possible_paths = [
+            "/Users/tsuyoshi/.wdm/drivers/chromedriver/mac64/138.0.7204.157/chromedriver-mac-arm64/chromedriver",
+            # 他の可能性のあるパスも試す
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path) and os.access(path, os.X_OK):
+                actual_driver_path = path
+                current_app.logger.debug(f"Found working ChromeDriver: {actual_driver_path}")
+                break
+        
+        # フォールバック: webdriver-managerを使用
+        if not actual_driver_path:
+            try:
+                driver_path = ChromeDriverManager().install()
+                current_app.logger.debug(f"ChromeDriver manager path: {driver_path}")
+                
+                # webdriver-managerが間違ったファイルを返している場合の修正
+                if not driver_path.endswith("chromedriver") or not os.access(driver_path, os.X_OK):
+                    driver_dir = os.path.dirname(driver_path)
+                    chromedriver_path = os.path.join(driver_dir, "chromedriver")
+                    if os.path.exists(chromedriver_path):
+                        actual_driver_path = chromedriver_path
+                    else:
+                        # 再帰的にchromedriver実行ファイルを探す
+                        import glob
+                        pattern = os.path.join(base_wdm_path, "**/chromedriver")
+                        found_drivers = glob.glob(pattern, recursive=True)
+                        for found_driver in found_drivers:
+                            if os.path.isfile(found_driver) and os.access(found_driver, os.X_OK):
+                                actual_driver_path = found_driver
+                                break
+                else:
+                    actual_driver_path = driver_path
+            except Exception as e:
+                current_app.logger.error(f"ChromeDriverManager failed: {e}")
+        
+        if not actual_driver_path:
+            raise Exception("Could not find valid ChromeDriver executable")
+        
+        current_app.logger.debug(f"Actual ChromeDriver path: {actual_driver_path}")
+        
+        # 実行権限を確認・設定
+        if not os.access(actual_driver_path, os.X_OK):
+            os.chmod(actual_driver_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+            current_app.logger.debug("Set executable permission for ChromeDriver")
+        
+        service = Service(actual_driver_path)
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        driver.get(url)
+        
+        # ページの読み込み完了を待機
+        current_app.logger.debug("⏳ Waiting for page load...")
+        time.sleep(5)
+        
+        # OGPメタタグが読み込まれるまで待機
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//meta[contains(@property, 'og:') or contains(@name, 'twitter:')]"))
+            )
+            current_app.logger.debug("✅ OGP meta tags detected")
+        except:
+            current_app.logger.debug("⚠️ OGP meta tags not found, continuing anyway")
+        
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
         
         ogp_data = {}
         
-        # OGPメタタグを取得
+        # OGPとTwitterカードの情報を取得
         for tag in soup.find_all('meta'):
-            prop = tag.get('property', '').lower()
-            name = tag.get('name', '').lower()
-            content = tag.get('content', '')
-            
-            if prop == 'og:title' or name == 'og:title':
-                ogp_data['title'] = content
-            elif prop == 'og:description' or name == 'og:description':
-                ogp_data['description'] = content
-            elif prop == 'og:image' or name == 'og:image':
-                ogp_data['image'] = content
-            elif prop == 'og:site_name' or name == 'og:site_name':
-                ogp_data['site_name'] = content
-            elif prop == 'og:url' or name == 'og:url':
-                ogp_data['url'] = content
+            for attr in ['property', 'name']:
+                if tag.has_attr(attr):
+                    key = tag.get(attr)
+                    content = tag.get('content', '')
+                    if key and content:
+                        if key.startswith('og:'):
+                            if key == 'og:title':
+                                ogp_data['title'] = content
+                            elif key == 'og:description':
+                                ogp_data['description'] = content
+                            elif key == 'og:image':
+                                ogp_data['image'] = content
+                            elif key == 'og:site_name':
+                                ogp_data['site_name'] = content
+                            elif key == 'og:url':
+                                ogp_data['url'] = content
+                        elif key.startswith('twitter:'):
+                            if key == 'twitter:title' and not ogp_data.get('title'):
+                                ogp_data['title'] = content
+                            elif key == 'twitter:description' and not ogp_data.get('description'):
+                                ogp_data['description'] = content
+                            elif key == 'twitter:image' and not ogp_data.get('image'):
+                                ogp_data['image'] = content
         
-        # フォールバック: 通常のmetaタグからも取得
+        # フォールバック: HTMLからの基本情報取得
         if not ogp_data.get('title'):
             title_tag = soup.find('title')
             if title_tag:
@@ -292,62 +487,130 @@ def fetch_ogp_data(url):
         if not ogp_data.get('description'):
             desc_tag = soup.find('meta', attrs={'name': 'description'})
             if desc_tag:
-                ogp_data['description'] = desc_tag.get('content', '')
+                content = desc_tag.get('content', '')
+                if content:
+                    ogp_data['description'] = content
         
-        # Threads特別処理: JavaScript内のデータを探す
-        if 'threads.com' in url or 'threads.net' in url:
-            try:
-                for script in soup.find_all('script'):
-                    if script.string and ('__DEFAULT_SCOPE__' in script.string or 'ThreadItemView' in script.string):
-                        script_content = script.string
-                        
-                        # タイトルの抽出を試行
-                        import json
-                        import re
-                        
-                        # JSON部分を抽出しようとする
-                        json_match = re.search(r'\{"config".*?\}(?=\s*,?\s*\w+\s*:|\s*$)', script_content)
-                        if json_match:
-                            try:
-                                data = json.loads(json_match.group())
-                                # JSONから有用な情報を抽出
-                                current_app.logger.info(f"Found Threads JSON data structure")
-                            except:
-                                pass
-                        
-                        # URLからユーザー名を抽出してより良いフォールバックを提供
-                        user_match = re.search(r'@([^/]+)/', url)
-                        post_match = re.search(r'/post/([a-zA-Z0-9_-]+)', url)
-                        
-                        if user_match:
-                            username = user_match.group(1)
-                            if not ogp_data.get('title') or ogp_data.get('title') == 'Threads':
-                                ogp_data['title'] = f"{username} (@{username}) on Threads"
-                            if not ogp_data.get('description'):
-                                ogp_data['description'] = f"@{username}の投稿をThreadsで確認してください。"
-                            ogp_data['site_name'] = 'Threads'
-                        break
-            except Exception as e:
-                current_app.logger.debug(f"Threads JavaScript parsing failed: {e}")
+        # Threads特有のフォールバック処理
+        if not ogp_data.get('title') or ogp_data.get('title') == 'Threads':
+            import re
+            user_match = re.search(r'@([^/]+)/', url)
+            if user_match:
+                username = user_match.group(1)
+                ogp_data['title'] = f"{username} (@{username}) on Threads"
+                if not ogp_data.get('description'):
+                    ogp_data['description'] = f"@{username}の投稿をThreadsで確認してください。"
+                ogp_data['site_name'] = 'Threads'
         
-        # キャッシュに保存
-        ogp_cache[cache_key] = (ogp_data, current_time)
-        current_app.logger.debug(f"OGP data cached for: {url[:50]}...")
-        
+        current_app.logger.debug(f"📊 Selenium fetched {len(ogp_data)} meta items for Threads")
         return ogp_data
         
-    except requests.RequestException as e:
-        current_app.logger.error(f"OGP fetch request error: {e}")
-        # エラー時も空のデータをキャッシュ（短時間）
-        empty_data = {}
-        ogp_cache[cache_key] = (empty_data, current_time)
-        return empty_data
     except Exception as e:
-        current_app.logger.error(f"OGP fetch error: {e}")
-        # エラー時も空のデータをキャッシュ（短時間）
-        empty_data = {}
-        ogp_cache[cache_key] = (empty_data, current_time)
-        return empty_data
+        current_app.logger.error(f"❌ Selenium fetch failed: {e}")
+        # フォールバック: URLから基本情報を抽出
+        import re
+        user_match = re.search(r'@([^/]+)/', url)
+        if user_match:
+            username = user_match.group(1)
+            return {
+                'title': f"{username} (@{username}) on Threads",
+                'description': f"@{username}の投稿をThreadsで確認してください。",
+                'site_name': 'Threads'
+            }
+        return {}
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except:
+                pass
+
+def generate_ogp_card(url):
+    """一般的なWebサイトのOGPカードを生成"""
+    try:
+        # 開発環境でのテスト用：force_refreshを使用
+        force_refresh = app.debug and request.args.get('refresh_ogp') == '1'
+        ogp_data = fetch_ogp_data(url, force_refresh=force_refresh)
+        current_app.logger.debug(f"General OGP data fetched: {ogp_data}")
+        
+        # OGPデータから情報を抽出
+        title = ogp_data.get('title', '')
+        description = ogp_data.get('description', '')
+        image = ogp_data.get('image', '')
+        site_name = ogp_data.get('site_name', '')
+        
+        # URLからドメイン名を抽出
+        from urllib.parse import urlparse
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc.replace('www.', '')
+        
+        # フォールバック処理
+        if not title:
+            title = domain
+        if not description:
+            description = f"{domain}のコンテンツをご覧ください。"
+        if not site_name:
+            site_name = domain
+        
+        # 説明文をトリミング
+        if len(description) > 200:
+            description = description[:200] + '...'
+        
+        # ファビコンURL生成
+        favicon_url = f"https://www.google.com/s2/favicons?domain={domain}"
+        
+        # 画像表示用HTML
+        image_html = ''
+        if image:
+            image_html = f'''
+            <div style="margin: 15px 0;">
+                <div style="width: 100%; max-width: 500px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                    <img src="{image}" alt="{title}" style="width: 100%; height: auto; display: block; max-height: 300px; object-fit: cover;">
+                </div>
+            </div>'''
+        
+        return f'''<div class="ogp-card" style="margin: 20px 0; border: 1px solid #e1e5e9; border-radius: 12px; background: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.08); overflow: hidden; transition: all 0.3s ease;">
+    <a href="{url}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit; display: block;">
+        {image_html}
+        <div style="padding: 20px;">
+            <div style="display: flex; align-items: center; margin-bottom: 12px;">
+                <img src="{favicon_url}" alt="" style="width: 16px; height: 16px; margin-right: 8px; border-radius: 2px;" onerror="this.style.display='none'">
+                <div style="color: #65676b; font-size: 13px; font-weight: 500;">{site_name}</div>
+            </div>
+            <h3 style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #1c1e21; line-height: 1.4;">{title}</h3>
+            <p style="margin: 0; color: #65676b; font-size: 14px; line-height: 1.5;">{description}</p>
+            <div style="margin-top: 15px; display: flex; align-items: center; color: #1877f2; font-size: 13px; font-weight: 500;">
+                <span style="margin-right: 6px;">🔗</span>
+                <span>リンクを開く</span>
+                <span style="margin-left: 6px;">→</span>
+            </div>
+        </div>
+    </a>
+</div>'''
+        
+    except Exception as e:
+        current_app.logger.error(f"OGP card generation error: {e}")
+        # フォールバック表示
+        from urllib.parse import urlparse
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc.replace('www.', '')
+        favicon_url = f"https://www.google.com/s2/favicons?domain={domain}"
+        
+        return f'''<div class="ogp-card" style="margin: 20px 0; border: 1px solid #e1e5e9; border-radius: 12px; background: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.08); overflow: hidden;">
+    <a href="{url}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit; display: block; padding: 20px;">
+        <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <img src="{favicon_url}" alt="" style="width: 16px; height: 16px; margin-right: 8px; border-radius: 2px;" onerror="this.style.display='none'">
+            <div style="color: #65676b; font-size: 13px; font-weight: 500;">{domain}</div>
+        </div>
+        <h3 style="margin: 0 0 10px 0; font-size: 16px; font-weight: 600; color: #1c1e21; line-height: 1.4;">{domain}</h3>
+        <p style="margin: 0; color: #65676b; font-size: 14px; line-height: 1.5;">このリンクの詳細情報を表示</p>
+        <div style="margin-top: 15px; display: flex; align-items: center; color: #1877f2; font-size: 13px; font-weight: 500;">
+            <span style="margin-right: 6px;">🔗</span>
+            <span>リンクを開く</span>
+            <span style="margin-left: 6px;">→</span>
+        </div>
+    </a>
+</div>'''
 
 def detect_platform_from_url(url):
     """URLからSNSプラットフォームを検出"""
@@ -428,7 +691,9 @@ def generate_threads_embed(url):
     short_post_id = post_id[:8] + '...' if len(post_id) > 8 else post_id
     
     try:
-        ogp_data = fetch_ogp_data(url)
+        # 開発環境でのテスト用：force_refreshを使用
+        force_refresh = app.debug and request.args.get('refresh_ogp') == '1'
+        ogp_data = fetch_ogp_data(url, force_refresh=force_refresh)
         current_app.logger.debug(f"Threads OGP data fetched: {ogp_data}")
         
         # OGPデータから情報を抽出
@@ -448,17 +713,29 @@ def generate_threads_embed(url):
         if len(description) > 150:
             description = description[:150] + '...'
         
-        # サンプル画像を使用（実際のThreadsでは画像データが取得できないため）
-        image_html = '''
+        # 実際のOGP画像を表示（画像がある場合）
+        if image:
+            image_html = f'''
         <div style="margin: 15px 0;">
-            <div style="width: 100%; height: 200px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+            <div style="width: 100%; max-width: 500px; border-radius: 8px; overflow: hidden; position: relative; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                <img src="{image}" alt="Threads post image" style="width: 100%; height: auto; display: block; max-height: 400px; object-fit: cover;">
+                <div style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.7); padding: 4px 8px; border-radius: 12px; font-size: 11px; color: white; backdrop-filter: blur(4px);">
+                    🧵 {short_post_id}
+                </div>
+            </div>
+        </div>'''
+        else:
+            # 画像がない場合のフォールバック表示
+            image_html = f'''
+        <div style="margin: 15px 0;">
+            <div style="width: 100%; height: 120px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
                 <div style="text-align: center; color: white;">
                     <div style="font-size: 24px; margin-bottom: 8px;">🧵</div>
                     <div style="font-size: 14px; font-weight: 500;">Threads 投稿</div>
-                    <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">@''' + username + '''</div>
+                    <div style="font-size: 12px; opacity: 0.8; margin-top: 4px;">@{username}</div>
                 </div>
                 <div style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 12px; font-size: 11px; color: white;">
-                    ''' + short_post_id + '''
+                    {short_post_id}
                 </div>
             </div>
         </div>'''
@@ -1076,6 +1353,45 @@ def profile(handle_name):
     ).scalars().all()
     
     return render_template('profile.html', user=user, articles=articles)
+
+# 開発用テスト関数
+@app.route('/test_ogp')
+def test_ogp():
+    """開発用：OGPカード表示のテスト"""
+    if not app.debug:
+        return "Not available in production", 404
+    
+    test_content = """テスト記事
+
+一般的なWebサイトのOGPカード表示をテスト：
+
+https://docs.python.org/
+
+Threadsの投稿も表示：
+
+https://www.threads.com/@nasubi8848/post/DMPx1RkT3wp
+
+終了。"""
+    
+    processed_content = process_sns_auto_embed(test_content)
+    
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>OGP Test</title>
+    <meta charset="utf-8">
+    <style>
+        body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
+        .content {{ line-height: 1.6; }}
+    </style>
+</head>
+<body>
+    <h1>OGP Card Test</h1>
+    <div class="content">
+        {processed_content.replace(chr(10), '<br>')}
+    </div>
+</body>
+</html>"""
 
 if __name__ == '__main__':
     # 本番環境では通常WSGI サーバー（Gunicorn等）を使用
