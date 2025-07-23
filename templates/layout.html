@@ -33,12 +33,87 @@
     <!-- Canonical URL -->
     <link rel="canonical" href="{% block canonical %}{{ request.url }}{% endblock %}">
     
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.min.css" rel="stylesheet">
-    <!-- カスタムCSS -->
-    <link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet">
+    <!-- Critical CSS (inlined for faster rendering) -->
+    <style>
+        /* Critical CSS - Above the fold styles */
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --white: #ffffff;
+            --gray-100: #f8f9fa;
+            --gray-300: #dee2e6;
+            --gray-500: #6c757d;
+            --gray-700: #495057;
+            --gray-800: #343a40;
+            --shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+            --border-radius: 0.5rem;
+            --transition: all 0.3s ease;
+            --container-max-width: 1200px;
+            --container-padding: 1rem;
+        }
+        
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; font-size: 16px; }
+        @media (max-width: 768px) { html { font-size: 14px; } }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans JP', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: var(--gray-800);
+            background: var(--white);
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        .container-responsive {
+            max-width: var(--container-max-width);
+            margin: 0 auto;
+            padding: 0 var(--container-padding);
+        }
+        
+        .navbar {
+            padding: 0.75rem 0;
+            background: var(--white);
+            border-bottom: 1px solid var(--gray-300);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        
+        .hero-section {
+            background: var(--primary-gradient);
+            color: var(--white);
+            padding: 3rem 0;
+            text-align: center;
+            min-height: 60vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .lazy-load {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .lazy-load.loaded {
+            opacity: 1;
+        }
+    </style>
+    
+    <!-- Non-critical CSS (deferred loading) -->
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></noscript>
+    
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.min.css" rel="stylesheet"></noscript>
+    
+    <link rel="preload" href="{{ url_for('static', filename='css/main.css') }}" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet"></noscript>
     {% if site_settings.theme_color %}
     <style>
         :root {
