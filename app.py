@@ -6,6 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, login_user, logout_user, current_user, login_required
 from datetime import datetime, timedelta
 import os
+import time
 from dotenv import load_dotenv
 from sqlalchemy import select, func
 from admin import admin_bp
@@ -57,7 +58,7 @@ def after_request(response):
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://platform.twitter.com https://www.instagram.com https://*.instagram.com https://connect.facebook.net https://*.facebook.com https://threads.com https://threads.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.instagram.com; img-src 'self' data: https://*.twimg.com https://*.instagram.com https://*.youtube.com https://*.fbcdn.net https://*.threads.com https://*.ytimg.com https://*.cdninstagram.com; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://platform.twitter.com https://www.instagram.com https://www.facebook.com https://threads.net https://threads.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://*.instagram.com https://*.facebook.com"
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://platform.twitter.com https://www.instagram.com https://*.instagram.com https://connect.facebook.net https://*.facebook.com https://threads.com https://threads.net; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.instagram.com; img-src 'self' data: https: http:; font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://platform.twitter.com https://www.instagram.com https://www.facebook.com https://threads.net https://threads.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://*.instagram.com https://*.facebook.com"
     
     # 開発時のみ：静的ファイルのキャッシュを無効化
     if app.debug:
@@ -199,6 +200,13 @@ def process_sns_auto_embed(text):
     if not text:
         return text
     
+    # 既に処理済みのHTMLかどうかをチェック
+    if any(cls in text for cls in ['sns-embed', 'youtube-embed', 'twitter-embed', 'instagram-embed', 'facebook-embed', 'threads-embed']):
+        current_app.logger.debug("🚫 Already processed content detected, skipping SNS auto embed")
+        return text
+    
+    current_app.logger.debug(f"🔍 Processing SNS auto embed for text length: {len(text)}")
+    
     # SNSプラットフォーム検出パターン（独立行のURLをマッチ）
     sns_patterns = {
         'youtube': [
@@ -269,6 +277,7 @@ def process_general_url_embeds(text):
     # 行単位でURLを検出して置換
     text = re.sub(general_url_pattern, replace_general_url, text, flags=re.MULTILINE)
     
+    current_app.logger.debug(f"✅ SNS auto embed processing completed. Output length: {len(text)}")
     return text
 
 def fetch_ogp_data(url, force_refresh=False):
@@ -309,47 +318,98 @@ def fetch_ogp_data(url, force_refresh=False):
         return empty_data
 
 def _fetch_ogp_with_requests(url):
-    """通常のHTTPリクエストでOGPデータを取得"""
+    """通常のHTTPリクエストでOGPデータを取得（高速化版）"""
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate'
     }
     
-    response = requests.get(url, headers=headers, timeout=10)
-    response.raise_for_status()
-    
-    soup = BeautifulSoup(response.content, 'html.parser')
-    
-    ogp_data = {}
-    
-    # OGPメタタグを取得
-    for tag in soup.find_all('meta'):
-        prop = tag.get('property', '').lower()
-        name = tag.get('name', '').lower()
-        content = tag.get('content', '')
+    try:
+        current_app.logger.debug(f"🌐 Fetching OGP for: {url[:50]}...")
+        start_time = time.time()
         
-        if prop == 'og:title' or name == 'og:title':
-            ogp_data['title'] = content
-        elif prop == 'og:description' or name == 'og:description':
-            ogp_data['description'] = content
-        elif prop == 'og:image' or name == 'og:image':
-            ogp_data['image'] = content
-        elif prop == 'og:site_name' or name == 'og:site_name':
-            ogp_data['site_name'] = content
-        elif prop == 'og:url' or name == 'og:url':
-            ogp_data['url'] = content
-    
-    # フォールバック: 通常のmetaタグからも取得
-    if not ogp_data.get('title'):
-        title_tag = soup.find('title')
-        if title_tag:
-            ogp_data['title'] = title_tag.get_text().strip()
-    
-    if not ogp_data.get('description'):
-        desc_tag = soup.find('meta', attrs={'name': 'description'})
-        if desc_tag:
-            ogp_data['description'] = desc_tag.get('content', '')
-    
-    return ogp_data
+        response = requests.get(url, headers=headers, timeout=8, stream=True)
+        response.raise_for_status()
+        
+        # 最初の64KBのみを読み取る（OGPはHTMLヘッダにあるため）
+        content_size_limit = 65536  # 64KB
+        content = b''
+        for chunk in response.iter_content(chunk_size=8192):
+            content += chunk
+            if len(content) >= content_size_limit:
+                break
+        response.close()
+        
+        soup = BeautifulSoup(content, 'html.parser')
+        
+        ogp_data = {}
+        
+        # より効率的なOGPメタタグ検索
+        ogp_tags = soup.find_all('meta', attrs={'property': lambda x: x and x.startswith('og:')})
+        twitter_tags = soup.find_all('meta', attrs={'name': lambda x: x and x.startswith('twitter:')})
+        
+        # OGPタグの処理
+        for tag in ogp_tags:
+            prop = tag.get('property', '').lower()
+            content = tag.get('content', '').strip()
+            if content:
+                if prop == 'og:title':
+                    ogp_data['title'] = content
+                elif prop == 'og:description':
+                    ogp_data['description'] = content
+                elif prop == 'og:image':
+                    ogp_data['image'] = content
+                elif prop == 'og:site_name':
+                    ogp_data['site_name'] = content
+                elif prop == 'og:url':
+                    ogp_data['url'] = content
+        
+        # Twitterカードタグをフォールバックとして使用
+        for tag in twitter_tags:
+            name = tag.get('name', '').lower()
+            content = tag.get('content', '').strip()
+            if content:
+                if name == 'twitter:title' and not ogp_data.get('title'):
+                    ogp_data['title'] = content
+                elif name == 'twitter:description' and not ogp_data.get('description'):
+                    ogp_data['description'] = content
+                elif name == 'twitter:image' and not ogp_data.get('image'):
+                    ogp_data['image'] = content
+        
+        # フォールバック: 通常のmetaタグからも取得
+        if not ogp_data.get('title'):
+            title_tag = soup.find('title')
+            if title_tag:
+                ogp_data['title'] = title_tag.get_text().strip()
+        
+        if not ogp_data.get('description'):
+            desc_tag = soup.find('meta', attrs={'name': 'description'})
+            if desc_tag and desc_tag.get('content'):
+                ogp_data['description'] = desc_tag.get('content', '').strip()
+        
+        # サイト名がない場合はドメインから推測
+        if not ogp_data.get('site_name'):
+            from urllib.parse import urlparse
+            parsed_url = urlparse(url)
+            domain = parsed_url.netloc.replace('www.', '')
+            ogp_data['site_name'] = domain
+        
+        fetch_time = time.time() - start_time
+        current_app.logger.debug(f"✅ OGP fetched in {fetch_time:.2f}s for: {url[:50]}...")
+        
+        return ogp_data
+        
+    except requests.exceptions.Timeout:
+        current_app.logger.warning(f"⏰ OGP timeout for: {url[:50]}...")
+        return {}
+    except requests.exceptions.RequestException as e:
+        current_app.logger.warning(f"⚠️ OGP request failed for {url[:50]}...: {e}")
+        return {}
+    except Exception as e:
+        current_app.logger.error(f"❌ OGP fetch error for {url[:50]}...: {e}")
+        return {}
 
 def _fetch_threads_ogp_with_selenium(url):
     """SeleniumでThreadsのOGPデータを取得"""
@@ -381,46 +441,33 @@ def _fetch_threads_ogp_with_selenium(url):
         # ChromeDriverManagerの代わりに直接パスを指定
         base_wdm_path = os.path.expanduser("~/.wdm/drivers/chromedriver")
         
-        # 既知のパスを試す
-        actual_driver_path = None
-        possible_paths = [
-            "/Users/tsuyoshi/.wdm/drivers/chromedriver/mac64/138.0.7204.157/chromedriver-mac-arm64/chromedriver",
-            # 他の可能性のあるパスも試す
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path) and os.access(path, os.X_OK):
-                actual_driver_path = path
-                current_app.logger.debug(f"Found working ChromeDriver: {actual_driver_path}")
-                break
-        
-        # フォールバック: webdriver-managerを使用
-        if not actual_driver_path:
-            try:
-                driver_path = ChromeDriverManager().install()
-                current_app.logger.debug(f"ChromeDriver manager path: {driver_path}")
+        # webdriver-managerを使用してパスを取得
+        try:
+            driver_path = ChromeDriverManager().install()
+            current_app.logger.debug(f"ChromeDriver manager path: {driver_path}")
+            
+            # webdriver-managerが間違ったファイルを返している場合の修正
+            driver_dir = os.path.dirname(driver_path)
+            chromedriver_path = os.path.join(driver_dir, "chromedriver")
+            
+            # 正しいchromedriver実行ファイルを見つける
+            if os.path.exists(chromedriver_path) and os.path.isfile(chromedriver_path):
+                actual_driver_path = chromedriver_path
+            else:
+                # 再帰的にchromedriver実行ファイルを探す
+                import glob
+                pattern = os.path.join(base_wdm_path, "**/chromedriver")
+                found_drivers = glob.glob(pattern, recursive=True)
+                for found_driver in found_drivers:
+                    if os.path.isfile(found_driver):
+                        actual_driver_path = found_driver
+                        break
+            
+            if not actual_driver_path:
+                raise Exception("Could not find valid ChromeDriver executable")
                 
-                # webdriver-managerが間違ったファイルを返している場合の修正
-                if not driver_path.endswith("chromedriver") or not os.access(driver_path, os.X_OK):
-                    driver_dir = os.path.dirname(driver_path)
-                    chromedriver_path = os.path.join(driver_dir, "chromedriver")
-                    if os.path.exists(chromedriver_path):
-                        actual_driver_path = chromedriver_path
-                    else:
-                        # 再帰的にchromedriver実行ファイルを探す
-                        import glob
-                        pattern = os.path.join(base_wdm_path, "**/chromedriver")
-                        found_drivers = glob.glob(pattern, recursive=True)
-                        for found_driver in found_drivers:
-                            if os.path.isfile(found_driver) and os.access(found_driver, os.X_OK):
-                                actual_driver_path = found_driver
-                                break
-                else:
-                    actual_driver_path = driver_path
-            except Exception as e:
-                current_app.logger.error(f"ChromeDriverManager failed: {e}")
-        
-        if not actual_driver_path:
+        except Exception as e:
+            current_app.logger.error(f"ChromeDriverManager failed: {e}")
             raise Exception("Could not find valid ChromeDriver executable")
         
         current_app.logger.debug(f"Actual ChromeDriver path: {actual_driver_path}")
@@ -563,16 +610,18 @@ def generate_ogp_card(url):
         image_html = ''
         if image:
             image_html = f'''
-            <div style="margin: 15px 0;">
-                <div style="width: 100%; max-width: 500px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
-                    <img src="{image}" alt="{title}" style="width: 100%; height: auto; display: block; max-height: 300px; object-fit: cover;">
+            <div style="margin: 0 0 15px 0;">
+                <div style="width: 100%; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                    <img src="{image}" alt="{title}" style="width: 100%; height: auto; display: block; max-height: 250px; object-fit: cover;">
                 </div>
             </div>'''
         
         return f'''<div class="ogp-card" style="margin: 20px 0; border: 1px solid #e1e5e9; border-radius: 12px; background: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.08); overflow: hidden; transition: all 0.3s ease;">
     <a href="{url}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit; display: block;">
-        {image_html}
-        <div style="padding: 20px;">
+        <div style="padding: {'' if image else '20px 20px 0 20px'};">
+            {image_html}
+        </div>
+        <div style="padding: {'0 20px 20px 20px' if image else '20px'};">
             <div style="display: flex; align-items: center; margin-bottom: 12px;">
                 <img src="{favicon_url}" alt="" style="width: 16px; height: 16px; margin-right: 8px; border-radius: 2px;" onerror="this.style.display='none'">
                 <div style="color: #65676b; font-size: 13px; font-weight: 500;">{site_name}</div>
@@ -713,8 +762,24 @@ def generate_threads_embed(url):
         if len(description) > 150:
             description = description[:150] + '...'
         
-        # 実際のOGP画像を表示（画像がある場合）
-        if image:
+        # Threads画像はCORS制限があるため、最初から代替表示を使用
+        if image and 'cdninstagram.com' in image:
+            # CDNinstagram画像の場合は代替表示
+            image_html = f'''
+        <div style="margin: 15px 0;">
+            <div style="width: 100%; max-width: 500px; height: 200px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                <div style="text-align: center; color: white;">
+                    <div style="font-size: 32px; margin-bottom: 12px;">🧵</div>
+                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 4px;">Threads 投稿画像</div>
+                    <div style="font-size: 13px; opacity: 0.9;">@{username}</div>
+                </div>
+                <div style="position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.3); padding: 6px 10px; border-radius: 12px; font-size: 11px; color: white; backdrop-filter: blur(4px);">
+                    🧵 {short_post_id}
+                </div>
+            </div>
+        </div>'''
+        elif image:
+            # 他の画像の場合は通常表示
             image_html = f'''
         <div style="margin: 15px 0;">
             <div style="width: 100%; max-width: 500px; border-radius: 8px; overflow: hidden; position: relative; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
@@ -975,6 +1040,13 @@ def striptags(value):
     import re
     if value:
         return re.sub(r'<[^>]*>', '', value)
+    return value
+
+@app.template_filter('sns_embed')
+def sns_embed_filter(value):
+    """SNS自動埋め込みフィルター"""
+    if value:
+        return Markup(process_sns_auto_embed(value))
     return value
 
 
@@ -1390,6 +1462,140 @@ https://www.threads.com/@nasubi8848/post/DMPx1RkT3wp
     <div class="content">
         {processed_content.replace(chr(10), '<br>')}
     </div>
+</body>
+</html>"""
+
+@app.route('/debug_ogp')
+def debug_ogp():
+    """開発用：OGP取得のデバッグテスト"""
+    if not app.debug:
+        return "Not available in production", 404
+    
+    url = request.args.get('url', 'https://docs.python.org/')
+    force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+    
+    try:
+        current_app.logger.info(f"🔍 Debug OGP test for URL: {url}")
+        ogp_data = fetch_ogp_data(url, force_refresh=force_refresh)
+        
+        # OGPカード生成も試す
+        if url.startswith('http'):
+            card_html = generate_ogp_card(url)
+        else:
+            card_html = "Invalid URL"
+        
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>OGP Debug Test</title>
+    <meta charset="utf-8">
+    <style>
+        body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
+        .debug-info {{ background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 15px 0; }}
+        .content {{ line-height: 1.6; }}
+        pre {{ background: #f0f0f0; padding: 10px; border-radius: 4px; overflow-x: auto; }}
+    </style>
+</head>
+<body>
+    <h1>OGP Debug Test</h1>
+    
+    <div class="debug-info">
+        <h3>Test Parameters:</h3>
+        <p><strong>URL:</strong> {url}</p>
+        <p><strong>Force Refresh:</strong> {force_refresh}</p>
+    </div>
+    
+    <div class="debug-info">
+        <h3>Raw OGP Data:</h3>
+        <pre>{ogp_data}</pre>
+    </div>
+    
+    <div class="debug-info">
+        <h3>Generated Card:</h3>
+        {card_html}
+    </div>
+    
+    <div class="debug-info">
+        <h3>Test Different URLs:</h3>
+        <ul>
+            <li><a href="/debug_ogp?url=https://docs.python.org/&force_refresh=true">Python Docs (force refresh)</a></li>
+            <li><a href="/debug_ogp?url=https://github.com/&force_refresh=true">GitHub (force refresh)</a></li>
+            <li><a href="/debug_ogp?url=https://www.threads.com/@nasubi8848/post/DMPx1RkT3wp&force_refresh=true">Threads Post (force refresh)</a></li>
+            <li><a href="/debug_ogp?url=https://invalid-url-test.com&force_refresh=true">Invalid URL Test</a></li>
+        </ul>
+    </div>
+</body>
+</html>"""
+    except Exception as e:
+        current_app.logger.error(f"🚨 OGP Debug Error: {str(e)}")
+        return f"""<!DOCTYPE html>
+<html>
+<head><title>OGP Debug Error</title></head>
+<body>
+    <h1>OGP Debug Error</h1>
+    <p><strong>URL:</strong> {url}</p>
+    <p><strong>Error:</strong> {str(e)}</p>
+    <p><a href="/debug_ogp">Try Again</a></p>
+</body>
+</html>"""
+
+@app.route('/debug_filter')
+def debug_filter():
+    """テンプレートフィルターのデバッグ用エンドポイント"""
+    if not app.debug:
+        return "Not available in production", 404
+    
+    test_text = """これはテストです。
+https://www.threads.com/@nasubi8848/post/DMPx1RkT3wp
+普通のテキスト
+https://miyakawa.me/2018/09/13/3865/
+最後のテキスト"""
+    
+    app.logger.info("🔍 Debug Filter: フィルターテスト開始")
+    try:
+        processed_text = sns_embed_filter(test_text)
+        app.logger.info(f"✅ Debug Filter: 処理完了、結果の長さ {len(processed_text)} 文字")
+        
+        return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Template Filter Debug Test</title>
+    <meta charset="utf-8">
+    <style>
+        body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }}
+        .debug-info {{ background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 15px 0; }}
+        .content {{ line-height: 1.6; }}
+        pre {{ background: #f0f0f0; padding: 10px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; }}
+    </style>
+</head>
+<body>
+    <h1>Template Filter Debug Test</h1>
+    
+    <div class="debug-info">
+        <h3>元のテキスト:</h3>
+        <pre>{test_text}</pre>
+    </div>
+    
+    <div class="debug-info">
+        <h3>処理後のテキスト:</h3>
+        <div class="content">{processed_text}</div>
+    </div>
+    
+    <div class="debug-info">
+        <h3>処理後のHTMLソース:</h3>
+        <pre>{processed_text.replace('<', '&lt;').replace('>', '&gt;')}</pre>
+    </div>
+</body>
+</html>"""
+    except Exception as e:
+        app.logger.error(f"🚨 Debug Filter Error: {str(e)}")
+        return f"""<!DOCTYPE html>
+<html>
+<head><title>Filter Debug Error</title></head>
+<body>
+    <h1>Filter Debug Error</h1>
+    <p><strong>Error:</strong> {str(e)}</p>
+    <p><a href="/debug_filter">Try Again</a></p>
 </body>
 </html>"""
 

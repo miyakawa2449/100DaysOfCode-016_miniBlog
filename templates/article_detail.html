@@ -98,7 +98,7 @@
             <!-- 記事本文 -->
             <div class="article-body">
                 <!-- Markdownエディタ記事 -->
-                {{ article.body | markdown | safe }}
+                {{ article.body | sns_embed | markdown | safe }}
             </div>
 
             <!-- 記事フッター -->
