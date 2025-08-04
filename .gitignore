@@ -90,6 +90,13 @@ miniblog/
 admininfo.py
 reports/scrennshot/
 
+# デバッグメール（開発時のみ）
+debug_emails/
+
+# テスト用ファイル（除外）
+test_*.py
+simple_*.py
+
 # バックアップファイル（プライベートリポジトリなので重要なバックアップは保存）
 # backups/ → コメントアウトしてバックアップフォルダを含める
 backup_current_20250703_063229.sql

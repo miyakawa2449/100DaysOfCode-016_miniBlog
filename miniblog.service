@@ -1,0 +1,20 @@
+[Unit]
+Description=Mini Blog Flask Application
+After=network.target mysql.service
+Requires=mysql.service
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/miniblog
+Environment=PATH=/opt/miniblog/venv/bin
+ExecStart=/opt/miniblog/venv/bin/gunicorn --config gunicorn_config.py app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=always
+RestartSec=3
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

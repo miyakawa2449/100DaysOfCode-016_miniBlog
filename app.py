@@ -44,7 +44,7 @@ def clear_ogp_cache():
 
 
 # models.py から db インスタンスとモデルクラスをインポートします
-from models import db, User, Article, Category, Comment, article_categories
+from models import db, User, Article, Category, Comment, EmailChangeRequest, article_categories
 # forms.py からフォームクラスをインポート
 from forms import LoginForm, TOTPVerificationForm, TOTPSetupForm, PasswordResetRequestForm, PasswordResetForm
 
@@ -116,9 +116,7 @@ csrf = CSRFProtect()  # CSRF保護の初期化
 mail = Mail()  # メール機能の初期化
 
 login_manager = LoginManager()
-login_manager.login_view = 'login'
-login_manager.login_message = "このページにアクセスするにはログインが必要です。"
-login_manager.login_message_category = "info"
+# login_viewは後でルート定義後に設定
 
 # models.py からインポートした db をアプリケーションに登録します
 db.init_app(app)
@@ -1050,7 +1048,17 @@ def sns_embed_filter(value):
     return value
 
 
-app.register_blueprint(admin_bp, url_prefix='/admin')
+# 開発環境でのみデバッグルートを登録（Blueprint登録前）
+if app.debug:
+    try:
+        from admin import register_debug_routes
+        register_debug_routes()
+    except ImportError:
+        pass
+
+# 管理画面Blueprintの登録（環境変数対応）
+ADMIN_URL_PREFIX = os.environ.get('ADMIN_URL_PREFIX', 'admin')
+app.register_blueprint(admin_bp, url_prefix=f'/{ADMIN_URL_PREFIX}')
 
 @app.route('/')
 @app.route('/page/<int:page>')
@@ -1075,7 +1083,10 @@ def home(page=1):
                          articles=articles_pagination.items,
                          pagination=articles_pagination)
 
-@app.route('/login/', methods=['GET', 'POST'])
+# 環境変数でログインURLをカスタマイズ可能
+LOGIN_URL_PATH = os.environ.get('LOGIN_URL_PATH', 'login')
+
+@app.route(f'/{LOGIN_URL_PATH}/', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('home'))
@@ -1102,6 +1113,11 @@ def login():
             flash('メールアドレスまたはパスワードが正しくありません。', 'danger')
     
     return render_template('login.html', form=form)
+
+# Flask-LoginManagerの設定（ルート定義後）
+login_manager.login_view = 'login'
+login_manager.login_message = "このページにアクセスするにはログインが必要です。"
+login_manager.login_message_category = "info"
 
 @app.route('/totp_verify/', methods=['GET', 'POST'])
 def totp_verify():
@@ -1598,6 +1614,59 @@ https://miyakawa.me/2018/09/13/3865/
     <p><a href="/debug_filter">Try Again</a></p>
 </body>
 </html>"""
+
+# === メールアドレス変更確認処理 ===
+
+@app.route('/confirm_email_change/<token>')
+def confirm_email_change(token):
+    """メールアドレス変更確認処理"""
+    try:
+        # トークン検証
+        change_request = EmailChangeRequest.verify_token(token)
+        
+        if not change_request:
+            flash('無効または期限切れの確認リンクです。', 'danger')
+            return redirect(url_for('home'))
+        
+        # ユーザー取得
+        user = db.session.get(User, change_request.user_id)
+        if not user:
+            flash('ユーザーが見つかりません。', 'danger')
+            return redirect(url_for('home'))
+        
+        # メールアドレス重複チェック（再確認）
+        existing_user = db.session.execute(
+            select(User).where(User.email == change_request.new_email)
+        ).scalar_one_or_none()
+        
+        if existing_user:
+            flash('そのメールアドレスは既に使用されています。', 'danger')
+            return redirect(url_for('home'))
+        
+        # メールアドレス変更実行
+        old_email = user.email
+        user.email = change_request.new_email
+        
+        # 変更要求を確認済みにマーク
+        change_request.is_verified = True
+        change_request.verified_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        # ログ記録
+        current_app.logger.info(f'Email changed from {old_email} to {user.email} for user {user.id}')
+        
+        # 成功メッセージ
+        flash(f'メールアドレスを {user.email} に変更しました。', 'success')
+        
+        # ログインページにリダイレクト（セキュリティのため再ログインを促す）
+        return redirect(url_for('login'))
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Email change confirmation error: {e}')
+        flash('メールアドレス変更中にエラーが発生しました。', 'danger')
+        return redirect(url_for('home'))
 
 if __name__ == '__main__':
     # 本番環境では通常WSGI サーバー（Gunicorn等）を使用

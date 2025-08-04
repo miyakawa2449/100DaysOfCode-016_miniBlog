@@ -283,14 +283,17 @@
 <script>
 let deleteUserId = null;
 
+// URL パターンを管理画面プレフィックスを使って生成
+const adminPrefix = "{{ url_for('admin.users') }}".replace('/users/', '');
+
 function viewUser(userId) {
     // ユーザー詳細ページにリダイレクト
-    window.location.href = '/admin/user/detail/' + userId + '/';
+    window.location.href = adminPrefix + '/user/detail/' + userId + '/';
 }
 
 function editUser(userId) {
     // ユーザー編集ページにリダイレクト
-    window.location.href = '/admin/user/edit/' + userId + '/';
+    window.location.href = adminPrefix + '/user/edit/' + userId + '/';
 }
 
 function confirmDelete(userId, email) {
@@ -304,7 +307,7 @@ function deleteUser() {
         // フォームを作成してユーザー削除APIを呼び出し
         const form = document.createElement('form');
         form.method = 'POST';
-        form.action = '/admin/user/delete/' + deleteUserId + '/';
+        form.action = adminPrefix + '/user/delete/' + deleteUserId + '/';
         
         // CSRFトークンを追加
         const csrfToken = document.querySelector('input[name="csrf_token"]').value;

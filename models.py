@@ -382,19 +382,46 @@ class SEOAnalysis(db.Model):
     
     def __repr__(self):
         return f'<SEOAnalysis {self.analysis_type}: {self.score}>'
-    
-    @property
-    def analysis_dict(self):
-        """JSON文字列を辞書に変換"""
-        try:
-            import json
-            return json.loads(self.analysis_data)
-        except:
-            return {}
-    
-    @analysis_dict.setter
-    def analysis_dict(self, data):
-        """辞書をJSON文字列に変換して保存"""
-        import json
-        self.analysis_data = json.dumps(data, ensure_ascii=False, indent=2)
 
+# --- メールアドレス変更要求管理 ---
+
+class EmailChangeRequest(db.Model):
+    """メールアドレス変更要求管理"""
+    __tablename__ = 'email_change_requests'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    current_email = db.Column(db.String(255), nullable=False)  # 現在のメールアドレス
+    new_email = db.Column(db.String(255), nullable=False)  # 新しいメールアドレス
+    token = db.Column(db.String(255), nullable=False, unique=True)  # 確認用トークン
+    expires_at = db.Column(db.DateTime, nullable=False)  # 有効期限
+    is_verified = db.Column(db.Boolean, default=False)  # 確認済みフラグ
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    verified_at = db.Column(db.DateTime, nullable=True)  # 確認完了日時
+    
+    # リレーション
+    user = db.relationship('User', backref=db.backref('email_change_requests', lazy='dynamic'))
+    
+    def is_expired(self):
+        """トークンが期限切れかどうか"""
+        return datetime.utcnow() > self.expires_at
+    
+    def generate_token(self):
+        """確認用トークンを生成"""
+        self.token = secrets.token_urlsafe(32)
+        self.expires_at = datetime.utcnow() + timedelta(hours=24)  # 24時間有効
+        return self.token
+    
+    @staticmethod
+    def verify_token(token):
+        """トークンを検証して要求オブジェクトを返す"""
+        request = db.session.execute(
+            select(EmailChangeRequest).where(
+                EmailChangeRequest.token == token,
+                EmailChangeRequest.is_verified == False
+            )
+        ).scalar_one_or_none()
+        
+        if request and not request.is_expired():
+            return request
+        return None

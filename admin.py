@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, redirect, url_for, request, flash, session, current_app, jsonify
 from flask_login import login_required, current_user
-from models import db, User, Article, Category, Comment, SiteSetting, UploadedImage, LoginHistory, SEOAnalysis, article_categories
-from werkzeug.security import generate_password_hash
+from models import db, User, Article, Category, Comment, SiteSetting, UploadedImage, LoginHistory, SEOAnalysis, EmailChangeRequest, article_categories
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_mail import Message
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from sqlalchemy import func, select
@@ -16,7 +17,9 @@ from forms import CategoryForm, ArticleForm, WordPressImportForm, GoogleAnalytic
 # 新しいサービスクラスをインポート
 from article_service import ArticleService, CategoryService, ImageProcessingService, UserService
 
-admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
+# 環境変数で管理画面URLをカスタマイズ可能
+ADMIN_URL_PREFIX = os.environ.get('ADMIN_URL_PREFIX', 'admin')
+admin_bp = Blueprint('admin', __name__, url_prefix=f'/{ADMIN_URL_PREFIX}')
 
 # ユーティリティ関数
 def admin_required(f):
@@ -435,121 +438,41 @@ def process_uploaded_image(image_file, alt_text="", caption="", description=""):
         
         return None, "画像のアップロードに失敗しました。"
 
-# デバッグ用のテスト関数（簡易版）
-@admin_bp.route('/debug/simple')
-def debug_simple():
-    """認証なしでデータベース接続をテスト"""
-    from flask import current_app
-    try:
-        with current_app.app_context():
-            user_count = db.session.execute(select(func.count(User.id))).scalar()
-            article_count = db.session.execute(select(func.count(Article.id))).scalar()
-            category_count = db.session.execute(select(func.count(Category.id))).scalar()
-            
-            return f"""
-            <h2>簡単なデータベーステスト</h2>
-            <p>ユーザー数: {user_count}</p>
-            <p>記事数: {article_count}</p>  
-            <p>カテゴリ数: {category_count}</p>
-            """
-    except Exception as e:
-        import traceback
-        return f"<h2>エラー</h2><pre>{str(e)}\n\n{traceback.format_exc()}</pre>"
-
-# デバッグ用のテンプレートテスト
-@admin_bp.route('/debug/template')
-@admin_required
-def debug_template():
-    """テンプレート描画テスト"""
-    try:
-        # フォールバック時も実際のデータを取得
-        try:
-            comment_count = db.session.execute(select(func.count(Comment.id))).scalar() if hasattr(Comment, 'id') else 0
-            pending_comments = db.session.execute(select(func.count(Comment.id)).where(Comment.is_approved.is_(False))).scalar() if hasattr(Comment, 'is_approved') else 0
-        except:
-            comment_count = 0
-            pending_comments = 0
-            
-        stats = {
-            'user_count': 1,
-            'article_count': 6,
-            'category_count': 2,
-            'comment_count': comment_count
-        }
-        
-        monthly_stats = {
-            'articles_this_month': 6,
-            'users_this_month': 1,
-            'comments_this_month': 0
-        }
-        
-        recent_data = {
-            'recent_articles': [],
-            'pending_comments': pending_comments
-        }
-        
-        return render_template('admin/dashboard.html', 
-                             stats=stats,
-                             monthly_stats=monthly_stats,
-                             recent_data=recent_data,
-                             chart_data=[])
-    except Exception as e:
-        import traceback
-        return f"<h2>テンプレートエラー</h2><pre>{str(e)}\n\n{traceback.format_exc()}</pre>"
-
-@admin_bp.route('/debug/stats')
-@admin_required
-def debug_stats():
-    """統計データのデバッグ"""
-    debug_info = {}
+# デバッグ用ルート（開発環境でのみ登録）
+def register_debug_routes():
+    """開発環境でのみデバッグルートを登録"""
+    import os
     
-    try:
-        # 直接クエリでテスト
-        debug_info['user_count_direct'] = db.session.execute(select(func.count(User.id))).scalar()
-        debug_info['article_count_direct'] = db.session.execute(select(func.count(Article.id))).scalar()
-        debug_info['category_count_direct'] = db.session.execute(select(func.count(Category.id))).scalar()
-        
-        # モデル経由でテスト
-        debug_info['user_count_model'] = db.session.execute(select(func.count(User.id))).scalar()
-        debug_info['article_count_model'] = db.session.execute(select(func.count(Article.id))).scalar()
-        debug_info['category_count_model'] = db.session.execute(select(func.count(Category.id))).scalar()
-        
-        # 実際のデータ一覧
-        debug_info['users'] = [{'id': u.id, 'name': u.name, 'email': u.email} for u in db.session.execute(select(User)).scalars().all()]
-        debug_info['articles'] = [{'id': a.id, 'title': a.title, 'author_id': a.author_id} for a in db.session.execute(select(Article)).scalars().all()]
-        debug_info['categories'] = [{'id': c.id, 'name': c.name, 'slug': c.slug} for c in db.session.execute(select(Category)).scalars().all()]
-        
-        # 記事の状態チェック（エラー回避のため簡略化）
-        articles = db.session.execute(select(Article)).scalars().all()
-        debug_info['article_details'] = []
-        for article in articles:
-            article_info = {
-                'id': article.id,
-                'title': article.title,
-                'created_at': str(article.created_at) if article.created_at else None
-            }
-            
-            # hasattr の使用を避けて try/except で代替
+    if os.environ.get('FLASK_DEBUG', 'false').lower() == 'true':
+        @admin_bp.route('/debug/simple')
+        def debug_simple():
+            """簡易データベーステスト"""
             try:
-                article_info['is_published'] = article.is_published
-                article_info['has_is_published'] = True
-            except AttributeError:
-                article_info['has_is_published'] = False
+                user_count = db.session.execute(select(func.count(User.id))).scalar()
+                article_count = db.session.execute(select(func.count(Article.id))).scalar()
+                category_count = db.session.execute(select(func.count(Category.id))).scalar()
                 
+                return f"""<h2>DB Test</h2>
+                <p>Users: {user_count}</p>
+                <p>Articles: {article_count}</p>
+                <p>Categories: {category_count}</p>"""
+            except Exception as e:
+                return f"<h2>Error</h2><pre>{str(e)}</pre>"
+        
+        @admin_bp.route('/debug/stats')
+        @admin_required
+        def debug_stats():
+            """統計データデバッグ"""
             try:
-                article_info['published_at'] = str(article.published_at) if article.published_at else None
-                article_info['has_published_at'] = True
-            except AttributeError:
-                article_info['has_published_at'] = False
-            
-            debug_info['article_details'].append(article_info)
-        
-        import json
-        return f"<pre>{json.dumps(debug_info, indent=2, ensure_ascii=False)}</pre>"
-        
-    except Exception as e:
-        import traceback
-        return f"<pre>Debug error: {str(e)}\n\nTraceback:\n{traceback.format_exc()}</pre>"
+                debug_info = {
+                    'user_count': db.session.execute(select(func.count(User.id))).scalar(),
+                    'article_count': db.session.execute(select(func.count(Article.id))).scalar(),
+                    'category_count': db.session.execute(select(func.count(Category.id))).scalar()
+                }
+                import json
+                return f"<pre>{json.dumps(debug_info, indent=2, ensure_ascii=False)}</pre>"
+            except Exception as e:
+                return f"<pre>Debug error: {str(e)}</pre>"
 
 # ダッシュボード
 @admin_bp.route('/')
@@ -2847,3 +2770,240 @@ def seo_dashboard():
         current_app.logger.error(f'SEO dashboard error: {e}')
         flash('SEOダッシュボードの読み込みに失敗しました。', 'danger')
         return redirect(url_for('admin.dashboard'))
+
+# === メールアドレス変更機能 ===
+
+@admin_bp.route('/user/<int:user_id>/request_email_change/', methods=['POST'])
+@admin_required
+def request_email_change(user_id):
+    """メールアドレス変更要求"""
+    try:
+        user = db.get_or_404(User, user_id)
+        
+        # 権限チェック（自分自身のアカウントのみ変更可能）
+        if user.id != current_user.id:
+            return jsonify({
+                'success': False, 
+                'message': '自分自身のメールアドレスのみ変更できます。'
+            }), 403
+        
+        # フォームデータ取得
+        current_password = request.form.get('current_password')
+        new_email = request.form.get('new_email')
+        
+        if not current_password or not new_email:
+            return jsonify({
+                'success': False,
+                'message': 'パスワードと新しいメールアドレスを入力してください。'
+            }), 400
+        
+        # パスワード確認
+        if not check_password_hash(user.password_hash, current_password):
+            return jsonify({
+                'success': False,
+                'message': '現在のパスワードが正しくありません。'
+            }), 400
+        
+        # 新しいメールアドレスの重複チェック
+        existing_user = db.session.execute(
+            select(User).where(User.email == new_email)
+        ).scalar_one_or_none()
+        
+        if existing_user:
+            return jsonify({
+                'success': False,
+                'message': 'そのメールアドレスは既に使用されています。'
+            }), 400
+        
+        # 既存の未確認要求を削除
+        db.session.execute(
+            db.delete(EmailChangeRequest).where(
+                EmailChangeRequest.user_id == user.id,
+                EmailChangeRequest.is_verified == False
+            )
+        )
+        
+        # 新しい変更要求を作成
+        change_request = EmailChangeRequest(
+            user_id=user.id,
+            current_email=user.email,
+            new_email=new_email
+        )
+        change_request.generate_token()
+        
+        db.session.add(change_request)
+        db.session.commit()
+        
+        # 確認メール送信
+        send_email_change_confirmation(change_request)
+        
+        return jsonify({
+            'success': True,
+            'message': f'確認メールを {new_email} に送信しました。メール内のリンクをクリックして変更を完了してください（24時間有効）。'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Email change request error: {e}')
+        return jsonify({
+            'success': False,
+            'message': 'システムエラーが発生しました。しばらく後でお試しください。'
+        }), 500
+
+def send_email_change_confirmation(change_request):
+    """メールアドレス変更確認メール送信"""
+    try:
+        # 確認URL生成
+        confirm_url = url_for('confirm_email_change', 
+                            token=change_request.token, 
+                            _external=True)
+        
+        # メール本文作成
+        subject = '【Mini Blog】メールアドレス変更の確認'
+        html_body = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2>🔐 メールアドレス変更の確認</h2>
+            <p>こんにちは、</p>
+            <p>あなたのアカウントのメールアドレス変更要求を受け付けました。</p>
+            
+            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
+                <p><strong>現在のメールアドレス:</strong> {change_request.current_email}</p>
+                <p><strong>新しいメールアドレス:</strong> {change_request.new_email}</p>
+            </div>
+            
+            <p>この変更を完了するには、以下のボタンをクリックしてください：</p>
+            
+            <div style="text-align: center; margin: 30px 0;">
+                <a href="{confirm_url}" 
+                   style="background-color: #007bff; color: white; padding: 12px 30px; 
+                          text-decoration: none; border-radius: 5px; display: inline-block;">
+                    ✅ メールアドレス変更を確認
+                </a>
+            </div>
+            
+            <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <p><strong>⚠️ 重要な注意事項:</strong></p>
+                <ul>
+                    <li>このリンクは24時間後に無効になります</li>
+                    <li>心当たりがない場合は、このメールを無視してください</li>
+                    <li>このメールアドレス変更を要求していない場合は、アカウントのセキュリティを確認してください</li>
+                </ul>
+            </div>
+            
+            <p>リンクがクリックできない場合は、以下のURLをコピーしてブラウザに貼り付けてください：</p>
+            <p style="word-break: break-all; color: #666; font-size: 14px;">{confirm_url}</p>
+            
+            <hr style="margin: 30px 0;">
+            <p style="color: #666; font-size: 12px;">
+                このメールは自動送信されています。返信はできません。<br>
+                ご質問がある場合は、サイト管理者にお問い合わせください。
+            </p>
+        </div>
+        """
+        
+        # 環境に応じたメール送信
+        mail_debug = os.environ.get('MAIL_DEBUG', 'true').lower() == 'true'
+        
+        if mail_debug:
+            # 開発環境：デバッグモード
+            send_debug_email(subject, change_request.new_email, html_body, confirm_url)
+        else:
+            # 本番環境：AWS SES 使用
+            send_ses_email(subject, change_request.new_email, html_body)
+        
+        current_app.logger.info(f'Email change confirmation sent to {change_request.new_email}')
+        
+    except Exception as e:
+        current_app.logger.error(f'Failed to send email change confirmation: {e}')
+        raise
+
+def send_debug_email(subject, recipient, html_body, confirm_url):
+    """開発環境用：デバッグメール送信"""
+    print("\n" + "="*80)
+    print("📧 DEBUG: メール送信")
+    print("="*80)
+    print(f"宛先: {recipient}")
+    print(f"件名: {subject}")
+    print(f"確認URL: {confirm_url}")
+    print("="*80)
+    print("HTML本文:")
+    print(html_body)
+    print("="*80 + "\n")
+    
+    # ファイルにも保存
+    import os
+    from datetime import datetime
+    
+    debug_dir = "debug_emails"
+    if not os.path.exists(debug_dir):
+        os.makedirs(debug_dir)
+    
+    filename = f"{debug_dir}/email_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{subject}</title>
+</head>
+<body>
+    <h1>デバッグメール</h1>
+    <p><strong>宛先:</strong> {recipient}</p>
+    <p><strong>件名:</strong> {subject}</p>
+    <p><strong>確認URL:</strong> <a href="{confirm_url}">{confirm_url}</a></p>
+    <hr>
+    {html_body}
+</body>
+</html>
+        """)
+    
+    print(f"📁 デバッグメールを保存: {filename}")
+
+def send_ses_email(subject, recipient, html_body):
+    """AWS SES を使用したメール送信"""
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+        
+        # AWS 設定
+        aws_region = os.environ.get('AWS_REGION', 'ap-northeast-1')
+        sender = os.environ.get('MAIL_DEFAULT_SENDER')
+        
+        # SES クライアント作成
+        ses_client = boto3.client(
+            'ses',
+            region_name=aws_region,
+            aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
+        )
+        
+        # メール送信
+        response = ses_client.send_email(
+            Destination={
+                'ToAddresses': [recipient],
+            },
+            Message={
+                'Body': {
+                    'Html': {
+                        'Charset': 'UTF-8',
+                        'Data': html_body,
+                    },
+                },
+                'Subject': {
+                    'Charset': 'UTF-8',
+                    'Data': subject,
+                },
+            },
+            Source=sender,
+        )
+        
+        current_app.logger.info(f'SES email sent successfully. MessageId: {response["MessageId"]}')
+        return True
+        
+    except ClientError as e:
+        current_app.logger.error(f'SES send email error: {e.response["Error"]["Message"]}')
+        raise
+    except Exception as e:
+        current_app.logger.error(f'SES send email unexpected error: {e}')
+        raise
