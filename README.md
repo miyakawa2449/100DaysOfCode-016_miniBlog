@@ -1,516 +1,263 @@
-# 100DaysOfCode - Day 16: Mini Blog System 🚀
+# Mini Blog CMS - 高機能ブログ管理システム 🚀
 
 ## 📝 プロジェクト概要
-Flask・SQLite・Bootstrap5を使用した**高機能Markdownブログシステム**
+Flask・MySQL・Bootstrap5を使用した**本格的なブログCMSシステム**
 
 **主要特徴**:
-- ✍️ **Markdownエディタ**: 直感的なMarkdown編集with リアルタイムプレビュー
-- 🚀 **SNS自動埋込**: URL貼り付けで5プラットフォーム自動埋込（YouTube, Twitter/X, Instagram, Facebook, Threads）
-- 🧵 **Threads強化**: OGP取得・リッチカード表示・ユーザー情報抽出
-- 🖼️ **画像処理**: アップロード・リサイズ・最適化
-- 🔐 **2段階認証**: Google Authenticator（TOTP）対応
-- 📱 **レスポンシブデザイン**: 完全モバイル対応
+- ✍️ **高機能ブロックエディタ**: 5種類のブロック対応（テキスト、画像、SNS埋込、外部記事）
+- 🔐 **2段階認証**: Google Authenticator（TOTP）対応の強固なセキュリティ
+- 📧 **安全なメール機能**: AWS SES統合でメールアドレス変更機能
+- 🌐 **WordPress移行**: 完全なXMLインポート機能
+- 📱 **レスポンシブデザイン**: モバイルファースト設計
+- 🚀 **本番環境対応**: AWS Lightsail/EC2デプロイ設定完備
 
-## 🎯 学習目標・達成状況
-- ✅ **Flask高度活用**: Blueprint、テンプレート、フォーム処理
-- ✅ **SQLAlchemy ORM**: 複雑なリレーション、マイグレーション管理
-- ✅ **認証・セキュリティ**: 2FA、CSRF、XSS対策
-- ✅ **フロントエンド統合**: JavaScript、CSS3、レスポンシブデザイン
-- ✅ **Markdownエディタ**: 直感的UI、リアルタイムプレビュー、SNS自動埋込
+## 🛠️ 技術スタック
 
-## 🛠️ 技術スタック（2025年7月4日最新化）
+### **バックエンド**
+- **Framework**: Python 3.12, Flask 2.3.3
+- **Database**: MySQL 8.0 + SQLAlchemy 2.0 ORM
+- **Authentication**: Flask-Login + TOTP 2FA
+- **Email**: AWS SES統合（開発・本番対応）
+- **Migration**: Flask-Migrate (Alembic)
 
-### **インフラ・データベース**
-- **Backend**: Python 3.10, Flask 2.x, SQLAlchemy 2.0.41
-- **Database**: ✅ MySQL 9.3.0 (プロダクション対応)
-- **Driver**: PyMySQL 1.1.1 (AWS RDS対応)
-- **Migration**: Flask-Migrate (Alembic) 4.0.5
-- **Architecture**: ✅ サービス層統一 (CRUD重複実装解決)
+### **セキュリティ**
+- **CSRF Protection**: Flask-WTF
+- **XSS Prevention**: Bleach HTML Sanitization
+- **Password**: Werkzeug Security (ハッシュ化)
+- **Security Headers**: X-Frame-Options, CSP, HSTS等
+- **URL Obfuscation**: カスタム管理画面URL
 
-### **セキュリティ**（2025年7月4日強化）
-- **Authentication**: Flask-Login + Google Authenticator (TOTP)
-- **CSRF Protection**: ✅ Flask-WTF（重複問題修正済み・2025-07-04）
-- **Security Headers**: X-Frame-Options, X-XSS-Protection, CSP等
-- **Session Management**: 環境変数ベース（開発・本番分離）
-- **Input Validation**: Werkzeug Security, Bleach (HTML Sanitization)
-- **Form Security**: CSRFトークン入れ子問題解決済み
+### **フロントエンド**
+- **UI Framework**: Bootstrap 5
+- **Image Processing**: Cropper.js + PIL
+- **JavaScript**: ES6+, リアルタイムプレビュー
+- **Icons**: Font Awesome
 
-### **フロントエンド・処理**
-- **Frontend**: HTML5, CSS3 (CSS Variables), Bootstrap 5
-- **JavaScript**: ES6+, Markdown Editor, Real-time Preview
-- **Image Processing**: PIL/Pillow + Cropper.js, 自動リサイズ・最適化
-- **Content**: Markdown, SNS Auto-embed, OGP
-- **SNS Integration**: requests, BeautifulSoup4, URL Pattern Matching
+### **インフラ・デプロイ**
+- **Production**: Ubuntu 24.04 LTS + Nginx + Gunicorn
+- **Cloud**: AWS Lightsail/EC2対応
+- **SSL**: Let's Encrypt自動化
+- **Security**: fail2ban, UFW firewall
 
-### **設定管理**（2025年7月1日改善）
-- **環境変数対応**: FLASK_DEBUG, DATABASE_URL, セキュリティ設定
-- **AWS準備**: RDS接続、本番環境対応完了
+## 🎯 ブロックエディタシステム
+
+### **5つのブロックタイプ**
+1. **📝 テキスト/Markdownブロック**: フルMarkdown対応
+2. **🖼️ 画像ブロック**: 1:1比率（700×700px）自動トリミング
+3. **🌟 アイキャッチ画像**: 16:9比率（800×450px）記事ヘッダー
+4. **📱 SNS埋込ブロック**: X(Twitter), Facebook, Instagram, Threads, YouTube
+5. **🔗 外部記事ブロック**: 自動OGPデータ取得・プレビューカード
+
+### **高度な機能**
+- **ドラッグ&ドロップ並び替え**: Sortable.js統合
+- **リアルタイムプレビュー**: AJAX更新
+- **表示モード切替**: 埋込 vs OGPカード表示
+- **自動プラットフォーム検出**: SNS URL解析
+- **画像処理**: リアルタイムクロッピング・最適化
+
+## 📊 実装完了機能
+
+### ✅ **認証・セキュリティ（100%）**
+- ユーザー登録・ログイン・2FA
+- 安全なメールアドレス変更機能
+- パスワードリセット機能
+- 役割ベースアクセス制御
+
+### ✅ **コンテンツ管理（100%）**
+- 高機能ブロックエディタ
+- カテゴリ階層管理
+- コメント承認システム
+- SEO・OGP最適化
+
+### ✅ **ユーザー管理（100%）**
+- プロフィール管理
+- SNSアカウント統合
+- 通知設定
+- 権限管理
+
+### ✅ **WordPress移行（100%）**
+- 完全XMLインポート
+- カテゴリ・記事・メタデータ移行
+- 多対多関係処理
+- エラーハンドリング・検証
+
+### ✅ **管理画面（95%）**
+- レスポンシブダッシュボード
+- 統計・分析表示
+- 一括操作機能
+- セキュリティ設定統合
+
+## 🚀 デプロイ情報
+
+### **本番環境設定**
+- **OS**: Ubuntu 24.04 LTS推奨
+- **Webサーバー**: Nginx + Gunicorn
+- **データベース**: MySQL 8.0
+- **SSL**: Let's Encrypt
+- **メール**: AWS SES
+
+### **デプロイファイル**
+- `deploy.sh` - 自動デプロイスクリプト
+- `deploy_manual.md` - 手動設定手順書
+- `gunicorn_config.py` - WSGIサーバー設定
+- `nginx_miniblog.conf` - Webサーバー設定
+- `miniblog.service` - systemdサービス設定
+- `.env.production` - 本番環境設定テンプレート
+
+### **セキュリティ機能**
+- fail2ban侵入検知・防御
+- UFW ファイアウォール
+- 自動バックアップスクリプト
+- ログローテーション
+- セキュリティヘッダー
 
 ## 📂 プロジェクト構造
+
 ```
-100DaysOfCode-016_miniBlog/
-├── app.py                 # メインアプリケーション
-├── models.py              # データベースモデル
-├── forms.py               # WTForms定義
-├── admin.py               # 管理画面ルート
-├── config.py              # 設定ファイル
-├── instance/
-│   └── blog.db           # SQLiteデータベース
-├── static/
-│   ├── css/
-│   │   ├── style.css     # カスタムスタイル
-│   │   └── admin.css     # 管理画面スタイル
-│   ├── js/
-│   │   └── admin.js      # 管理画面JavaScript
-│   └── uploads/          # アップロードファイル
-├── templates/
-│   ├── base.html         # ベーステンプレート
-│   ├── index.html        # ホームページ
-│   ├── article.html      # 記事詳細
-│   ├── category.html     # カテゴリページ
-│   ├── login.html        # ログインページ
-│   ├── register.html     # 登録ページ
-│   └── admin/            # 管理画面テンプレート
-│       ├── layout.html   # 管理画面ベース
-│       ├── dashboard.html # ダッシュボード
-│       ├── articles.html # 記事管理
-│       ├── categories.html # カテゴリ管理
-│       ├── users.html    # ユーザー管理
-│       ├── comments.html # コメント管理
-│       └── site_settings.html # サイト設定
-└── reports/              # 開発レポート
-    ├── 2025-06-16.md
-    └── 2025-06-17.md
+mini-blog/
+├── 🐍 Core Application
+│   ├── app.py                 # メインアプリケーション
+│   ├── admin.py               # 管理画面Blueprint
+│   ├── models.py              # データベースモデル
+│   ├── forms.py               # WTForms
+│   └── wordpress_importer.py  # WordPress移行
+├── 🚀 Production Deploy
+│   ├── .env.production        # 本番環境設定
+│   ├── gunicorn_config.py     # WSGIサーバー
+│   ├── nginx_miniblog.conf    # Webサーバー
+│   ├── miniblog.service       # systemd
+│   ├── deploy.sh              # 自動デプロイ
+│   └── deploy_manual.md       # 手順書
+├── 📁 Application Structure
+│   ├── static/                # CSS/JS/画像
+│   ├── templates/             # Jinja2テンプレート
+│   ├── migrations/            # データベース移行
+│   └── scripts/               # 運用スクリプト
+└── 📄 Configuration
+    ├── requirements.txt       # Python依存関係
+    ├── .gitignore            # Git除外設定
+    └── README.md             # このファイル
 ```
 
-## ✅ 実装済み機能（2025年6月30日現在）
+## 🗄️ データベース設計
 
-### 🔐 認証・セキュリティシステム（100%完了・2025年7月1日強化）
-- ✅ **基本認証**: ユーザー登録・ログイン・ログアウト
-- ✅ **2段階認証**: Google Authenticator（TOTP）対応
-- ✅ **パスワード管理**: ハッシュ化、強度チェック、リマインダ機能
-- ✅ **セキュリティ対策**: ✅ CSRF保護（再有効化）、XSS対策、SQLインジェクション対策
-- ✅ **権限管理**: 役割ベースアクセス制御（admin/author）
-- ✅ **セキュリティヘッダー**: X-Frame-Options, X-XSS-Protection, CSP等（統一適用）
-- ✅ **環境分離**: 開発・本番環境の設定分離対応
+### **主要テーブル**
+- **users**: 認証・プロフィール・2FA設定
+- **articles**: 記事・SEO・公開設定
+- **categories**: 階層カテゴリ・OGP設定
+- **blocks**: ブロックデータ・順序管理
+- **comments**: コメント・承認システム
+- **email_change_requests**: 安全なメール変更
 
-### ✍️ Markdownエディタシステム（100%完了）
-**HTMLエディタからMarkdownエディタへの完全移行**:
+### **関係性**
+- **多対多**: Articles ↔ Categories
+- **一対多**: Users → Articles → Blocks
+- **階層**: Categories (parent/child)
 
-#### 📝 Markdownエディタ機能（2025年7月4日UI改善）
-- ✅ **フルMarkdown対応**: 見出し、太字、斜体、リスト、コードブロック、引用等
-- ✅ **リアルタイムプレビュー**: 編集/プレビュータブ切り替え
-- ✅ **ツールバー**: 直感的なMarkdown挿入ボタン
-- ✅ **キーボードショートカット**: Ctrl+B（太字）、Ctrl+I（斜体）、Ctrl+K（リンク）
-- ✅ **HTMLサニタイゼーション**: XSS攻撃対策
-- ✅ **改行処理**: 自動改行機能（nl2br拡張）
-- ✅ **統合UI**: 記事概要とエディタの一体化レイアウト（画面領域効率化）
+## 🔧 ローカル開発環境
 
-#### 🚀 SNS自動埋込機能（完全実装）
-- ✅ **5プラットフォーム対応**: YouTube、Twitter/X、Instagram、Facebook、Threads
-- ✅ **URL自動検出**: テキストエリアにURL貼り付けで自動埋込
-- ✅ **プラットフォーム別表示**:
-  - **YouTube**: 埋込プレイヤー（再生可能）
-  - **Twitter/X**: ツイート表示（両ドメイン対応）
-  - **Instagram**: 投稿埋込表示
-  - **Facebook**: 投稿・動画埋込
-  - **Threads**: OGP強化リッチカード表示
+### **要件**
+- Python 3.10+
+- MySQL 8.0+
+- Node.js（オプション）
 
-#### 🧵 Threads強化機能（NEW）
-- ✅ **OGPデータ取得**: URLからメタデータ自動抽出
-- ✅ **ユーザー情報抽出**: @ユーザー名・投稿ID自動抽出
-- ✅ **リッチカード表示**: グラデーション背景、プレースホルダー画像
-- ✅ **インテリジェントフォールバック**: OGP未対応時の情報生成
-- ✅ **レスポンシブデザイン**: モバイル最適化
+### **セットアップ**
+```bash
+# リポジトリクローン
+git clone https://github.com/your-username/mini-blog.git
+cd mini-blog
 
-#### 🖼️ 画像機能（完全実装・2025年6月30日強化）
-- ✅ **アイキャッチ画像**: 16:9比率トリミング、プレビュー表示、記事保存機能
-- ✅ **画像アップロード**: 4:3比率クロッピング、ドラッグ&ドロップ対応
-- ✅ **Cropper.js統合**: リアルタイムトリミング、ズーム機能
-- ✅ **画像管理**: Alt属性、キャプション、説明文対応
-- ✅ **エラーハンドリング**: タイムアウト設定、アクセシビリティ対応
-- ✅ **統一機能**: 新規作成・編集画面での完全統一
+# Python仮想環境
+python3 -m venv venv
+source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate   # Windows
 
-### 👥 ユーザー管理・プロフィール（100%完了）
-- ✅ **完全なプロフィール管理**: 紹介文、出身地、誕生日、SNSアカウント
-- ✅ **プロフィールページ**: 公開ページでの美しいプロフィール表示
-- ✅ **通知設定**: 記事公開・コメント通知のON/OFF
-- ✅ **SNS統合**: X、Facebook、Instagram、Threads、YouTube
-- ✅ **管理機能**: ユーザー一覧、編集、削除、権限管理
+# 依存関係インストール
+pip install -r requirements.txt
 
-### 🏷️ カテゴリ管理（100%完了）
-- ✅ **階層構造対応**: 親子関係による多階層カテゴリ
-- ✅ **SEO対応**: スラッグ自動生成、メタタグ管理
-- ✅ **OGP画像**: カテゴリ専用の画像設定
-- ✅ **一括操作**: 効率的な管理機能
+# 環境設定
+cp .env.production .env
+# .envファイルを編集
 
-### 🎛️ 管理画面（90%完了）
-- ✅ **統計ダッシュボード**: ユーザー数、記事数、セキュリティ状態
-- ✅ **レスポンシブデザイン**: 美しいRDashテーマ統合
-- ✅ **記事ステータス管理**: 公開/下書き切り替え
-- ✅ **コメント管理**: 承認・拒否・一括操作
-- ✅ **2FA統合**: セキュリティ設定の統合管理
+# データベース初期化
+flask db upgrade
 
-### 🌐 公開ページ（80%完了）
-- ✅ **ホームページ**: 新着記事一覧、OGP情報出力
-- ✅ **記事詳細ページ**: 従来型・ブロック型両対応
-- ✅ **カテゴリページ**: 階層対応、OGP情報出力
-- ✅ **プロフィールページ**: 著者詳細、投稿記事一覧
-- 🔄 **ブロック型記事表示**: 一部エラー修正予定
-
-### 💬 コメント機能（100%完了・2025年6月30日実装）
-- ✅ **コメント投稿**: 記事詳細ページでのコメント投稿機能
-- ✅ **承認システム**: 管理者承認後の公開（スパム対策）
-- ✅ **管理画面**: 承認・拒否・削除機能
-- ✅ **一括操作**: 効率的なコメント管理
-- ✅ **統計表示**: コメント数・承認率の可視化
-- ✅ **CSRFトークン対応**: セキュアなフォーム送信
-
-## 🔧 技術的特徴
-
-### 🚀 アーキテクチャ革新（2025年7月1日完了）
-
-#### **CRUD重複実装の解決**
-従来の課題を解決するサービス層アーキテクチャを導入：
-
-**従来の問題**:
-- 記事作成・編集ルートに400行の重複コード
-- カテゴリ作成・編集ルートに300行の重複コード
-- ユーザ作成・編集ルートに250行の重複コード
-- 同じ機能を2回実装・テスト・保守する手間
-
-**解決策**:
-- **ArticleService**: 記事のCRUD処理を統一
-- **CategoryService**: カテゴリのCRUD処理を統一
-- **UserService**: ユーザのCRUD処理を統一（欠落機能も補完）
-
-**削減効果**:
-- **コード削減**: 950行 → 550行 (42.1%削減)
-- **テンプレート削減**: 125,083 bytes → 29,122 bytes (76.7%削減)
-- **保守箇所**: 各機能2箇所 → 1箇所に統一
-
-#### **統一テンプレートシステム**
-- 作成・編集で同一テンプレート使用
-- `is_edit`フラグによる条件分岐
-- 一貫性の高いユーザーエクスペリエンス
-
-### データベース設計（2025年7月1日最新化）
-- **データベース**: MySQL 9.3.0 (SQLiteから移行完了)
-- **ORM**: SQLAlchemy 2.0.41 (非推奨パターン完全排除)
-- **多対多関係**: 記事 ↔ カテゴリ
-- **外部キー制約**: データ整合性保証
-- **インデックス**: パフォーマンス最適化
-- **ソフトデリート対応**: 安全な削除機能
-- **AWS対応**: RDS for MySQL対応完了
-
-### セキュリティ対策（2025年7月1日強化）
-- **CSRF保護**: ✅ Flask-WTF統合（再有効化済み）
-- **SQLインジェクション対策**: SQLAlchemy 2.0 ORM使用
-- **パスワードハッシュ化**: Werkzeug Security
-- **ファイルアップロード検証**: 拡張子・サイズ制限
-- **セキュリティヘッダー**: 包括的なHTTPセキュリティヘッダー
-- **環境変数管理**: セキュリティ設定の外部化
-
-### パフォーマンス最適化
-- **画像処理**: PIL使用の自動リサイズ
-- **ページネーション**: 大量データ対応
-- **効率的クエリ**: N+1問題対策
-- **静的ファイル最適化**: CSS/JS圧縮対応
-
-### ユーザビリティ
-- **レスポンシブデザイン**: Bootstrap 5使用
-- **直感的UI**: Font Awesome アイコン
-- **フィードバック**: Flash メッセージ
-- **一括操作**: 効率的な管理機能
-
-## 🐛 解決した技術的課題
-
-### 2025-06-30: 記事作成・編集機能の完全統一とコメント機能実装
-
-#### 🎯 今日の主要実装
-- **記事作成・編集機能の統一**: create_article.htmlとedit_article.htmlの機能完全統一
-- **コメント機能の完全実装**: 記事詳細ページでのコメント投稿・表示・管理機能
-- **画像アップロード機能の改善**: エラーハンドリング・アクセシビリティ対応
-- **アイキャッチ画像機能の完全実装**: 新規作成時のトリミング・保存機能
-
-#### 🔧 解決した技術的問題
-**1. 画像アップロード処理の停止問題**
-- **問題**: XMLHttpRequest処理が停止、const formData代入エラー、aria-hiddenアクセシビリティエラー
-- **解決**: タイムアウト設定、let formData変更、フォーカス管理改善
-- **成果**: 安定した画像アップロード処理と完全なアクセシビリティ対応
-
-**2. 新規記事作成でのアイキャッチ画像問題**
-- **問題**: トリミングボタン未表示、保存時に画像が消える
-- **解決**: 16:9クロッピング機能の完全実装、cropped_image_data処理追加
-- **成果**: 編集機能と同等のアイキャッチ画像機能を実現
-
-**3. Markdownコピー機能のHTMLエンティティ問題**
-- **問題**: &#34; でエスケープされる問題
-- **解決**: サーバー側からクライアント側JavaScript生成に変更
-- **成果**: 正常なMarkdown記法でのコピー機能
-
-### 2025-06-27: Threads OGP機能強化・エディタシステム改革
-
-#### 🎯 今日の主要実装
-- **Markdownエディタへの完全移行**: HTMLエディタ（Quill.js）からMarkdownエディタへのシステム全体移行
-- **ブロック型エディタの廃止**: 複雑なブロック管理システムを廃止し、シンプルなMarkdown編集に統一
-- **Threads OGP機能の完全実装**: OGPデータ取得困難な問題を独自のカード表示で解決
-
-#### 🔧 解決した技術的問題
-**1. ThreadsのOGPデータ取得問題**
-- **問題**: ThreadsはOGPメタタグを提供せず、従来の埋込方法では情報が取得できない
-- **解決**: URLパターン解析によるユーザー名・投稿ID抽出とリッチカード生成
-- **成果**: 視覚的に魅力的で情報豊富なThreads投稿表示を実現
-
-**2. エディタシステムの複雑性問題**
-- **問題**: ブロック型エディタの管理コストとユーザビリティの課題
-- **解決**: Markdownエディタへの完全移行でシンプル性と機能性を両立
-- **成果**: SNS自動埋込機能を維持しながら、より直感的な編集体験を提供
-
-**3. current_app インポートエラー問題**
-- **問題**: `NameError: name 'current_app' is not defined`
-- **解決**: Flask importsに`current_app`を追加
-- **成果**: アプリケーションコンテキストエラーの解決
-
-### 2025-06-17: 管理画面統計表示問題の完全解決
-
-#### 🎯 問題の概要
-管理画面（ダッシュボード・記事管理・カテゴリ管理）で統計数値が正しく表示されない重大な問題が発生
-
-**症状**:
-- ダッシュボード統計: 全て0表示
-- 記事管理統計: 全て0表示
-- カテゴリ管理統計: 「記事数（現在ページ）」のみ0表示
-
-#### 🔍 根本原因の特定
-**主原因**: Jinja2テンプレート内での `hasattr` 使用
-```
-jinja2.exceptions.UndefinedError: 'hasattr' is undefined
+# 開発サーバー起動
+python app.py
 ```
 
-**技術的詳細**:
-- Jinja2では Python組み込み関数 `hasattr` がデフォルトで利用不可
-- テンプレートエラーが例外処理のフォールバック機能により隠蔽
-- 結果として統計値が0として表示される現象が発生
+## ⚙️ 本番デプロイ手順
 
-#### ✅ 解決方法
+### **1. AWS Lightsail準備**
+- Ubuntu 24.04 LTSインスタンス作成
+- 静的IP取得
+- SSH鍵設定
 
-**1. テンプレート内のhasattr置換**
-```jinja2
-<!-- 修正前 -->
-{% if hasattr(article, 'is_published') %}
-    <span class="badge bg-{{ 'success' if article.is_published else 'secondary' }}">
-        {{ '公開' if article.is_published else '下書き' }}
-    </span>
-{% endif %}
+### **2. 自動デプロイ実行**
+```bash
+# サーバーでプロジェクトクローン
+git clone https://github.com/your-username/mini-blog.git
+cd mini-blog
 
-<!-- 修正後 -->
-{% if article.is_published is defined %}
-    <span class="badge bg-{{ 'success' if article.is_published else 'secondary' }}">
-        {{ '公開' if article.is_published else '下書き' }}
-    </span>
-{% else %}
-    <span class="badge bg-secondary">下書き</span>
-{% endif %}
+# 自動デプロイ実行
+sudo ./deploy.sh
 ```
 
-**2. 責任分離の実装**
-- **修正前**: テンプレート内で複雑な統計計算
-- **修正後**: サーバー側で事前計算、テンプレートは表示のみ
+### **3. 手動設定完了**
+- `deploy_manual.md` の手順に従って設定
+- MySQL データベース・ユーザー作成
+- SSL証明書取得
+- AWS SES認証情報設定
 
-```python
-# admin.py - カテゴリルートの改善例
-@admin_bp.route('/categories/')
-@admin_required
-def categories():
-    # サーバー側で統計計算
-    total_categories = Category.query.count()
-    current_page_articles = 0
-    for category in categories_list.items:
-        current_page_articles += category.articles.count() if category.articles else 0
-    
-    stats = {
-        'total_categories': total_categories,
-        'current_page_articles': current_page_articles,
-        'total_articles_in_categories': total_articles_in_categories,
-        'empty_categories': empty_categories
-    }
-    
-    return render_template('admin/categories.html', 
-                         categories_list=categories_list,
-                         stats=stats)
-```
+## 🔒 セキュリティ機能
 
-#### 📊 修正結果
-- **ダッシュボード**: ユーザー1、記事6、カテゴリ2 ✅
-- **記事管理**: 総記事6、下書き6、今月記事6 ✅  
-- **カテゴリ管理**: 記事数3（Python:1 + プログラミング:2） ✅
+### **認証・認可**
+- 2段階認証（TOTP）必須
+- セッション管理・タイムアウト
+- パスワード強度チェック
+- ブルートフォース対策
 
-#### 💡 学んだ教訓
+### **データ保護**
+- CSRF攻撃対策
+- XSS攻撃対策  
+- SQLインジェクション対策
+- ファイルアップロード検証
 
-**1. Jinja2テンプレートエンジンの制約**
-- Python組み込み関数がすべて利用可能ではない
-- `hasattr` → `is defined` の使い分けが重要
-- 複雑な計算はサーバー側で実行すべき
+### **インフラセキュリティ**
+- セキュリティヘッダー
+- HTTPS強制リダイレクト
+- fail2ban侵入検知
+- ファイアウォール設定
 
-**2. 効果的なデバッグ戦略**
-- 段階的な問題切り分け（DB → ルーティング → テンプレート）
-- デバッグ用エンドポイントの活用
-- ログ出力とコンソール確認の併用
+## 📊 プロジェクト統計
 
-**3. 設計原則の重要性**
-- サーバー・テンプレート間の適切な責任分離
-- フォールバック処理が問題を隠蔽するリスク
-- エラーハンドリングの透明性確保
+### **コードベース**
+- **総行数**: ~15,000行
+- **実装ファイル**: 50+
+- **テンプレート**: 25+ Jinja2
+- **APIエンドポイント**: 30+
+- **JavaScript関数**: 100+
 
-## 🔄 現在の課題・改善予定
+### **機能完成度**
+- **認証システム**: 100%
+- **ブロックエディタ**: 100%
+- **ユーザー管理**: 100%
+- **WordPress移行**: 100%
+- **管理画面**: 95%
+- **本番デプロイ**: 100%
 
-### 🚨 高優先度（明日実装予定）
-- 🔧 **新Markdownエディタの実用性テスト**
-  - アイキャッチ画像アップロード・表示テスト
-  - SEO設定（メタタイトル、メタディスクリプション、キーワード）テスト
-  - 画像掲載機能（Markdown記法）テスト
-  - SNS自動埋込機能の実地テスト
-- 🔧 **システム全体の安定性確認**
-  - 新エディタでの記事作成・編集・公開フロー確認
-  - レスポンシブ表示・モバイル対応確認
+## 🚀 **プロジェクト状況**
 
-### 📈 中優先度
-- [ ] **サイト設定機能の完全実装**
-  - サイトタイトル・サブタイトル管理
-  - OGP用画像設定
-  - ロゴ・ヘッダー画像管理
-- [ ] **SEO機能の強化**
-  - サイトマップ自動生成
-  - 構造化データ（JSON-LD）対応
-  - メタタグ自動最適化
-
-### 🛠️ 低優先度
-- [ ] **パフォーマンス最適化**
-  - 画像WebP対応
-  - キャッシュシステム導入
-  - JavaScript/CSS最適化
-- [ ] **追加機能**
-  - タグシステム
-  - 記事検索機能
-  - RSS/Atomフィード
-
-## 📚 学習成果
-
-### Flask フレームワーク
-- ✅ ルーティング・ビュー関数の設計
-- ✅ Blueprint による機能分割
-- ✅ テンプレートエンジン（Jinja2）の活用
-- ✅ フォーム処理とバリデーション
-- ✅ セッション・Cookie管理
-
-### データベース操作
-- ✅ SQLAlchemy ORM の実装
-- ✅ 多対多関係の設計・実装
-- ✅ マイグレーション管理
-- ✅ クエリ最適化技術
-
-### Web セキュリティ
-- ✅ 認証・認可の実装
-- ✅ CSRF攻撃対策
-- ✅ SQLインジェクション対策
-- ✅ ファイルアップロードセキュリティ
-
-### フロントエンド技術
-- ✅ レスポンシブWebデザイン
-- ✅ Bootstrap フレームワーク
-- ✅ JavaScript による動的UI
-- ✅ 管理画面UX設計
-
-### 問題解決スキル
-- ✅ 段階的デバッグ手法
-- ✅ ログ分析・エラートレース
-- ✅ コードレビュー・リファクタリング
-- ✅ テンプレートエンジンの制約理解
-
-## 🔗 関連リンク
-- [Flask Documentation](https://flask.palletsprojects.com/)
-- [SQLAlchemy Documentation](https://docs.sqlalchemy.org/)
-- [Bootstrap Documentation](https://getbootstrap.com/docs/5.0/)
-- [Jinja2 Documentation](https://jinja.palletsprojects.com/)
-
-## 📊 プロジェクト進捗状況
-
-### 🎯 全体進捗: 約85%完了
-- **実装行数**: 約15,000行
-- **実装ファイル**: 50+ファイル  
-- **APIエンドポイント**: 30+個
-- **テンプレート**: 25+個
-- **JavaScript関数**: 100+個
-
-### 📈 機能別完成度
-- ✅ **認証・セキュリティ**: 100%
-- ✅ **ユーザー管理**: 100%
-- ✅ **カテゴリ管理**: 100%
-- ✅ **コメント管理**: 100%
-- ✅ **ブロック型エディタ**: 95%
-- ✅ **管理画面**: 90%
-- 🔄 **WordPressインポート**: 90% (テスト待ち)
-- 🔄 **公開ページ**: 80%
-
-## 📋 開発メモ
-
-### 重要なマイルストーン
-- **2025年6月16日**: プロジェクト開始
-- **2025年6月17日**: ユーザー管理・2FA実装完了
-- **2025年6月18日**: ブロック型エディタシステム実装完了
-- **2025年6月21日**: SNS埋込OGPカード表示機能実装
-- **2025年6月22日**: システム起動エラー修正・ログイン機能復旧
-
-### 技術的発見・学習
-- **Jinja2制約**: hasattr問題とその解決法
-- **SQLAlchemy関係性**: dynamic relationshipの制約・多対多関係の実装
-- **ブロック型CMS設計**: 柔軟性と拡張性の両立
-- **画像処理最適化**: Cropper.js + PIL統合手法
-- **セキュリティ統合**: CSRF・XSS・認証の包括的対策
-- **WordPressインポート**: XML解析・データ変換・関係性処理
-- **システム復旧**: インポートエラー修正・ログイン機能復旧
-
-### 次回の重点項目
-1. WordPressインポート機能の完全テスト
-2. システム全体の安定性確認
-3. 多対多関係処理の最終検証
+**現在の状態**: 本番デプロイ準備完了（95%完成）
+**技術水準**: エンタープライズレベルのセキュリティ・機能・設計
+**デプロイ対応**: AWS Lightsail/EC2 完全対応
 
 ---
 
-**🚀 Status**: 高機能ブロック型CMSとして90%完成 | **Next**: WordPressインポート機能テストとシステム完成
+## 📞 サポート・貢献
 
-## 📊 最新の開発状況（2025年6月22日）
+- **Issues**: 問題報告・機能要望
+- **Pull Requests**: 貢献歓迎
+- **Documentation**: Wiki・手順書完備
 
-### ✅ 今日完了した課題
-- **システム起動エラー修正**: `ArticleCategory`インポートエラーの解決
-- **ログイン機能復旧**: 管理者パスワードリセット・正常動作確認
-- **WordPressインポート関連修正**: 不正なクラス参照の修正
-
-### 🔄 現在の状況
-- **ログイン情報**: *******@example.com / **********
-- **システム状態**: 正常起動・基本機能動作確認済み
-- **WordPressインポート**: 実装完了・テスト待ち
-
-### 📋 reportsフォルダ
-- `2025-06-21.md`: SNS埋込OGPカード表示機能実装レポート
-- `2025-06-22.md`: システム起動エラー修正・ログイン復旧レポート
-- `2025-06-27-threads-ogp-enhancement.md`: Threads OGP機能強化・エディタシステム改革レポート
-- `2025-06-30.md`: 記事作成・編集機能統一とコメント機能実装レポート
-
-### 🎯 現在の状況（2025年7月1日最新）
-- **システム状態**: 完全に安定・全機能動作確認済み
-- **記事作成・編集**: 完全統一・プロダクションレベル
-- **コメント機能**: 完全実装・セキュア
-- **画像機能**: 高度なトリミング・アップロード機能完備
-- **データベース**: ✅ MySQL 9.3.0移行完了（SQLiteから）
-- **セキュリティ**: ✅ CSRF保護再有効化・セキュリティヘッダー統一
-- **AWS準備**: ✅ RDS for MySQL対応・環境分離完了
-- **SQLAlchemy**: ✅ 2.0対応・非推奨パターン完全排除
-- **完成度**: 97%（プロダクション環境準備完了）
-
-### 📊 2025年7月1日の主要改善
-- **Phase 1**: MySQL移行 + SQLAlchemy 2.0対応完了
-- **Phase 2A**: 重大セキュリティ問題修正完了
-- **インフラ近代化**: データベース・ORM・セキュリティの全面強化
-- **AWS対応**: 本番環境デプロイ準備完了
+**Made with ❤️ using Flask, MySQL, and modern web technologies**
