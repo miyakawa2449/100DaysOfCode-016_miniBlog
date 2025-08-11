@@ -139,6 +139,8 @@ class Article(db.Model):
         back_populates='articles'
     )
     
+    # コメントとのリレーション（CASCADE削除対応）
+    comments = db.relationship('Comment', back_populates='article', lazy='dynamic', cascade='all, delete-orphan')
     
     def get_text_content(self):
         """記事のテキストコンテンツを取得（検索用）"""
@@ -179,7 +181,7 @@ class Category(db.Model):
 class Comment(db.Model):
     __tablename__ = 'comments'
     id = db.Column(db.Integer, primary_key=True)
-    article_id = db.Column(db.Integer, db.ForeignKey('articles.id'), nullable=False)
+    article_id = db.Column(db.Integer, db.ForeignKey('articles.id', ondelete='CASCADE'), nullable=False)
     author_name = db.Column(db.String(100), nullable=False)
     author_email = db.Column(db.String(255), nullable=False)
     author_website = db.Column(db.String(255), nullable=True)
@@ -191,8 +193,8 @@ class Comment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # リレーションシップ（パフォーマンス最適化）
-    article = db.relationship('Article', backref=db.backref('comments', lazy='selectin'))
+    # リレーションシップ（パフォーマンス最適化） - CASCADE削除対応
+    article = db.relationship('Article', back_populates='comments')
     parent = db.relationship('Comment', remote_side=[id], backref=db.backref('replies', lazy='selectin'))
     
     def __repr__(self):
@@ -370,15 +372,15 @@ class SEOAnalysis(db.Model):
     __tablename__ = 'seo_analysis'
     
     id = db.Column(db.Integer, primary_key=True)
-    article_id = db.Column(db.Integer, db.ForeignKey('articles.id'), nullable=False)
+    article_id = db.Column(db.Integer, db.ForeignKey('articles.id', ondelete='CASCADE'), nullable=False)
     analysis_type = db.Column(db.String(50), nullable=False)  # 'llmo', 'aio', 'traditional'
     analysis_data = db.Column(db.Text, nullable=False)  # JSON形式の分析結果
     score = db.Column(db.Float, nullable=False)  # 総合スコア
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # リレーションシップ
-    article = db.relationship('Article', backref=db.backref('seo_analyses', lazy='select'))
+    # リレーションシップ - CASCADE削除対応
+    article = db.relationship('Article')
     
     def __repr__(self):
         return f'<SEOAnalysis {self.analysis_type}: {self.score}>'

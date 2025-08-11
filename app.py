@@ -66,6 +66,28 @@ def after_request(response):
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
     
+    # アクセスログを記録
+    try:
+        remote_addr = request.environ.get('REMOTE_ADDR', '-')
+        method = request.method
+        path = request.path
+        protocol = request.environ.get('SERVER_PROTOCOL', 'HTTP/1.1')
+        status = response.status_code
+        content_length = response.content_length or '-'
+        referrer = request.referrer or '-'
+        user_agent = request.headers.get('User-Agent', '-')
+        
+        # アクセスログの記録（Apache Combined Log Format風）
+        log_entry = f'{remote_addr} - - [{datetime.now().strftime("%d/%b/%Y:%H:%M:%S %z")}] "{method} {path} {protocol}" {status} {content_length} "{referrer}" "{user_agent}"'
+        
+        # access.log ファイルに記録
+        with open('access.log', 'a', encoding='utf-8') as f:
+            f.write(log_entry + '\n')
+            
+    except Exception as e:
+        # ログ記録エラーは無視（アプリケーションの動作に影響しないように）
+        app.logger.debug(f"Access log error: {e}")
+    
     return response
 
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your_default_secret_key')
@@ -109,6 +131,23 @@ else:
     stream_handler.setLevel(logging.INFO)
     app.logger.addHandler(stream_handler)
     app.logger.setLevel(logging.INFO)
+
+# アクセスログファイルハンドラーを追加
+import logging.handlers
+access_log_handler = logging.handlers.RotatingFileHandler(
+    'access.log', maxBytes=10*1024*1024, backupCount=5  # 10MB, 5ファイルまで
+)
+access_log_handler.setLevel(logging.INFO)
+access_log_formatter = logging.Formatter(
+    '%(remote_addr)s - - [%(asctime)s] "%(method)s %(path)s %(protocol)s" %(status)s %(content_length)s "%(referrer)s" "%(user_agent)s"',
+    datefmt='%d/%b/%Y:%H:%M:%S %z'
+)
+access_log_handler.setFormatter(access_log_formatter)
+
+# Flaskのアクセスログ用ロガーを作成
+access_logger = logging.getLogger('access_log')
+access_logger.addHandler(access_log_handler)
+access_logger.setLevel(logging.INFO)
 # --- ここまで追加 ---
 
 migrate = Migrate()  # Migrate インスタンスの作成はここでもOK
@@ -917,24 +956,17 @@ def inject_analytics():
         analytics_manager = GA4AnalyticsManager()
         
         # ユーザーを追跡すべきかチェック
-        if not analytics_manager.should_track_user(current_user if current_user.is_authenticated else None):
-            return Markup('')
+        user = current_user if current_user.is_authenticated else None
         
-        # 完全なトラッキングコードを取得
-        tracking_codes = analytics_manager.get_complete_tracking_code()
-        
-        html_parts = []
-        
-        # ヘッダー部分（基本トラッキングコード + GTM）
-        if tracking_codes['head_code']:
-            html_parts.append(tracking_codes['head_code'])
+        # トラッキングコードを生成
+        tracking_code = analytics_manager.generate_tracking_code(user)
         
         # カスタムアナリティクスコード
         custom_code = SiteSetting.get_setting('custom_analytics_code', '')
         if custom_code:
-            html_parts.append(f'<!-- Custom Analytics Code -->\n{custom_code}')
+            tracking_code = Markup(str(tracking_code) + f'\n<!-- Custom Analytics Code -->\n{custom_code}')
         
-        return Markup('\n'.join(html_parts))
+        return tracking_code
     
     def google_tag_manager_noscript():
         """Enhanced Google Tag Manager noscript 部分"""
@@ -943,27 +975,10 @@ def inject_analytics():
         analytics_manager = GA4AnalyticsManager()
         
         # ユーザーを追跡すべきかチェック
-        if not analytics_manager.should_track_user(current_user if current_user.is_authenticated else None):
-            return Markup('')
+        user = current_user if current_user.is_authenticated else None
         
-        # 完全なトラッキングコードを取得
-        tracking_codes = analytics_manager.get_complete_tracking_code()
-        
-        html_parts = []
-        
-        # GTM noscript部分
-        if tracking_codes['body_code']:
-            html_parts.append(tracking_codes['body_code'])
-        
-        # Enhanced tracking JavaScript
-        if tracking_codes['enhanced_code']:
-            html_parts.append(tracking_codes['enhanced_code'])
-        
-        # Cookie consent banner
-        if tracking_codes['consent_banner']:
-            html_parts.append(tracking_codes['consent_banner'])
-        
-        return Markup('\n'.join(html_parts))
+        # GTM noscript部分を生成
+        return analytics_manager.generate_gtm_noscript(user)
     
     return dict(
         google_analytics_code=google_analytics_code,

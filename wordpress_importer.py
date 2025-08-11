@@ -227,10 +227,17 @@ class WordPressImporter:
             # 親カテゴリから順番にインポート
             for category_data in sorted(categories, key=lambda x: x['parent_slug'] is None, reverse=True):
                 try:
-                    # 既存チェック
-                    existing = Category.query.filter_by(slug=category_data['slug']).first()
+                    # 既存チェック（SQLAlchemy 2.0対応）- slug と name の両方でチェック（大文字小文字区別なし）
+                    from sqlalchemy import select, or_, func
+                    existing = db.session.execute(
+                        select(Category).where(
+                            or_(Category.slug == category_data['slug'], 
+                                Category.name == category_data['name'],
+                                func.lower(Category.name) == category_data['name'].lower())
+                        )
+                    ).scalar_one_or_none()
                     if existing:
-                        print(f"⏭️  カテゴリ '{category_data['name']}' は既存のためスキップ")
+                        print(f"⏭️  カテゴリ '{category_data['name']}' は既存 '{existing.name}' と類似のためスキップ")
                         imported_categories[category_data['slug']] = existing
                         continue
                     
@@ -267,11 +274,14 @@ class WordPressImporter:
     
     def import_posts(self, posts, imported_categories):
         """記事をインポート"""
+        from sqlalchemy import select
         with app.app_context():
             for post_data in posts:
                 try:
-                    # 既存チェック
-                    existing = Article.query.filter_by(slug=post_data['slug']).first()
+                    # 既存チェック（SQLAlchemy 2.0対応）
+                    existing = db.session.execute(
+                        select(Article).where(Article.slug == post_data['slug'])
+                    ).scalar_one_or_none()
                     if existing:
                         print(f"⏭️  記事 '{post_data['title']}' は既存のためスキップ")
                         continue
@@ -285,7 +295,8 @@ class WordPressImporter:
                     if post_data['featured_image']:
                         featured_image_path = self.download_image(post_data['featured_image'], post_data['slug'])
                     
-                    # 記事作成
+                    # 記事作成（元記事の日付を使用）
+                    publish_date = post_data['published_at']
                     article = Article(
                         title=post_data['title'],
                         slug=post_data['slug'],
@@ -294,9 +305,10 @@ class WordPressImporter:
                         meta_description=post_data['description'],
                         featured_image=featured_image_path,
                         is_published=True,
-                        published_at=post_data['published_at'],
-                        author_id=self.author_id,
-                        use_block_editor=False  # WordPress記事は従来型エディタ
+                        published_at=publish_date,
+                        created_at=publish_date,  # 元記事の日付を作成日にも設定
+                        updated_at=publish_date,  # 元記事の日付を更新日にも設定
+                        author_id=self.author_id
                     )
                     
                     db.session.add(article)
@@ -310,8 +322,10 @@ class WordPressImporter:
                         if category_slug in imported_categories:
                             category = imported_categories[category_slug]
                         else:
-                            # 名前で検索
-                            category = Category.query.filter_by(name=category_name).first()
+                            # 名前で検索（SQLAlchemy 2.0対応）
+                            category = db.session.execute(
+                                select(Category).where(Category.name == category_name)
+                            ).scalar_one_or_none()
                         
                         if category:
                             # 多対多関係の追加（article_categoriesテーブル使用）

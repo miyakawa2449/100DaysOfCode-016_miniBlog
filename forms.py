@@ -176,7 +176,7 @@ class GoogleAnalyticsForm(FlaskForm):
     # Cookie同意設定
     consent_banner_text = TextAreaField('Cookie同意バナーテキスト', 
                                       default='このサイトではCookieを使用してサイトの利用状況を分析し、ユーザー体験を向上させています。')
-    privacy_policy_url = StringField('プライバシーポリシーURL', validators=[Optional(), URL()])
+    privacy_policy_url = StringField('プライバシーポリシーURL', validators=[Optional()])
     
     # 詳細なプライバシー設定
     analytics_storage = SelectField('Analytics Storage', 
