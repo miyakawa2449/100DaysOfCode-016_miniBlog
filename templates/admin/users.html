@@ -309,8 +309,8 @@ function deleteUser() {
         form.method = 'POST';
         form.action = adminPrefix + '/user/delete/' + deleteUserId + '/';
         
-        // CSRFトークンを追加
-        const csrfToken = document.querySelector('input[name="csrf_token"]').value;
+        // CSRFトークンをmetaタグから取得
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         const csrfInput = document.createElement('input');
         csrfInput.type = 'hidden';
         csrfInput.name = 'csrf_token';

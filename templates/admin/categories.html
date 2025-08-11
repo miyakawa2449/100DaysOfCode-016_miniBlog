@@ -317,19 +317,12 @@ document.addEventListener('DOMContentLoaded', function() {
     editButtons.forEach(button => {
         const categoryId = button.getAttribute('data-category-id');
         
-        // 複数のURL形式を試行
-        const possibleUrls = [
-            `/admin/category/edit/${categoryId}/`,
-            `/admin/categories/${categoryId}/edit/`,
-            `/admin/category/${categoryId}/edit/`,
-            `/admin/edit_category/${categoryId}/`
-        ];
-        
         button.addEventListener('click', function(e) {
             e.preventDefault();
             
-            // 最初のURLを試す
-            window.location.href = possibleUrls[0];
+            // 正しいURL生成
+            const editUrl = `{{ url_for('admin.categories') }}`.replace('/categories/', `/category/edit/${categoryId}/`);
+            window.location.href = editUrl;
         });
     });
 });
@@ -425,9 +418,10 @@ function deleteCategory() {
     if (deleteCategoryId) {
         const form = document.createElement('form');
         form.method = 'POST';
-        form.action = `/admin/category/delete/${deleteCategoryId}/`;
+        form.action = `{{ url_for('admin.categories') }}`.replace('/categories/', `/category/delete/${deleteCategoryId}/`);
         
-        const csrfToken = '{{ csrf_token() }}';
+        // CSRFトークンをmetaタグから取得
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         const csrfInput = document.createElement('input');
         csrfInput.type = 'hidden';
         csrfInput.name = 'csrf_token';

@@ -232,9 +232,10 @@ function deleteArticle(articleId, title) {
     if (confirm(`記事「${title}」を削除してもよろしいですか？`)) {
         const form = document.createElement('form');
         form.method = 'POST';
-        form.action = `/admin/article/delete/${articleId}/`;
+        form.action = `{{ url_for('admin.articles') }}`.replace('/articles/', `/article/delete/${articleId}/`);
         
-        const csrfToken = '{{ csrf_token() }}';
+        // CSRFトークンをmetaタグから取得
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         const csrfInput = document.createElement('input');
         csrfInput.type = 'hidden';
         csrfInput.name = 'csrf_token';
@@ -252,10 +253,10 @@ function toggleArticleStatus(articleId, isPublished) {
         // フォーム送信で確実にCSRFトークンを送る
         const form = document.createElement('form');
         form.method = 'POST';
-        form.action = `/admin/article/toggle_status/${articleId}/`;
+        form.action = `{{ url_for('admin.articles') }}`.replace('/articles/', `/article/toggle_status/${articleId}/`);
         
-        // CSRFトークン
-        const csrfToken = document.querySelector('meta[name=csrf-token]').getAttribute('content');
+        // CSRFトークンをmetaタグから取得
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
         const csrfInput = document.createElement('input');
         csrfInput.type = 'hidden';
         csrfInput.name = 'csrf_token';
