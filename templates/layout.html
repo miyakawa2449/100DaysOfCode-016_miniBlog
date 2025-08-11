@@ -55,7 +55,13 @@
         
         * { box-sizing: border-box; }
         html { scroll-behavior: smooth; font-size: 16px; }
-        @media (max-width: 768px) { html { font-size: 14px; } }
+        @media (max-width: 768px) { 
+            html { font-size: 14px; }
+            .hero-section { 
+                height: 320px; 
+                padding: 3rem 0;
+            }
+        }
         
         body {
             margin: 0;
@@ -87,9 +93,9 @@
         .hero-section {
             background: var(--primary-gradient);
             color: var(--white);
-            padding: 3rem 0;
+            padding: 4rem 0;
             text-align: center;
-            min-height: 60vh;
+            height: 400px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -114,6 +120,9 @@
     
     <link rel="preload" href="{{ url_for('static', filename='css/main.css') }}" as="style" onload="this.onload=null;this.rel='stylesheet'">
     <noscript><link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet"></noscript>
+    
+    <link rel="preload" href="{{ url_for('static', filename='css/components.css') }}" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link href="{{ url_for('static', filename='css/components.css') }}" rel="stylesheet"></noscript>
     {% if site_settings.theme_color %}
     <style>
         :root {

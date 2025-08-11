@@ -39,6 +39,14 @@
     --breakpoint-md: 768px;
     --breakpoint-lg: 1024px;
     --breakpoint-xl: 1440px;
+    
+    /* カテゴリー別カラー */
+    --category-programming: #007bff;
+    --category-design: #e83e8c;
+    --category-lifestyle: #20c997;
+    --category-tech: #6f42c1;
+    --category-business: #fd7e14;
+    --category-default: #6c757d;
 }
 
 /* ===== Base Styles (Mobile First) ===== */

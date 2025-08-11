@@ -9,15 +9,20 @@
 {% block og_image %}{% if category.ogp_image %}{{ url_for('static', filename=category.ogp_image, _external=True) }}{% else %}{{ super() }}{% endif %}{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-12">
-        <!-- カテゴリヘッダー -->
-        <header class="text-center text-white mb-5">
+<div class="category-{{ category.slug }}">
+    <!-- カテゴリヘッダー -->
+    <header class="category-header">
+        <div class="container">
             <h1 class="display-4 fw-bold">{{ category.name }}</h1>
             {% if category.description %}
                 <p class="lead">{{ category.description }}</p>
             {% endif %}
-        </header>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="row">
+            <div class="col-12">
 
         <!-- 記事一覧 -->
         {% if articles_pagination and articles_pagination.items %}
@@ -99,8 +104,8 @@
             </nav>
             {% endif %}
         {% else %}
-            <div class="text-center text-white py-5">
-                <i class="bi bi-folder fs-1 mb-3"></i>
+            <div class="empty-category">
+                <i class="bi bi-folder"></i>
                 <h3>このカテゴリには記事がありません</h3>
                 <p class="lead">{{ category.name }}カテゴリの記事はまだ投稿されていません。</p>
                 <a href="{{ url_for('home') }}" class="btn btn-light">
@@ -108,6 +113,8 @@
                 </a>
             </div>
         {% endif %}
+        </div>
     </div>
+</div>
 </div>
 {% endblock %}
