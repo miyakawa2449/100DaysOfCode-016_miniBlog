@@ -892,11 +892,10 @@ def articles():
     per_page = 10
     
     # ページネーション（eager loading で関連データも取得）
-    from sqlalchemy.orm import selectinload, joinedload
+    from sqlalchemy.orm import selectinload
     articles_pagination = db.paginate(
         select(Article)
         .options(
-            joinedload(Article.author),
             selectinload(Article.categories)
         )
         .order_by(Article.created_at.desc()),
@@ -1656,9 +1655,17 @@ def wordpress_import():
                     for category_data in categories:
                         try:
                             if self.skip_duplicates:
-                                existing = db.session.execute(select(Category).where(Category.slug == category_data['slug'])).scalar_one_or_none()
+                                # 既存チェック（SQLAlchemy 2.0対応）- slug と name の両方でチェック（大文字小文字区別なし）
+                                from sqlalchemy import or_, func
+                                existing = db.session.execute(
+                                    select(Category).where(
+                                        or_(Category.slug == category_data['slug'], 
+                                            Category.name == category_data['name'],
+                                            func.lower(Category.name) == category_data['name'].lower())
+                                    )
+                                ).scalar_one_or_none()
                                 if existing:
-                                    self.stats['skipped'].append(f"カテゴリ: {category_data['name']}")
+                                    self.stats['skipped'].append(f"カテゴリ: {category_data['name']} (既存: {existing.name})")
                                     continue
                             
                             if not self.dry_run:
@@ -1687,19 +1694,23 @@ def wordpress_import():
                                     continue
                             
                             if not self.dry_run:
+                                # 記事作成（元記事の日付を使用）
+                                publish_date = post_data['published_at']
                                 article = Article(
                                     title=post_data['title'],
                                     slug=post_data['slug'],
-                                    content=post_data['content'],
+                                    body=post_data['content'],  # contentではなくbodyを使用
                                     summary=post_data['summary'],
-                                    status='published',
-                                    published_at=post_data['published_at'],
+                                    is_published=True,  # statusではなくis_publishedを使用
+                                    published_at=publish_date,
+                                    created_at=publish_date,  # 元記事の日付を作成日にも設定
+                                    updated_at=publish_date,  # 元記事の日付を更新日にも設定
                                     author_id=self.author_id,
                                 )
                                 db.session.add(article)
                                 db.session.flush()
                                 
-                                # カテゴリ関連付け
+                                # カテゴリ関連付け（多対多関係を使用）
                                 for category_name in post_data['categories']:
                                     category = db.session.execute(select(Category).where(Category.name == category_name)).scalar_one_or_none()
                                     if not category:
@@ -1707,11 +1718,8 @@ def wordpress_import():
                                         category = db.session.execute(select(Category).where(Category.slug == category_slug)).scalar_one_or_none()
                                     
                                     if category:
-                                        article_category = ArticleCategory(
-                                            article_id=article.id,
-                                            category_id=category.id
-                                        )
-                                        db.session.add(article_category)
+                                        # 多対多関係でカテゴリを記事に関連付け
+                                        article.categories.append(category)
                                 
                                 db.session.commit()
                             
@@ -1732,6 +1740,7 @@ def wordpress_import():
             importer = WebWordPressImporter(xml_path, form.author_id.data, options)
             success = importer.run()
             import_results = importer.stats
+            import_results['is_dry_run'] = form.dry_run.data  # テスト実行フラグを追加
             
             # 一時ファイル削除
             try:
@@ -1740,9 +1749,15 @@ def wordpress_import():
                 pass
             
             if success:
-                flash(f'インポート完了: カテゴリ{import_results["categories_imported"]}個、記事{import_results["posts_imported"]}個', 'success')
+                if form.dry_run.data:
+                    flash(f'テストインポート完了: カテゴリ{import_results["categories_imported"]}個、記事{import_results["posts_imported"]}個（実際のインポートは実行されていません）', 'info')
+                else:
+                    flash(f'インポート完了: カテゴリ{import_results["categories_imported"]}個、記事{import_results["posts_imported"]}個', 'success')
             else:
-                flash('インポート中にエラーが発生しました', 'danger')
+                if form.dry_run.data:
+                    flash('テストインポート中にエラーが発生しました', 'warning')
+                else:
+                    flash('インポート中にエラーが発生しました', 'danger')
                 
         except Exception as e:
             current_app.logger.error(f"WordPress import form error: {e}")
@@ -1924,7 +1939,7 @@ def access_logs():
     
     try:
         # 利用可能なログファイルを検索
-        log_patterns = ['flask.log', 'server.log', 'access.log', 'app.log']
+        log_patterns = ['flask.log', 'server.log', 'access.log', 'app.log', 'test_access.log']
         for pattern in log_patterns:
             if os.path.exists(pattern):
                 log_files.append(pattern)
@@ -2266,15 +2281,32 @@ def site_settings():
 @admin_required
 def preview_markdown():
     """Markdownプレビュー用エンドポイント"""
-    markdown_text = request.form.get('markdown_text', '')
-    
-    if not markdown_text:
-        return '<p class="text-muted">プレビューを表示するには本文を入力してください。</p>'
-    
     try:
-        # app.pyのmarkdown_filterを使用してHTMLに変換
-        from app import markdown_filter
-        html_content = markdown_filter(markdown_text)
+        # CSRF検証
+        from flask_wtf.csrf import validate_csrf
+        try:
+            validate_csrf(request.form.get('csrf_token'))
+        except Exception as csrf_error:
+            current_app.logger.error(f"CSRF validation failed: {csrf_error}")
+            return '<p class="text-danger">セキュリティトークンが無効です</p>', 400
+            
+        markdown_text = request.form.get('markdown_text', '')
+        
+        if not markdown_text:
+            return '<p class="text-muted">プレビューを表示するには本文を入力してください。</p>'
+        
+        # Markdownライブラリを直接使用してHTMLに変換
+        import markdown
+        from markdown.extensions import codehilite, fenced_code, tables, toc
+        
+        md = markdown.Markdown(extensions=[
+            'codehilite',
+            'fenced_code',
+            'tables',
+            'toc',
+            'nl2br'
+        ])
+        html_content = md.convert(markdown_text)
         return str(html_content)
     except Exception as e:
         current_app.logger.error(f"Markdown preview error: {e}")
