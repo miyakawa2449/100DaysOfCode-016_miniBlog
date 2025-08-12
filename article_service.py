@@ -60,7 +60,7 @@ class ArticleService:
                     filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], 'articles', filename)
                     os.makedirs(os.path.dirname(filepath), exist_ok=True)
                     file.save(filepath)
-                    article.featured_image = f"articles/{filename}"
+                    article.featured_image = f"uploads/articles/{filename}"
             
             # コミット
             db.session.commit()
@@ -93,6 +93,7 @@ class ArticleService:
                 ArticleService.assign_category(article, form_data['category_id'])
             
             # アイキャッチ画像処理
+            # 新しい画像データがある場合のみ更新
             if form_data.get('cropped_image_data'):
                 ArticleService.process_article_image(article, form_data['cropped_image_data'])
             elif form_data.get('featured_image') and hasattr(form_data['featured_image'], 'filename'):
@@ -104,7 +105,10 @@ class ArticleService:
                     filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], 'articles', filename)
                     os.makedirs(os.path.dirname(filepath), exist_ok=True)
                     file.save(filepath)
-                    article.featured_image = f"articles/{filename}"
+                    article.featured_image = f"uploads/articles/{filename}"
+            # 画像削除フラグがある場合
+            elif form_data.get('remove_featured_image'):
+                article.featured_image = None
             
             # コミット
             db.session.commit()
@@ -184,7 +188,10 @@ class ArticleService:
             
             # 画像保存
             image.save(filepath, 'JPEG', quality=85)
-            article.featured_image = f"articles/{filename}"
+            article.featured_image = f"uploads/articles/{filename}"
+            
+            # 重要: データベースセッションに変更を追加
+            db.session.add(article)
             
         except Exception as e:
             current_app.logger.error(f"画像処理エラー: {str(e)}")
