@@ -190,11 +190,54 @@ class ArticleService:
             image.save(filepath, 'JPEG', quality=85)
             article.featured_image = f"uploads/articles/{filename}"
             
+            # UploadedImageテーブルにも保存
+            ArticleService._save_to_uploaded_images(
+                filename=filename,
+                file_path=f"uploads/articles/{filename}",
+                image=image,
+                uploader_id=article.author_id,
+                alt_text=f"{article.title}のアイキャッチ画像",
+                description="記事のアイキャッチ画像"
+            )
+            
             # 重要: データベースセッションに変更を追加
             db.session.add(article)
             
         except Exception as e:
             current_app.logger.error(f"画像処理エラー: {str(e)}")
+    
+    @staticmethod
+    def _save_to_uploaded_images(filename, file_path, image, uploader_id, alt_text="", caption="", description=""):
+        """UploadedImageテーブルに画像情報を保存"""
+        from models import UploadedImage
+        import os
+        
+        try:
+            # ファイルサイズを取得
+            full_filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], 'articles', filename)
+            file_size = os.path.getsize(full_filepath) if os.path.exists(full_filepath) else 0
+            
+            # UploadedImageレコード作成
+            uploaded_image = UploadedImage(
+                filename=filename,
+                original_filename=filename,  # アイキャッチ画像の場合、生成されたファイル名を使用
+                file_path=file_path,
+                file_size=file_size,
+                mime_type='image/jpeg',
+                width=image.width,
+                height=image.height,
+                alt_text=alt_text,
+                caption=caption,
+                description=description,
+                uploader_id=uploader_id,
+                is_active=True,
+                usage_count=1  # アイキャッチ画像として使用されているため1
+            )
+            
+            db.session.add(uploaded_image)
+            
+        except Exception as e:
+            current_app.logger.error(f"UploadedImage保存エラー: {str(e)}")
     
     @staticmethod
     def assign_category(article, category_id):

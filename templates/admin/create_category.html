@@ -509,8 +509,8 @@ function applyCrop() {
         
         // クロップされた画像をプレビューに表示
         const canvas = cropper.getCroppedCanvas({
-            width: 400,
-            height: 210 // 1200:630の比率を維持
+            width: 1200,
+            height: 630 // 1200:630の比率を維持（OGP対応）
         });
         
         document.getElementById('imagePreview').src = canvas.toDataURL();

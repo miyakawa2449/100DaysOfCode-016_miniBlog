@@ -84,9 +84,9 @@ def process_ogp_image(image_file, category_id=None, crop_data=None):
         file_ext = os.path.splitext(secure_filename(image_file.filename))[1]
         filename = f"category_ogp_{category_id or 'new'}_{timestamp}{file_ext}"
         
-        upload_folder = current_app.config.get('CATEGORY_OGP_UPLOAD_FOLDER', 'static/uploads/categories')
+        upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'categories')
         if not os.path.exists(upload_folder):
-            os.makedirs(upload_folder)
+            os.makedirs(upload_folder, exist_ok=True)
         
         image_path = os.path.join(upload_folder, filename)
         temp_path = os.path.join(upload_folder, f"temp_{filename}")
@@ -120,9 +120,34 @@ def process_ogp_image(image_file, category_id=None, crop_data=None):
         if os.path.exists(temp_path):
             os.remove(temp_path)
         
-        # 相対パスを返す
-        relative_path = os.path.relpath(image_path, current_app.static_folder)
+        # 相対パスを返す（static/から見た相対パス）
+        relative_path = f"uploads/categories/{filename}"
         current_app.logger.info(f"OGP画像保存完了: {relative_path}")
+        
+        # UploadedImageテーブルにも保存
+        try:
+            file_size = os.path.getsize(image_path)
+            uploaded_image = UploadedImage(
+                filename=filename,
+                original_filename=image_file.filename,
+                file_path=relative_path,  # パスを統一
+                file_size=file_size,
+                mime_type='image/jpeg',
+                width=1200,  # OGP標準サイズ
+                height=630,
+                alt_text=f"カテゴリ{category_id or 'new'}のOGP画像",
+                caption="",
+                description="カテゴリOGP画像",
+                uploader_id=current_user.id if current_user.is_authenticated else None,
+                is_active=True,
+                usage_count=1
+            )
+            db.session.add(uploaded_image)
+            current_app.logger.info(f"UploadedImageテーブルに保存完了: {filename}")
+        except Exception as upload_error:
+            current_app.logger.error(f"UploadedImage保存エラー: {upload_error}")
+            # エラーでもファイル保存は成功しているので処理を続行
+        
         return relative_path
     
     except Exception as e:
@@ -1017,7 +1042,8 @@ def edit_article(article_id):
                 'featured_crop_x': request.form.get('featured_crop_x'),
                 'featured_crop_y': request.form.get('featured_crop_y'),
                 'featured_crop_width': request.form.get('featured_crop_width'),
-                'featured_crop_height': request.form.get('featured_crop_height')
+                'featured_crop_height': request.form.get('featured_crop_height'),
+                'remove_featured_image': request.form.get('remove_featured_image') == 'true'
             }
             
             # 記事更新
@@ -1217,8 +1243,13 @@ def edit_category(category_id):
             category.slug = form.slug.data
             category.description = form.description.data
             
+            # カテゴリ画像削除処理
+            if request.form.get('remove_category_image') == 'true':
+                category.ogp_image = None
+                current_app.logger.info(f"Category {category.id} OGP image removed")
+            
             # OGP画像の処理
-            if form.ogp_image.data:
+            elif form.ogp_image.data:
                 try:
                     # 古い画像を削除
                     if category.ogp_image:
@@ -3039,3 +3070,4 @@ def send_ses_email(subject, recipient, html_body):
     except Exception as e:
         current_app.logger.error(f'SES send email unexpected error: {e}')
         raise
+

@@ -90,6 +90,9 @@ miniblog/
 admininfo.py
 reports/scrennshot/
 
+# Claude AI専用開発ファイル
+CLAUDE.md
+
 # デバッグメール（開発時のみ）
 debug_emails/
 

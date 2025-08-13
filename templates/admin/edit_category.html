@@ -129,20 +129,26 @@
                 <div class="card-body">
                     <!-- 現在の画像表示 -->
                     {% if category.ogp_image %}
-                        <div class="mb-3">
+                        <div class="mb-3" id="currentCategoryImage">
                             <p><strong>現在の画像:</strong></p>
                             <div class="current-image-preview">
                                 <img src="{{ url_for('static', filename=category.ogp_image) }}?t={{ range(1, 100000) | random }}" 
                                      alt="現在のカテゴリ画像" 
                                      class="image-preview"
                                      onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                                <div class="mt-2 small text-muted">
-                                    <i class="fa fa-file me-1"></i>{{ category.ogp_image }}
+                                <div class="mt-2 d-flex justify-content-between align-items-center">
+                                    <small class="text-muted">
+                                        <i class="fa fa-file me-1"></i>{{ category.ogp_image }}
+                                    </small>
+                                    <button type="button" class="btn btn-sm btn-outline-danger" id="removeCategoryImageBtn">
+                                        <i class="fa fa-trash me-1"></i>削除
+                                    </button>
                                 </div>
                                 <div class="alert alert-warning small mt-2" style="display:none;">
                                     <i class="fa fa-exclamation-triangle me-1"></i>画像ファイルが見つかりません
                                 </div>
                             </div>
+                            <input type="hidden" name="remove_category_image" id="removeCategoryImage" value="false">
                         </div>
                     {% endif %}
                     
@@ -155,6 +161,7 @@
                             </div>
                         {% endif %}
                         <div class="form-text">
+                            推奨サイズ: 1200×630px（1.91:1比率、OGP対応、JPG/PNG形式）<br>
                             新しい画像をアップロードする場合のみ選択してください
                         </div>
                     </div>
@@ -312,6 +319,52 @@ let cropper = null;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Page loaded, Bootstrap available:', typeof bootstrap !== 'undefined');
     console.log('Cropper available:', typeof Cropper !== 'undefined');
+    
+    // カテゴリ画像削除ボタンのイベント設定
+    const removeCategoryImageBtn = document.getElementById('removeCategoryImageBtn');
+    if (removeCategoryImageBtn) {
+        removeCategoryImageBtn.addEventListener('click', function() {
+            if (confirm('カテゴリ画像を削除しますか？\n※画像ファイル自体は削除されず、カテゴリとの関連付けのみ解除されます。')) {
+                // 現在の画像プレビューを非表示
+                const currentImage = document.getElementById('currentCategoryImage');
+                if (currentImage) {
+                    currentImage.style.display = 'none';
+                }
+                
+                // 削除フラグを設定
+                const removeFlag = document.getElementById('removeCategoryImage');
+                if (removeFlag) {
+                    removeFlag.value = 'true';
+                }
+                
+                // ファイル入力をリセット
+                const fileInput = document.querySelector('input[name="ogp_image"]');
+                if (fileInput) {
+                    fileInput.value = '';
+                }
+                
+                // プレビューコンテナも非表示
+                const previewContainer = document.getElementById('imagePreviewContainer');
+                if (previewContainer) {
+                    previewContainer.style.display = 'none';
+                }
+                
+                // 成功メッセージ
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-info alert-dismissible fade show mt-2';
+                alertDiv.innerHTML = `
+                    <i class="fa fa-info-circle me-2"></i>
+                    カテゴリ画像の削除をマークしました。保存ボタンを押すと削除が確定します。
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                
+                const cardBody = currentImage.closest('.card-body');
+                if (cardBody) {
+                    cardBody.insertBefore(alertDiv, cardBody.firstChild);
+                }
+            }
+        });
+    }
 });
 // 画像プレビュー
 function previewImage(event) {
@@ -437,8 +490,8 @@ function applyCrop() {
         
         // クロップされた画像をプレビューに表示
         const canvas = cropper.getCroppedCanvas({
-            width: 400,
-            height: 210 // 1200:630の比率を維持
+            width: 1200,
+            height: 630 // 1200:630の比率を維持（OGP対応）
         });
         
         document.getElementById('imagePreview').src = canvas.toDataURL();

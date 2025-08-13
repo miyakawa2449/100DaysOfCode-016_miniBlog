@@ -195,12 +195,16 @@
                                     </div>
                                     <div class="card-body">
                                         {% if article and article.featured_image %}
-                                        <div class="current-image-preview mb-3">
+                                        <div class="current-image-preview mb-3" id="currentFeaturedImage">
                                             <img src="{{ url_for('static', filename=article.featured_image) }}" 
                                                  alt="現在のアイキャッチ画像" class="image-preview">
-                                            <div class="mt-2">
+                                            <div class="mt-2 d-flex justify-content-between align-items-center">
                                                 <small class="text-muted">現在の画像</small>
+                                                <button type="button" class="btn btn-sm btn-outline-danger" id="removeFeaturedImageBtn">
+                                                    <i class="fa fa-trash me-1"></i>削除
+                                                </button>
                                             </div>
+                                            <input type="hidden" name="remove_featured_image" id="removeFeaturedImage" value="false">
                                         </div>
                                         {% endif %}
                                         
@@ -208,7 +212,7 @@
                                             <label for="featuredImageUpload" class="form-label">画像ファイル</label>
                                             <input type="file" name="featured_image" id="featuredImageUpload" class="form-control" accept="image/*" onchange="previewFeaturedImage(event)">
                                             <div class="form-text">
-                                                推奨サイズ: 800×450px（16:9比率、JPG/PNG形式）
+                                                推奨サイズ: 1200×630px（1.91:1比率、OGP対応、JPG/PNG形式）
                                             </div>
                                         </div>
                                         
@@ -375,7 +379,7 @@
             <div class="modal-body">
                 <div class="aspect-ratio-note">
                     <i class="fas fa-info-circle"></i>
-                    アイキャッチ画像は16:9の比率でトリミングされます。
+                    アイキャッチ画像は1.91:1の比率でトリミングされます（OGP対応）。
                 </div>
                 <div class="cropper-container">
                     <img id="cropperImage" style="max-width: 100%;">
@@ -579,6 +583,52 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('DOMContentLoaded - initializing image upload functionality');
     setupImageUploadHandlers();
     setupMarkdownEditor();
+    
+    // アイキャッチ画像削除ボタンのイベント設定
+    const removeFeaturedBtn = document.getElementById('removeFeaturedImageBtn');
+    if (removeFeaturedBtn) {
+        removeFeaturedBtn.addEventListener('click', function() {
+            if (confirm('アイキャッチ画像を削除しますか？\n※画像ファイル自体は削除されず、記事との関連付けのみ解除されます。')) {
+                // 現在の画像プレビューを非表示
+                const currentImage = document.getElementById('currentFeaturedImage');
+                if (currentImage) {
+                    currentImage.style.display = 'none';
+                }
+                
+                // 削除フラグを設定
+                const removeFlag = document.getElementById('removeFeaturedImage');
+                if (removeFlag) {
+                    removeFlag.value = 'true';
+                }
+                
+                // ファイル入力をリセット
+                const fileInput = document.getElementById('featuredImageUpload');
+                if (fileInput) {
+                    fileInput.value = '';
+                }
+                
+                // プレビューコンテナも非表示
+                const previewContainer = document.getElementById('featuredImagePreviewContainer');
+                if (previewContainer) {
+                    previewContainer.style.display = 'none';
+                }
+                
+                // 成功メッセージ
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-info alert-dismissible fade show mt-2';
+                alertDiv.innerHTML = `
+                    <i class="fa fa-info-circle me-2"></i>
+                    アイキャッチ画像の削除をマークしました。保存ボタンを押すと削除が確定します。
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                
+                const cardBody = currentImage.closest('.card-body');
+                if (cardBody) {
+                    cardBody.insertBefore(alertDiv, cardBody.firstChild);
+                }
+            }
+        });
+    }
     
     // 関数の存在確認
     console.log('showImageUploadModal function available:', typeof showImageUploadModal);
@@ -798,7 +848,7 @@ function handleImageUpload() {
         alert('アップロードがタイムアウトしました。');
     });
     
-    xhr.open('POST', '/admin/upload_image', true);
+    xhr.open('POST', '/management-panel-2024/upload_image', true);
     xhr.send(formData);
 }
 
@@ -1101,6 +1151,7 @@ function previewFeaturedImage(event) {
     }
 }
 
+
 // アイキャッチ画像用のクロップ開始（共通モーダルを使用）
 function startFeaturedCropping() {
     const preview = document.getElementById('featuredImagePreview');
@@ -1111,8 +1162,8 @@ function startFeaturedCropping() {
         cropImage.src = preview.src;
         
         // モーダルタイトルとメッセージを変更
-        document.getElementById('cropModalLabel').textContent = 'アイキャッチ画像トリミング (16:9)';
-        document.getElementById('cropModalAspectInfo').textContent = '16:9の比率でトリミングされます（800×450px）';
+        document.getElementById('cropModalLabel').textContent = 'アイキャッチ画像トリミング (1.91:1)';
+        document.getElementById('cropModalAspectInfo').textContent = '1.91:1の比率でトリミングされます（1200×630px、OGP対応）';
         
         // Bootstrapがロードされるまで待機
         if (typeof bootstrap !== 'undefined') {
@@ -1132,7 +1183,7 @@ function startFeaturedCropping() {
                 cropper.destroy();
             }
             cropper = new Cropper(cropImage, {
-                aspectRatio: 16 / 9, // アイキャッチ画像は16:9
+                aspectRatio: 1200 / 630, // アイキャッチ画像は1.91:1（OGP対応）
                 viewMode: 1, // 画像がコンテナを超えないように制限
                 dragMode: 'crop', // ドラッグでクロップボックスを移動
                 autoCropArea: 0.7, // 初期クロップエリアを少し小さく
@@ -1194,11 +1245,23 @@ function applyCrop() {
             
             // クロップされた画像をプレビューに表示
             const canvas = cropper.getCroppedCanvas({
-                width: 400,
-                height: 225 // 16:9の比率を維持
+                width: 1200,
+                height: 630 // 1.91:1の比率を維持（OGP対応）
             });
             
-            document.getElementById('featuredImagePreview').src = canvas.toDataURL();
+            const croppedImageData = canvas.toDataURL('image/jpeg', 0.9);
+            document.getElementById('featuredImagePreview').src = croppedImageData;
+            
+            // 隠しフィールドにトリミング画像データを設定
+            let hiddenInput = document.getElementById('cropped_image_data');
+            if (!hiddenInput) {
+                hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = 'cropped_image_data';
+                hiddenInput.id = 'cropped_image_data';
+                document.querySelector('form').appendChild(hiddenInput);
+            }
+            hiddenInput.value = croppedImageData;
         } else {
             // カテゴリーOGPの場合（元の処理）
             // クロップデータを隠しフィールドに設定（画像の実際のサイズに対する値）
@@ -1212,8 +1275,8 @@ function applyCrop() {
                 
                 // クロップされた画像をプレビューに表示
                 const canvas = cropper.getCroppedCanvas({
-                    width: 400,
-                    height: 210 // 1200:630の比率を維持
+                    width: 1200,
+                    height: 630 // 1200:630の比率を維持（OGP対応）
                 });
                 
                 document.getElementById('imagePreview').src = canvas.toDataURL();

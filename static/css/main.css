@@ -384,7 +384,7 @@ body {
 
 /* ===== Article Featured Image ===== */
 .article-featured-image {
-    margin: 2rem 0;
+    margin: 0 0 2rem 0;
     text-align: center;
     border-radius: var(--border-radius);
     overflow: hidden;
@@ -394,8 +394,7 @@ body {
 .featured-image {
     width: 100%;
     height: auto;
-    max-height: 400px;
-    object-fit: cover;
+    object-fit: contain;
     display: block;
 }
 
@@ -858,7 +857,7 @@ body {
 }
 
 .featured-image {
-    margin-top: 2rem;
+    margin-top: 0;
     border-radius: var(--border-radius);
     overflow: hidden;
     box-shadow: var(--shadow-sm);
@@ -867,8 +866,7 @@ body {
 .featured-image img {
     width: 100%;
     height: auto;
-    max-height: 400px;
-    object-fit: cover;
+    object-fit: contain;
 }
 
 /* Article Body */

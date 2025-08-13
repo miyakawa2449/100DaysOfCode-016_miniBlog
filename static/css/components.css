@@ -162,11 +162,12 @@
 
 /* 画像プレビュー */
 .image-preview {
-    max-width: 300px;
-    max-height: 200px;
+    max-width: 100%;
+    height: auto;
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     margin: 10px auto;
+    display: block;
 }
 
 /* 現在の画像プレビュー */
@@ -175,11 +176,66 @@
     text-align: center;
 }
 
+/* 記事編集画面でのアイキャッチ画像プレビュー */
+.current-image-preview .image-preview,
+.preview-container .image-preview {
+    max-width: 400px;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin: 10px auto;
+    display: block;
+}
+
 .current-image-preview img {
-    max-width: 200px;
-    max-height: 150px;
+    max-width: 300px;
+    height: auto;
     border-radius: 6px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+/* 画像削除ボタンのスタイル改善 */
+.current-image-preview .btn-outline-danger {
+    border-radius: 6px;
+    font-size: 0.8rem;
+    padding: 0.35rem 0.7rem;
+    transition: all 0.2s ease;
+    background-color: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(4px);
+    border: 1px solid #dc3545;
+    margin-left: 0.5rem;
+}
+
+.current-image-preview .btn-outline-danger:hover {
+    background-color: #dc3545;
+    border-color: #dc3545;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
+}
+
+.current-image-preview .btn-outline-danger:focus {
+    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+}
+
+.current-image-preview .btn-outline-danger i {
+    margin-right: 0.3rem;
+}
+
+/* 画像情報とボタンのレイアウト改善 */
+.current-image-preview .d-flex {
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.current-image-preview .text-muted {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 /* 画像グリッド */
